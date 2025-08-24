@@ -326,10 +326,12 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
           <div className="mt-6 p-4 bg-gray-50 rounded-lg">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-sm text-gray-600">
               <div>
-                <span className="font-medium">Transliacijų laikotarpis:</span> {broadcastPeriod}
+                <span className="font-medium">Transliacijų laikotarpis:</span> 
+                <span className="ml-2 font-semibold text-blue-600">{broadcastPeriod}</span>
               </div>
               <div>
-                <span className="font-medium">Savaitės:</span> {weeksDisplay}
+                <span className="font-medium">Savaitės:</span> 
+                <span className="ml-2 font-semibold text-green-600">{weeksDisplay}</span>
               </div>
             </div>
           </div>
