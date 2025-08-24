@@ -215,36 +215,45 @@ export function OrdersTable({ searchQuery, filters, onOrderClick, onEditOrder }:
     if (filters.status) {
       if (filters.status === 'taip') {
         filtersArray.push(`approved=true`);
+        console.log('🔍 Added status filter: approved=true');
       } else if (filters.status === 'ne') {
         filtersArray.push(`approved=false`);
+        console.log('🔍 Added status filter: approved=false');
       }
     }
     
     // Client filter
     if (filters.client.trim()) {
       filtersArray.push(`client~"${filters.client}"`);
+      console.log('🔍 Added client filter:', filters.client);
     }
     
     // Agency filter
     if (filters.agency.trim()) {
       filtersArray.push(`agency~"${filters.agency}"`);
+      console.log('🔍 Added agency filter:', filters.agency);
     }
     
     // Media received filter
     if (filters.media_received) {
       if (filters.media_received === 'true') {
         filtersArray.push(`media_received=true`);
+        console.log('🔍 Added media filter: media_received=true');
       } else if (filters.media_received === 'false') {
         filtersArray.push(`media_received=false`);
+        console.log('🔍 Added media filter: media_received=false');
       }
     }
     
-    // Date filters - fix date format and logic
-    if (filters.month && filters.year) {
-      const startDate = `${filters.year}-${filters.month.padStart(2, '0')}-01`;
-      const endDate = `${filters.year}-${filters.month.padStart(2, '0')}-31`;
-      filtersArray.push(`from>="${startDate}" && to<="${endDate}"`);
-    }
+              // Date filters - show orders that overlap with the selected month
+          if (filters.month && filters.year) {
+            const startDate = `${filters.year}-${filters.month.padStart(2, '0')}-01`;
+            const endDate = `${filters.year}-${filters.month.padStart(2, '0')}-31`;
+            // Show orders that overlap with the selected month:
+            // - order starts before month ends AND order ends after month starts
+            filtersArray.push(`(from<="${endDate}" && to>="${startDate}")`);
+            console.log('🔍 Added date filter:', { startDate, endDate, month: filters.month, year: filters.year });
+          }
     
     // If no filters, return empty string
     if (filtersArray.length === 0) {
@@ -332,6 +341,21 @@ export function OrdersTable({ searchQuery, filters, onOrderClick, onEditOrder }:
         });
         
         console.log('✅ PocketBase response:', result);
+        console.log('🔍 Filter string sent to PocketBase:', filterString);
+        console.log('🔍 Current filters:', filters);
+        console.log('🔍 Search query:', searchQuery);
+        
+        // Debug: check if GO3 - Viadukai is in response
+        const go3Order = result.items.find(order => 
+          order.client.includes('GO3') || order.client.includes('Viadukai')
+        );
+        if (go3Order) {
+          console.log('🔍 Found GO3 - Viadukai order:', go3Order);
+          console.log('🔍 Order dates:', { from: go3Order.from, to: go3Order.to });
+          console.log('🔍 Order approved:', go3Order.approved);
+        } else {
+          console.log('❌ GO3 - Viadukai order not found in response');
+        }
         setOrders(result.items);
         setTotalPages(result.totalPages);
         setTotalItems(result.totalItems);
