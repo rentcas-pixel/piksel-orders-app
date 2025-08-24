@@ -494,7 +494,7 @@ export function OrdersTable({ searchQuery, filters, onOrderClick, onEditOrder }:
               <tr 
                 key={order.id} 
                 className="hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer transition-colors"
-                onClick={() => onOrderClick(order)}
+                onClick={() => onEditOrder(order)}
               >
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="text-sm font-medium text-gray-900 dark:text-white">
@@ -548,15 +548,17 @@ export function OrdersTable({ searchQuery, filters, onOrderClick, onEditOrder }:
                         onOrderClick(order);
                       }}
                       className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
+                      title="Peržiūrėti užsakymą"
                     >
                       <EyeIcon className="w-4 h-4" />
                     </button>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        onEditOrder(order);
+                        onOrderClick(order);
                       }}
-                      className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300"
+                      className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-blue-300"
+                      title="Redaguoti užsakymą (eilutės paspaudimas)"
                     >
                       <PencilIcon className="w-4 h-4" />
                     </button>
