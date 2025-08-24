@@ -43,7 +43,13 @@ export class PocketBaseService {
       ...(filter && { filter }),
     });
 
-    const response = await this.makeRequest(`/records?${queryParams}`);
+    const url = `/records?${queryParams}`;
+    console.log('🌐 PocketBase request URL:', url);
+    console.log('🌐 PocketBase filter:', filter);
+    
+    const response = await this.makeRequest(url);
+    
+    console.log('📦 PocketBase raw response:', response);
     
     return {
       items: response.items || [],

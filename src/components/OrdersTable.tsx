@@ -29,45 +29,73 @@ export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableP
     const buildFilterString = () => {
     const filtersArray = [];
     
+    console.log('🔍 Building filter string with:', { searchQuery, filters });
+    
     // Add search query filter
     if (searchQuery.trim()) {
       filtersArray.push(`(client~"${searchQuery}" || agency~"${searchQuery}" || invoice_id~"${searchQuery}")`);
     }
     
+    // Status filter - handle boolean conversion
     if (filters.status) {
-      filtersArray.push(`approved="${filters.status}"`);
+      if (filters.status === 'taip') {
+        filtersArray.push(`approved=true`);
+      } else if (filters.status === 'ne') {
+        filtersArray.push(`approved=false`);
+      }
+      // Note: 'rezervuota' and 'atšaukta' would need additional fields
     }
-    if (filters.client) {
+    
+    // Client filter
+    if (filters.client.trim()) {
       filtersArray.push(`client~"${filters.client}"`);
     }
-    if (filters.agency) {
+    
+    // Agency filter
+    if (filters.agency.trim()) {
       filtersArray.push(`agency~"${filters.agency}"`);
     }
+    
+    // Date filters - fix date format and logic
     if (filters.month && filters.year) {
-      const startDate = `${filters.year}-${filters.month}-01`;
-      const endDate = `${filters.year}-${filters.month}-31`;
+      const startDate = `${filters.year}-${filters.month.padStart(2, '0')}-01`;
+      const endDate = `${filters.year}-${filters.month.padStart(2, '0')}-31`;
       filtersArray.push(`from>="${startDate}" && to<="${endDate}"`);
     }
     
-    return filtersArray.join(' && ');
+    // If no filters, return empty string
+    if (filtersArray.length === 0) {
+      console.log('🔍 No filters applied, returning empty string');
+      return '';
+    }
+    
+    const result = filtersArray.join(' && ');
+    console.log('🔍 Final filter string:', result);
+    return result;
   };
 
   useEffect(() => {
     const fetchOrders = async () => {
       try {
         setLoading(true);
+        const filterString = buildFilterString();
+        console.log('🔍 PocketBase filter string:', filterString);
+        console.log('🔍 Current filters:', filters);
+        console.log('🔍 Search query:', searchQuery);
+        
         const result = await PocketBaseService.getOrders({
           page: currentPage,
           perPage: 20,
           sort: '-updated',
-          filter: buildFilterString()
+          filter: filterString
         });
         
+        console.log('✅ PocketBase response:', result);
         setOrders(result.items);
         setTotalPages(result.totalPages);
         setTotalItems(result.totalItems);
       } catch (error) {
-        console.error('Failed to fetch orders:', error);
+        console.error('❌ Failed to fetch orders:', error);
         // For demo purposes, show filtered mock data
         const mockOrders = getMockOrders();
         const filteredOrders = filterMockOrders(mockOrders);
