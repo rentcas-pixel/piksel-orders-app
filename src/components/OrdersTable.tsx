@@ -25,6 +25,8 @@ export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableP
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
+  const [sortField, setSortField] = useState<string>('updated');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
     const buildFilterString = () => {
     const filtersArray = [];
@@ -82,11 +84,12 @@ export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableP
         console.log('🔍 PocketBase filter string:', filterString);
         console.log('🔍 Current filters:', filters);
         console.log('🔍 Search query:', searchQuery);
+        console.log('🔍 Sort field:', sortField, 'direction:', sortDirection);
         
         const result = await PocketBaseService.getOrders({
           page: currentPage,
           perPage: 20,
-          sort: '-updated',
+          sort: `${sortDirection === 'desc' ? '-' : ''}${sortField}`,
           filter: filterString
         });
         
@@ -96,19 +99,20 @@ export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableP
         setTotalItems(result.totalItems);
       } catch (error) {
         console.error('❌ Failed to fetch orders:', error);
-        // For demo purposes, show filtered mock data
+        // For demo purposes, show filtered and sorted mock data
         const mockOrders = getMockOrders();
         const filteredOrders = filterMockOrders(mockOrders);
-        setOrders(filteredOrders);
+        const sortedOrders = sortOrders(filteredOrders);
+        setOrders(sortedOrders);
         setTotalPages(1);
-        setTotalItems(filteredOrders.length);
+        setTotalItems(sortedOrders.length);
       } finally {
         setLoading(false);
       }
     };
 
     fetchOrders();
-  }, [currentPage, searchQuery, filters]);
+  }, [currentPage, searchQuery, filters, sortField, sortDirection]);
 
   const getMockOrders = (): Order[] => [
     {
@@ -233,6 +237,76 @@ export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableP
     return filtered;
   };
 
+  const sortOrders = (orders: Order[]): Order[] => {
+    return [...orders].sort((a, b) => {
+      let aValue: any;
+      let bValue: any;
+      
+      switch (sortField) {
+        case 'client':
+        case 'agency':
+        case 'invoice_id':
+          aValue = a[sortField as keyof Order]?.toString().toLowerCase() || '';
+          bValue = b[sortField as keyof Order]?.toString().toLowerCase() || '';
+          break;
+        case 'final_price':
+          aValue = Number(a.final_price) || 0;
+          bValue = Number(b.final_price) || 0;
+          break;
+        case 'from':
+        case 'to':
+        case 'updated':
+          aValue = new Date(a[sortField as keyof Order] as string).getTime();
+          bValue = new Date(b[sortField as keyof Order] as string).getTime();
+          break;
+        case 'approved':
+          aValue = a.approved ? 1 : 0;
+          bValue = b.approved ? 1 : 0;
+          break;
+        default:
+          aValue = a[sortField as keyof Order];
+          bValue = b[sortField as keyof Order];
+      }
+      
+      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+  };
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const getSortIcon = (field: string) => {
+    if (sortField !== field) {
+      return (
+        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+        </svg>
+      );
+    }
+    
+    if (sortDirection === 'asc') {
+      return (
+        <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+        </svg>
+      );
+    }
+    
+    return (
+      <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+      </svg>
+    );
+  };
+
   const getStatusText = (approved: boolean) => {
     // For now, we only have boolean approved field
     // In the future, this should be updated to handle 'rezervuota' and 'atšaukta'
@@ -275,9 +349,17 @@ export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableP
       {/* Table Header */}
       <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-            Užsakymai ({totalItems})
-          </h2>
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+              Užsakymai ({totalItems})
+            </h2>
+            {sortField && (
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                Rūšiuojama pagal: <span className="font-medium">{sortField}</span> 
+                ({sortDirection === 'asc' ? 'didėjimo' : 'mažėjimo'} tvarka)
+              </p>
+            )}
+          </div>
           <div className="text-sm text-gray-500 dark:text-gray-400">
             Puslapis {currentPage} iš {totalPages}
           </div>
@@ -289,26 +371,68 @@ export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableP
         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
           <thead className="bg-gray-50 dark:bg-gray-700">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                Klientas
+              <th 
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                onClick={() => handleSort('client')}
+              >
+                <div className="flex items-center space-x-1">
+                  <span>Klientas</span>
+                  {getSortIcon('client')}
+                </div>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                Agentūra
+              <th 
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                onClick={() => handleSort('agency')}
+              >
+                <div className="flex items-center space-x-1">
+                  <span>Agentūra</span>
+                  {getSortIcon('agency')}
+                </div>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                Užsakymo Nr.
+              <th 
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                onClick={() => handleSort('invoice_id')}
+              >
+                <div className="flex items-center space-x-1">
+                  <span>Užsakymo Nr.</span>
+                  {getSortIcon('invoice_id')}
+                </div>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                Statusas
+              <th 
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                onClick={() => handleSort('approved')}
+              >
+                <div className="flex items-center space-x-1">
+                  <span>Statusas</span>
+                  {getSortIcon('approved')}
+                </div>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                Data nuo
+              <th 
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                onClick={() => handleSort('from')}
+              >
+                <div className="flex items-center space-x-1">
+                  <span>Data nuo</span>
+                  {getSortIcon('from')}
+                </div>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                Data iki
+              <th 
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                onClick={() => handleSort('to')}
+              >
+                <div className="flex items-center space-x-1">
+                  <span>Data iki</span>
+                  {getSortIcon('to')}
+                </div>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                Kaina
+              <th 
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                onClick={() => handleSort('final_price')}
+              >
+                <div className="flex items-center space-x-1">
+                  <span>Kaina</span>
+                  {getSortIcon('final_price')}
+                </div>
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                 Veiksmai
