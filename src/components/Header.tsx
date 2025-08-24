@@ -30,7 +30,7 @@ export function Header({ onAddOrder }: HeaderProps) {
                   Piksel Orders
                 </h1>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Modernus užsakymų valdymas
+                  Užsakymų valdymas
                 </p>
               </div>
             </div>
