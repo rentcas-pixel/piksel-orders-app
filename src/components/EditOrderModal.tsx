@@ -131,13 +131,13 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
   if (!isOpen || !order) return null;
 
   const broadcastPeriod = formData.from && formData.to 
-    ? `${formatDateForDisplay(formData.from)} ⟶ ${formatDateForDisplay(formData.to)}` 
+    ? `${formatDateForDisplay(formData.from)} → ${formatDateForDisplay(formData.to)}` 
     : '';
   
   // Calculate weeks for both dates
   const startWeek = formData.from ? calculateWeek(formData.from) : '';
   const endWeek = formData.to ? calculateWeek(formData.to) : '';
-  const weeksDisplay = startWeek && endWeek ? `${startWeek} ⟶ ${endWeek}` : startWeek || endWeek || '';
+  const weeksDisplay = startWeek && endWeek ? `${startWeek} → ${endWeek}` : startWeek || endWeek || '';
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
