@@ -245,10 +245,12 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                   Data nuo
                 </label>
                 <input
-                  type="date"
+                  type="text"
                   key={`from-${formData.from}`}
                   value={formData.from ? formatDateForDisplay(formData.from) : ''}
                   onChange={(e) => handleInputChange('from', e.target.value)}
+                  pattern="\d{4}-\d{2}-\d{2}"
+                  placeholder="yyyy-mm-dd"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
                 {/* Removed CalendarIcon - browser shows its own icon */}
@@ -333,10 +335,12 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                   Data iki
                 </label>
                 <input
-                  type="date"
+                  type="text"
                   key={`to-${formData.to}`}
                   value={formData.to ? formatDateForDisplay(formData.to) : ''}
                   onChange={(e) => handleInputChange('to', e.target.value)}
+                  pattern="\d{4}-\d{2}-\d{2}"
+                  placeholder="yyyy-mm-dd"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
                 {/* Removed CalendarIcon - browser shows its own icon */}
@@ -348,7 +352,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                   Priminimo data
                 </label>
                 <input
-                  type="date"
+                  type="text"
                   key={`reminder-${reminderDate}`}
                   value={(() => {
                     const formattedValue = reminderDate && reminderDate.trim() ? formatDateForDisplay(reminderDate) : '';
@@ -359,8 +363,9 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                     console.log('🔍 Reminder date changed:', e.target.value);
                     setReminderDate(e.target.value);
                   }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  pattern="\d{4}-\d{2}-\d{2}"
                   placeholder="yyyy-mm-dd"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
 
