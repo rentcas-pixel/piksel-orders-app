@@ -7,7 +7,6 @@ import { Order, Comment, Reminder, FileAttachment } from '@/types';
 import { SupabaseService } from '@/lib/supabase-service';
 
 import { format } from 'date-fns';
-import { lt } from 'date-fns/locale';
 
 interface OrderDetailsModalProps {
   order: Order | null;

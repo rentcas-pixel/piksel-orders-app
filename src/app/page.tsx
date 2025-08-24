@@ -37,7 +37,7 @@ export default function Home() {
     setEditingOrder(order);
   };
 
-  const handleOrderUpdated = (updatedOrder: Order) => {
+  const handleOrderUpdated = () => {
     // TODO: Update orders list
     setEditingOrder(null);
   };

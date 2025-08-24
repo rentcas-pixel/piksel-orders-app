@@ -51,17 +51,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
     setSelectedFiles(prev => [...prev, ...files]);
   };
 
-  const handlePaste = (event: React.ClipboardEvent) => {
-    const items = event.clipboardData.items;
-    for (let i = 0; i < items.length; i++) {
-      if (items[i].type.indexOf('image') !== -1) {
-        const file = items[i].getAsFile();
-        if (file) {
-          setSelectedFiles(prev => [...prev, file]);
-        }
-      }
-    }
-  };
+
 
   const calculateWeek = (dateString: string) => {
     try {
@@ -75,14 +65,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
     }
   };
 
-  const formatDateForDisplay = (dateString: string) => {
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleDateString('lt-LT');
-    } catch {
-      return dateString;
-    }
-  };
+
 
   const handleSave = async () => {
     if (!order) return;
@@ -103,8 +86,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
 
       // Save reminder if exists
       if (reminderDate && reminderMessage.trim()) {
-        await SupabaseService.addReminder({
-          order_id: order.id,
+        await SupabaseService.addReminder(order.id, {
           title: reminderMessage,
           due_date: reminderDate,
           is_completed: false

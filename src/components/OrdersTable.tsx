@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { Order } from '@/types';
 import { PocketBaseService } from '@/lib/pocketbase';
 import { format } from 'date-fns';
-import { lt } from 'date-fns/locale';
 import { EyeIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
 
 interface OrdersTableProps {
@@ -21,7 +20,7 @@ interface OrdersTableProps {
   onEditOrder: (order: Order) => void;
 }
 
-export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableProps) {
+export function OrdersTable({ searchQuery, filters, onOrderClick, onEditOrder }: OrdersTableProps) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
@@ -29,101 +28,6 @@ export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableP
   const [totalItems, setTotalItems] = useState(0);
   const [sortField, setSortField] = useState<string>('updated');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
-
-  const buildFilterString = useCallback(() => {
-    const filtersArray = [];
-    
-    console.log('🔍 Building filter string with:', { searchQuery, filters });
-    
-    // Add search query filter
-    if (searchQuery.trim()) {
-      filtersArray.push(`(client~"${searchQuery}" || agency~"${searchQuery}" || invoice_id~"${searchQuery}")`);
-    }
-    
-    // Status filter - handle boolean conversion
-    if (filters.status) {
-      if (filters.status === 'taip') {
-        filtersArray.push(`approved=true`);
-      } else if (filters.status === 'ne') {
-        filtersArray.push(`approved=false`);
-      }
-      // Note: 'rezervuota' and 'atšaukta' would need additional fields
-    }
-    
-    // Client filter
-    if (filters.client.trim()) {
-      filtersArray.push(`client~"${filters.client}"`);
-    }
-    
-    // Agency filter
-    if (filters.agency.trim()) {
-      filtersArray.push(`agency~"${filters.agency}"`);
-    }
-    
-    // Media received filter
-    if (filters.media_received) {
-      if (filters.media_received === 'true') {
-        filtersArray.push(`media_received=true`);
-      } else if (filters.media_received === 'false') {
-        filtersArray.push(`media_received=false`);
-      }
-    }
-    
-    // Date filters - fix date format and logic
-    if (filters.month && filters.year) {
-      const startDate = `${filters.year}-${filters.month.padStart(2, '0')}-01`;
-      const endDate = `${filters.year}-${filters.month.padStart(2, '0')}-31`;
-      filtersArray.push(`from>="${startDate}" && to<="${endDate}"`);
-    }
-    
-    // If no filters, return empty string
-    if (filtersArray.length === 0) {
-      console.log('🔍 No filters applied, returning empty string');
-      return '';
-    }
-    
-    const result = filtersArray.join(' && ');
-    console.log('🔍 Final filter string:', result);
-    return result;
-  }, [searchQuery, filters]);
-
-  useEffect(() => {
-    const fetchOrders = async () => {
-      try {
-        setLoading(true);
-        const filterString = buildFilterString();
-        console.log('🔍 PocketBase filter string:', filterString);
-        console.log('🔍 Current filters:', filters);
-        console.log('🔍 Search query:', searchQuery);
-        console.log('🔍 Sort field:', sortField, 'direction:', sortDirection);
-        
-        const result = await PocketBaseService.getOrders({
-          page: currentPage,
-          perPage: 20,
-          sort: `${sortDirection === 'desc' ? '-' : ''}${sortField}`,
-          filter: filterString
-        });
-        
-        console.log('✅ PocketBase response:', result);
-        setOrders(result.items);
-        setTotalPages(result.totalPages);
-        setTotalItems(result.totalItems);
-      } catch (error) {
-        console.error('❌ Failed to fetch orders:', error);
-        // For demo purposes, show filtered and sorted mock data
-        const mockOrders = getMockOrders();
-        const filteredOrders = filterMockOrders(mockOrders);
-        const sortedOrders = sortOrders(filteredOrders);
-        setOrders(sortedOrders);
-        setTotalPages(1);
-        setTotalItems(sortedOrders.length);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchOrders();
-  }, [currentPage, searchQuery, filters, sortField, sortDirection, buildFilterString]);
 
   const getMockOrders = (): Order[] => [
     {
@@ -218,7 +122,6 @@ export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableP
       } else if (filters.status === 'ne') {
         filtered = filtered.filter(order => order.approved === false);
       }
-      // Note: 'rezervuota' and 'atšaukta' would need additional fields in the Order type
     }
     
     // Client filter
@@ -248,7 +151,7 @@ export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableP
     if (filters.month && filters.year) {
       filtered = filtered.filter(order => {
         const orderDate = new Date(order.from);
-        const orderMonth = orderDate.getMonth() + 1; // getMonth() returns 0-11
+        const orderMonth = orderDate.getMonth() + 1;
         const orderYear = orderDate.getFullYear();
         return orderMonth === parseInt(filters.month) && orderYear === parseInt(filters.year);
       });
@@ -298,9 +201,65 @@ export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableP
     });
   }, [sortField, sortDirection]);
 
+  const buildFilterString = useCallback(() => {
+    const filtersArray = [];
+    
+    console.log('🔍 Building filter string with:', { searchQuery, filters });
+    
+    // Add search query filter
+    if (searchQuery.trim()) {
+      filtersArray.push(`(client~"${searchQuery}" || agency~"${searchQuery}" || invoice_id~"${searchQuery}")`);
+    }
+    
+    // Status filter - handle boolean conversion
+    if (filters.status) {
+      if (filters.status === 'taip') {
+        filtersArray.push(`approved=true`);
+      } else if (filters.status === 'ne') {
+        filtersArray.push(`approved=false`);
+      }
+    }
+    
+    // Client filter
+    if (filters.client.trim()) {
+      filtersArray.push(`client~"${filters.client}"`);
+    }
+    
+    // Agency filter
+    if (filters.agency.trim()) {
+      filtersArray.push(`agency~"${filters.agency}"`);
+    }
+    
+    // Media received filter
+    if (filters.media_received) {
+      if (filters.media_received === 'true') {
+        filtersArray.push(`media_received=true`);
+      } else if (filters.media_received === 'false') {
+        filtersArray.push(`media_received=false`);
+      }
+    }
+    
+    // Date filters - fix date format and logic
+    if (filters.month && filters.year) {
+      const startDate = `${filters.year}-${filters.month.padStart(2, '0')}-01`;
+      const endDate = `${filters.year}-${filters.month.padStart(2, '0')}-31`;
+      filtersArray.push(`from>="${startDate}" && to<="${endDate}"`);
+    }
+    
+    // If no filters, return empty string
+    if (filtersArray.length === 0) {
+      console.log('🔍 No filters applied, returning empty string');
+      return '';
+    }
+    
+    const result = filtersArray.join(' && ');
+    console.log('🔍 Final filter string:', result);
+    return result;
+  }, [searchQuery, filters]);
+
   const handleSort = (field: string) => {
     if (sortField === field) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
     } else {
       setSortField(field);
       setSortDirection('asc');
@@ -332,8 +291,6 @@ export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableP
   };
 
   const getStatusText = (approved: boolean) => {
-    // For now, we only have boolean approved field
-    // In the future, this should be updated to handle 'rezervuota' and 'atšaukta'
     return approved ? 'Patvirtinta' : 'Nepatvirtinta';
   };
 
@@ -356,6 +313,66 @@ export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableP
       currency: 'EUR'
     }).format(price);
   };
+
+  useEffect(() => {
+    const fetchOrders = async () => {
+      try {
+        setLoading(true);
+        const filterString = buildFilterString();
+        console.log('🔍 PocketBase filter string:', filterString);
+        console.log('🔍 Current filters:', filters);
+        console.log('🔍 Search query:', searchQuery);
+        console.log('🔍 Sort field:', sortField, 'direction:', sortDirection);
+        
+        const result = await PocketBaseService.getOrders({
+          page: currentPage,
+          perPage: 20,
+          sort: `${sortDirection === 'desc' ? '-' : ''}${sortField}`,
+          filter: filterString
+        });
+        
+        console.log('✅ PocketBase response:', result);
+        setOrders(result.items);
+        setTotalPages(result.totalPages);
+        setTotalItems(result.totalItems);
+      } catch (error) {
+        console.error('❌ Failed to fetch orders:', error);
+        // For demo purposes, show filtered and sorted mock data
+        const mockOrders = getMockOrders();
+        const filteredOrders = filterMockOrders(mockOrders);
+        const sortedOrders = sortOrders(filteredOrders);
+        setOrders(sortedOrders);
+        setTotalPages(1);
+        setTotalItems(sortedOrders.length);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchOrders();
+  }, [currentPage, searchQuery, filters, sortField, sortDirection, buildFilterString, filterMockOrders, sortOrders]);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
   if (loading) {
     return (
