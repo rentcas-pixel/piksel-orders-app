@@ -137,7 +137,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
   // Calculate weeks for both dates
   const startWeek = formData.from ? calculateWeek(formData.from) : '';
   const endWeek = formData.to ? calculateWeek(formData.to) : '';
-  const weeksDisplay = startWeek && endWeek ? `${startWeek}, ${endWeek}` : startWeek || endWeek || '';
+  const weeksDisplay = startWeek && endWeek ? `${startWeek} → ${endWeek}` : startWeek || endWeek || '';
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
