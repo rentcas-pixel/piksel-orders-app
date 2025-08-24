@@ -89,6 +89,12 @@ export function SearchAndFilters({
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
             Filtrai
           </label>
+          {/* Default filters info */}
+          {(filters.status === 'taip' || filters.month || filters.year) && (
+            <div className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-3 py-2 rounded-md">
+              ℹ️ Aktyvūs filtrai: {filters.status === 'taip' ? 'Patvirtinta, ' : ''}{filters.month ? `${months.find(m => m.value === filters.month)?.label}, ` : ''}{filters.year ? `${filters.year} metai` : ''}
+            </div>
+          )}
           <div className="grid grid-cols-3 gap-3">
             <select
               value={filters.status}

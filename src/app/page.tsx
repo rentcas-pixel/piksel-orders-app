@@ -12,10 +12,16 @@ export default function Home() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Get current date for default filters
+  const now = new Date();
+  const currentMonth = String(now.getMonth() + 1).padStart(2, '0'); // 01-12
+  const currentYear = now.getFullYear();
+  
   const [filters, setFilters] = useState({
-    status: '',
-    month: '',
-    year: '',
+    status: 'taip', // Default: Patvirtinta - rodo tik patvirtintus užsakymus
+    month: currentMonth, // Default: einamasis mėnuo (dabar rugpjūtis)
+    year: currentYear.toString(), // Default: einamieji metai (2025)
     client: '',
     agency: '',
     media_received: ''
