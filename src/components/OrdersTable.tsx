@@ -26,7 +26,28 @@ export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableP
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
 
-    useEffect(() => {
+    const buildFilterString = () => {
+    const filtersArray = [];
+    
+    if (filters.status) {
+      filtersArray.push(`approved="${filters.status}"`);
+    }
+    if (filters.client) {
+      filtersArray.push(`client~"${filters.client}"`);
+    }
+    if (filters.agency) {
+      filtersArray.push(`agency~"${filters.agency}"`);
+    }
+    if (filters.month && filters.year) {
+      const startDate = `${filters.year}-${filters.month}-01`;
+      const endDate = `${filters.year}-${filters.month}-31`;
+      filtersArray.push(`from>="${startDate}" && to<="${endDate}"`);
+    }
+    
+    return filtersArray.join(' && ');
+  };
+
+  useEffect(() => {
     const fetchOrders = async () => {
       try {
         setLoading(true);
@@ -52,28 +73,7 @@ export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableP
     };
 
     fetchOrders();
-  }, [currentPage, searchQuery, filters, buildFilterString]);
-
-  const buildFilterString = () => {
-    const filtersArray = [];
-    
-    if (filters.status) {
-      filtersArray.push(`approved="${filters.status}"`);
-    }
-    if (filters.client) {
-      filtersArray.push(`client~"${filters.client}"`);
-    }
-    if (filters.agency) {
-      filtersArray.push(`agency~"${filters.agency}"`);
-    }
-    if (filters.month && filters.year) {
-      const startDate = `${filters.year}-${filters.month}-01`;
-      const endDate = `${filters.year}-${filters.month}-31`;
-      filtersArray.push(`from>="${startDate}" && to<="${endDate}"`);
-    }
-    
-    return filtersArray.join(' && ');
-  };
+  }, [currentPage, searchQuery, filters]);
 
   const getMockOrders = (): Order[] => [
     {
