@@ -21,7 +21,7 @@ export function OrderDetailsModal({ order, isOpen, onClose }: OrderDetailsModalP
   const [files, setFiles] = useState<FileAttachment[]>([]);
 
   const [newComment, setNewComment] = useState('');
-  const [newReminder, setNewReminder] = useState({ title: '', description: '', due_date: '' });
+  const [newReminder, setNewReminder] = useState({ title: '', description: '', due_date: '', is_completed: false });
 
   useEffect(() => {
     const loadOrderData = async () => {
@@ -65,7 +65,7 @@ export function OrderDetailsModal({ order, isOpen, onClose }: OrderDetailsModalP
     try {
       const reminder = await SupabaseService.addReminder(order.id, newReminder);
       setReminders(prev => [...prev, reminder]);
-      setNewReminder({ title: '', description: '', due_date: '' });
+      setNewReminder({ title: '', description: '', due_date: '', is_completed: false });
     } catch (error) {
       console.error('Failed to add reminder:', error);
     }

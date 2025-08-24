@@ -26,33 +26,33 @@ export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableP
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
 
-  useEffect(() => {
+    useEffect(() => {
     const fetchOrders = async () => {
-    try {
-      setLoading(true);
-      const result = await PocketBaseService.getOrders({
-        page: currentPage,
-        perPage: 20,
-        sort: '-updated',
-        filter: buildFilterString()
-      });
-      
-      setOrders(result.items);
-      setTotalPages(result.totalPages);
-      setTotalItems(result.totalItems);
-    } catch (error) {
-      console.error('Failed to fetch orders:', error);
-      // For demo purposes, show mock data
-      setOrders(getMockOrders());
-      setTotalPages(1);
-      setTotalItems(getMockOrders().length);
-    } finally {
-      setLoading(false);
-    }
-  };
+      try {
+        setLoading(true);
+        const result = await PocketBaseService.getOrders({
+          page: currentPage,
+          perPage: 20,
+          sort: '-updated',
+          filter: buildFilterString()
+        });
+        
+        setOrders(result.items);
+        setTotalPages(result.totalPages);
+        setTotalItems(result.totalItems);
+      } catch (error) {
+        console.error('Failed to fetch orders:', error);
+        // For demo purposes, show mock data
+        setOrders(getMockOrders());
+        setTotalPages(1);
+        setTotalItems(getMockOrders().length);
+      } finally {
+        setLoading(false);
+      }
+    };
 
     fetchOrders();
-  }, [currentPage, searchQuery, filters]);
+  }, [currentPage, searchQuery, filters, buildFilterString]);
 
   const buildFilterString = () => {
     const filtersArray = [];
