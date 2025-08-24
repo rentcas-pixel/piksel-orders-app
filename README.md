@@ -217,3 +217,4 @@ Jei turite klausimų ar problemų:
 ---
 
 **Sukurta su ❤️ Next.js, TypeScript ir Tailwind CSS**
+# Test commit for Vercel deployment
