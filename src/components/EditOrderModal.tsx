@@ -80,7 +80,19 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
         return dateString;
       }
       
-      // Try to parse the date
+      // Handle dd/mm/yyyy format specifically
+      if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(dateString)) {
+        const [day, month, year] = dateString.split('/');
+        return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+      }
+      
+      // Handle dd.mm.yyyy format
+      if (/^\d{1,2}\.\d{1,2}\.\d{4}$/.test(dateString)) {
+        const [day, month, year] = dateString.split('.');
+        return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+      }
+      
+      // Try to parse the date with other formats
       const date = new Date(dateString);
       
       // Check if date is valid
