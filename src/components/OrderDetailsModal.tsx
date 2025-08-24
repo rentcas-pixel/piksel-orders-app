@@ -24,28 +24,28 @@ export function OrderDetailsModal({ order, isOpen, onClose }: OrderDetailsModalP
   const [newReminder, setNewReminder] = useState({ title: '', description: '', due_date: '' });
 
   useEffect(() => {
+    const loadOrderData = async () => {
+      if (!order) return;
+      
+      try {
+        const [commentsData, remindersData, filesData] = await Promise.all([
+          SupabaseService.getComments(order.id),
+          SupabaseService.getReminders(order.id),
+          SupabaseService.getFiles(order.id)
+        ]);
+        
+        setComments(commentsData);
+        setReminders(remindersData);
+        setFiles(filesData);
+      } catch (error) {
+        console.error('Failed to load order data:', error);
+      }
+    };
+
     if (order && isOpen) {
       loadOrderData();
     }
-  }, [order, isOpen, loadOrderData]);
-
-  const loadOrderData = async () => {
-    if (!order) return;
-    
-    try {
-      const [commentsData, remindersData, filesData] = await Promise.all([
-        SupabaseService.getComments(order.id),
-        SupabaseService.getReminders(order.id),
-        SupabaseService.getFiles(order.id)
-      ]);
-      
-      setComments(commentsData);
-      setReminders(remindersData);
-      setFiles(filesData);
-    } catch (error) {
-      console.error('Failed to load order data:', error);
-    }
-  };
+  }, [order, isOpen]);
 
   const handleAddComment = async () => {
     if (!order || !newComment.trim()) return;
@@ -139,7 +139,7 @@ export function OrderDetailsModal({ order, isOpen, onClose }: OrderDetailsModalP
               ].map((tab) => (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
+                  onClick={() => setActiveTab(tab.id as 'details' | 'comments' | 'reminders' | 'files')}
                   className={`py-4 px-1 border-b-2 font-medium text-sm ${
                     activeTab === tab.id
                       ? 'border-blue-500 text-blue-600 dark:text-blue-400'

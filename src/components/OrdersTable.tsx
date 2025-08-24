@@ -27,10 +27,7 @@ export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableP
   const [totalItems, setTotalItems] = useState(0);
 
   useEffect(() => {
-    fetchOrders();
-  }, [currentPage, searchQuery, filters, fetchOrders]);
-
-  const fetchOrders = async () => {
+    const fetchOrders = async () => {
     try {
       setLoading(true);
       const result = await PocketBaseService.getOrders({
@@ -53,6 +50,9 @@ export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableP
       setLoading(false);
     }
   };
+
+    fetchOrders();
+  }, [currentPage, searchQuery, filters]);
 
   const buildFilterString = () => {
     const filtersArray = [];
