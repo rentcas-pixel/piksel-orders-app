@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Order } from '@/types';
 import { PocketBaseService } from '@/lib/pocketbase';
 import { format } from 'date-fns';
@@ -28,7 +28,7 @@ export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableP
   const [sortField, setSortField] = useState<string>('updated');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
-    const buildFilterString = () => {
+  const buildFilterString = useCallback(() => {
     const filtersArray = [];
     
     console.log('🔍 Building filter string with:', { searchQuery, filters });
@@ -74,7 +74,7 @@ export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableP
     const result = filtersArray.join(' && ');
     console.log('🔍 Final filter string:', result);
     return result;
-  };
+  }, [searchQuery, filters]);
 
   useEffect(() => {
     const fetchOrders = async () => {
@@ -112,7 +112,7 @@ export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableP
     };
 
     fetchOrders();
-  }, [currentPage, searchQuery, filters, sortField, sortDirection]);
+  }, [currentPage, searchQuery, filters, sortField, sortDirection, buildFilterString]);
 
   const getMockOrders = (): Order[] => [
     {
@@ -187,7 +187,7 @@ export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableP
     }
   ];
 
-  const filterMockOrders = (orders: Order[]): Order[] => {
+  const filterMockOrders = useCallback((orders: Order[]): Order[] => {
     let filtered = [...orders];
     
     // Search query filter
@@ -235,19 +235,19 @@ export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableP
     }
     
     return filtered;
-  };
+  }, [searchQuery, filters]);
 
-  const sortOrders = (orders: Order[]): Order[] => {
+  const sortOrders = useCallback((orders: Order[]): Order[] => {
     return [...orders].sort((a, b) => {
-      let aValue: any;
-      let bValue: any;
+      let aValue: string | number | Date;
+      let bValue: string | number | Date;
       
       switch (sortField) {
         case 'client':
         case 'agency':
         case 'invoice_id':
-          aValue = a[sortField as keyof Order]?.toString().toLowerCase() || '';
-          bValue = b[sortField as keyof Order]?.toString().toLowerCase() || '';
+          aValue = (a[sortField as keyof Order] as string)?.toLowerCase() || '';
+          bValue = (b[sortField as keyof Order] as string)?.toLowerCase() || '';
           break;
         case 'final_price':
           aValue = Number(a.final_price) || 0;
@@ -256,23 +256,23 @@ export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableP
         case 'from':
         case 'to':
         case 'updated':
-          aValue = new Date(a[sortField as keyof Order] as string).getTime();
-          bValue = new Date(b[sortField as keyof Order] as string).getTime();
+          aValue = new Date(a[sortField as keyof Order] as string);
+          bValue = new Date(b[sortField as keyof Order] as string);
           break;
         case 'approved':
           aValue = a.approved ? 1 : 0;
           bValue = b.approved ? 1 : 0;
           break;
         default:
-          aValue = a[sortField as keyof Order];
-          bValue = b[sortField as keyof Order];
+          aValue = a[sortField as keyof Order] as string;
+          bValue = b[sortField as keyof Order] as string;
       }
       
       if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
       if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
       return 0;
     });
-  };
+  }, [sortField, sortDirection]);
 
   const handleSort = (field: string) => {
     if (sortField === field) {
