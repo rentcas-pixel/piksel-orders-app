@@ -24,6 +24,10 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
 
   useEffect(() => {
     if (order) {
+      console.log('🔍 EditOrderModal: order data:', order);
+      console.log('🔍 EditOrderModal: from date:', order.from, 'type:', typeof order.from);
+      console.log('🔍 EditOrderModal: to date:', order.to, 'type:', typeof order.to);
+      
       setFormData({
         client: order.client,
         agency: order.agency,
@@ -72,31 +76,40 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
   };
 
   const formatDateForDisplay = (dateString: string) => {
+    console.log('🔍 formatDateForDisplay input:', dateString, 'type:', typeof dateString);
+    
     try {
       // Handle different date formats from PocketBase
       
       // If it's already in yyyy-mm-dd format, return as is
       if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+        console.log('✅ Already yyyy-mm-dd format:', dateString);
         return dateString;
       }
       
       // Handle dd/mm/yyyy format specifically
       if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(dateString)) {
         const [day, month, year] = dateString.split('/');
-        return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+        const result = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+        console.log('✅ Converted dd/mm/yyyy to yyyy-mm-dd:', dateString, '→', result);
+        return result;
       }
       
       // Handle dd.mm.yyyy format
       if (/^\d{1,2}\.\d{1,2}\.\d{4}$/.test(dateString)) {
         const [day, month, year] = dateString.split('.');
-        return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+        const result = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+        console.log('✅ Converted dd.mm.yyyy to yyyy-mm-dd:', dateString, '→', result);
+        return result;
       }
       
       // Try to parse the date with other formats
       const date = new Date(dateString);
+      console.log('🔍 Parsed date:', date, 'isValid:', !isNaN(date.getTime()));
       
       // Check if date is valid
       if (isNaN(date.getTime())) {
+        console.log('❌ Invalid date, returning original:', dateString);
         return dateString; // Return original if invalid
       }
       
@@ -104,9 +117,12 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, '0');
       const day = String(date.getDate()).padStart(2, '0');
+      const result = `${year}-${month}-${day}`;
       
-      return `${year}-${month}-${day}`;
-    } catch {
+      console.log('✅ Converted to yyyy-mm-dd:', dateString, '→', result);
+      return result;
+    } catch (error) {
+      console.log('❌ Error in formatDateForDisplay:', error);
       return dateString;
     }
   };
