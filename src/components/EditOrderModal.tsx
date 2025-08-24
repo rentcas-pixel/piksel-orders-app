@@ -56,12 +56,22 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
   const calculateWeek = (dateString: string) => {
     try {
       const date = new Date(dateString);
-      const start = new Date(date.getFullYear(), 0, 1);
-      const days = Math.floor((date.getTime() - start.getTime()) / (24 * 60 * 60 * 1000));
-      const weekNumber = Math.ceil(days / 7);
-      return `W-${weekNumber}`;
+      // ISO week calculation - Monday as first day of week
+      const startOfYear = new Date(date.getFullYear(), 0, 1);
+      const days = Math.floor((date.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000));
+      const weekNumber = Math.ceil((days + startOfYear.getDay()) / 7);
+      return `W${weekNumber.toString().padStart(2, '0')}`;
     } catch {
       return '';
+    }
+  };
+
+  const formatDateForDisplay = (dateString: string) => {
+    try {
+      const date = new Date(dateString);
+      return date.toISOString().split('T')[0]; // yyyy-mm-dd format
+    } catch {
+      return dateString;
     }
   };
 
@@ -121,9 +131,13 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
   if (!isOpen || !order) return null;
 
   const broadcastPeriod = formData.from && formData.to 
-    ? `${formData.from} - ${formData.to}` 
+    ? `${formatDateForDisplay(formData.from)} → ${formatDateForDisplay(formData.to)}` 
     : '';
-  const weekNumber = formData.from ? calculateWeek(formData.from) : '';
+  
+  // Calculate weeks for both dates
+  const startWeek = formData.from ? calculateWeek(formData.from) : '';
+  const endWeek = formData.to ? calculateWeek(formData.to) : '';
+  const weeksDisplay = startWeek && endWeek ? `${startWeek}, ${endWeek}` : startWeek || endWeek || '';
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -315,7 +329,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                 <span className="font-medium">Transliacijų laikotarpis:</span> {broadcastPeriod}
               </div>
               <div>
-                <span className="font-medium">Savaitės:</span> {weekNumber}
+                <span className="font-medium">Savaitės:</span> {weeksDisplay}
               </div>
             </div>
           </div>
