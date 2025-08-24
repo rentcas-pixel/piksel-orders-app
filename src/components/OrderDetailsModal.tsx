@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Dialog } from '@headlessui/react';
 import { XMarkIcon, ChatBubbleLeftIcon, BellIcon, PaperClipIcon } from '@heroicons/react/24/outline';
 import { Order, Comment, Reminder, FileAttachment } from '@/types';
-import { SupabaseService } from '@/lib/supabase-service';
+
 import { format } from 'date-fns';
 import { lt } from 'date-fns/locale';
 
