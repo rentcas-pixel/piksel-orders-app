@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Order } from '@/types';
 import { PocketBaseService } from '@/lib/pocketbase';
 import { SupabaseService } from '@/lib/supabase-service';
-import { XMarkIcon, CalendarIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon } from '@heroicons/react/24/outline';
 
 interface EditOrderModalProps {
   order: Order | null;
