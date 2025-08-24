@@ -347,8 +347,15 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                 </label>
                 <input
                   type="date"
-                  value={reminderDate ? formatDateForDisplay(reminderDate) : ''}
-                  onChange={(e) => setReminderDate(e.target.value)}
+                  value={(() => {
+                    const formattedValue = reminderDate && reminderDate.trim() ? formatDateForDisplay(reminderDate) : '';
+                    console.log('🔍 Reminder date input value:', { reminderDate, formattedValue });
+                    return formattedValue;
+                  })()}
+                  onChange={(e) => {
+                    console.log('🔍 Reminder date changed:', e.target.value);
+                    setReminderDate(e.target.value);
+                  }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="yyyy-mm-dd"
                 />
