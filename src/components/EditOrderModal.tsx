@@ -74,7 +74,6 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
   const formatDateForDisplay = (dateString: string) => {
     try {
       // Handle different date formats from PocketBase
-      let date: Date;
       
       // If it's already in yyyy-mm-dd format, return as is
       if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
@@ -82,7 +81,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
       }
       
       // Try to parse the date
-      date = new Date(dateString);
+      const date = new Date(dateString);
       
       // Check if date is valid
       if (isNaN(date.getTime())) {
