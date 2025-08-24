@@ -343,7 +343,7 @@ export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableP
 
   const formatDate = (dateString: string) => {
     try {
-      return format(new Date(dateString), 'dd/MM/yyyy', { locale: lt });
+      return format(new Date(dateString), 'yyyy-MM-dd');
     } catch {
       return dateString;
     }
