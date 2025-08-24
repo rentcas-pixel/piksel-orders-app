@@ -11,6 +11,7 @@ interface SearchAndFiltersProps {
     year: string;
     client: string;
     agency: string;
+    media_received: string;
   };
   onFiltersChange: (filters: {
     status: string;
@@ -18,6 +19,7 @@ interface SearchAndFiltersProps {
     year: string;
     client: string;
     agency: string;
+    media_received: string;
   }) => void;
 }
 
@@ -50,6 +52,12 @@ export function SearchAndFilters({
     { value: 'ne', label: 'Nepatvirtinta' },
     { value: 'rezervuota', label: 'Rezervuota' },
     { value: 'atšaukta', label: 'Atšaukta' }
+  ];
+
+  const mediaReceivedOptions = [
+    { value: '', label: 'Visi media' },
+    { value: 'true', label: 'Media gautas' },
+    { value: 'false', label: 'Media negautas' }
   ];
 
   const handleFilterChange = (key: string, value: string) => {
@@ -116,6 +124,18 @@ export function SearchAndFilters({
               {years.map((year) => (
                 <option key={year} value={year.toString()}>
                   {year}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={filters.media_received}
+              onChange={(e) => handleFilterChange('media_received', e.target.value)}
+              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white text-sm"
+            >
+              {mediaReceivedOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
                 </option>
               ))}
             </select>
@@ -196,6 +216,17 @@ export function SearchAndFilters({
                   <button
                     onClick={() => handleFilterChange('agency', '')}
                     className="ml-1 text-indigo-600 hover:text-indigo-800"
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
+              {filters.media_received && (
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200">
+                  Media: {mediaReceivedOptions.find(o => o.value === filters.media_received)?.label}
+                  <button
+                    onClick={() => handleFilterChange('media_received', '')}
+                    className="ml-1 text-teal-600 hover:text-teal-800"
                   >
                     ×
                   </button>

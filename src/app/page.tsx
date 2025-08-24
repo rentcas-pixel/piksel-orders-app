@@ -17,7 +17,8 @@ export default function Home() {
     month: '',
     year: '',
     client: '',
-    agency: ''
+    agency: '',
+    media_received: ''
   });
 
   const handleOrderClick = (order: Order) => {

@@ -15,6 +15,7 @@ interface OrdersTableProps {
     year: string;
     client: string;
     agency: string;
+    media_received: string;
   };
   onOrderClick: (order: Order) => void;
 }
@@ -56,6 +57,15 @@ export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableP
     // Agency filter
     if (filters.agency.trim()) {
       filtersArray.push(`agency~"${filters.agency}"`);
+    }
+    
+    // Media received filter
+    if (filters.media_received) {
+      if (filters.media_received === 'true') {
+        filtersArray.push(`media_received=true`);
+      } else if (filters.media_received === 'false') {
+        filtersArray.push(`media_received=false`);
+      }
     }
     
     // Date filters - fix date format and logic
@@ -223,6 +233,15 @@ export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableP
         order.agency.toLowerCase().includes(filters.agency.toLowerCase())
       );
     }
+
+    // Media received filter
+    if (filters.media_received) {
+      if (filters.media_received === 'true') {
+        filtered = filtered.filter(order => order.media_received === true);
+      } else if (filters.media_received === 'false') {
+        filtered = filtered.filter(order => order.media_received === false);
+      }
+    }
     
     // Month and year filter
     if (filters.month && filters.year) {
@@ -262,6 +281,10 @@ export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableP
         case 'approved':
           aValue = a.approved ? 1 : 0;
           bValue = b.approved ? 1 : 0;
+          break;
+        case 'media_received':
+          aValue = a.media_received ? 1 : 0;
+          bValue = b.media_received ? 1 : 0;
           break;
         default:
           aValue = a[sortField as keyof Order] as string;
@@ -427,6 +450,15 @@ export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableP
               </th>
               <th 
                 className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                onClick={() => handleSort('media_received')}
+              >
+                <div className="flex items-center space-x-1">
+                  <span>Media gautas</span>
+                  {getSortIcon('media_received')}
+                </div>
+              </th>
+              <th 
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
                 onClick={() => handleSort('final_price')}
               >
                 <div className="flex items-center space-x-1">
@@ -475,6 +507,15 @@ export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableP
                   <div className="text-sm text-gray-900 dark:text-white">
                     {formatDate(order.to)}
                   </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                    order.media_received 
+                      ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
+                      : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                  }`}>
+                    {order.media_received ? 'Taip' : 'Ne'}
+                  </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="text-sm font-medium text-gray-900 dark:text-white">
