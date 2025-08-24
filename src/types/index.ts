@@ -11,6 +11,7 @@ export interface Order {
   final_price: number;
   invoice_sent: boolean;
   updated: string;
+  intensity?: string; // Kas 4, Kas 6, Kas 8, Kas 12, Kas 24
 }
 
 export interface OrderFormData {
@@ -24,12 +25,14 @@ export interface OrderFormData {
   media_received: boolean;
   final_price: number;
   invoice_sent: boolean;
+  intensity?: string;
 }
 
 export interface Comment {
   id: string;
   order_id: string;
-  text: string;
+  content: string;
+  author: string;
   created_at: string;
   updated_at: string;
 }
@@ -38,7 +41,6 @@ export interface Reminder {
   id: string;
   order_id: string;
   title: string;
-  description: string;
   due_date: string;
   is_completed: boolean;
   created_at: string;

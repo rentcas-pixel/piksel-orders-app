@@ -18,6 +18,7 @@ interface OrdersTableProps {
     media_received: string;
   };
   onOrderClick: (order: Order) => void;
+  onEditOrder: (order: Order) => void;
 }
 
 export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableProps) {
@@ -536,7 +537,7 @@ export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableP
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        // TODO: Implement edit
+                        onEditOrder(order);
                       }}
                       className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300"
                     >

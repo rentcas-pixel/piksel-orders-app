@@ -67,4 +67,18 @@ export class PocketBaseService {
     const response = await this.makeRequest(`/records?filter=(client~"${query}" || agency~"${query}" || invoice_id~"${query}")`);
     return response.items || [];
   }
+
+  static async updateOrder(id: string, data: Partial<Order>): Promise<Order> {
+    const response = await this.makeRequest(`/records/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    return response;
+  }
+
+  static async deleteOrder(id: string): Promise<void> {
+    await this.makeRequest(`/records/${id}`, {
+      method: 'DELETE',
+    });
+  }
 }

@@ -22,7 +22,7 @@ export function OrderDetailsModal({ order, isOpen, onClose }: OrderDetailsModalP
   const [files, setFiles] = useState<FileAttachment[]>([]);
 
   const [newComment, setNewComment] = useState('');
-  const [newReminder, setNewReminder] = useState({ title: '', description: '', due_date: '', is_completed: false });
+  const [newReminder, setNewReminder] = useState({ title: '', due_date: '', is_completed: false });
 
   useEffect(() => {
     const loadOrderData = async () => {
@@ -52,7 +52,11 @@ export function OrderDetailsModal({ order, isOpen, onClose }: OrderDetailsModalP
     if (!order || !newComment.trim()) return;
     
     try {
-      const comment = await SupabaseService.addComment(order.id, newComment);
+      const comment = await SupabaseService.addComment({
+        order_id: order.id,
+        content: newComment,
+        author: 'User'
+      });
       setComments(prev => [comment, ...prev]);
       setNewComment('');
     } catch (error) {
@@ -64,9 +68,13 @@ export function OrderDetailsModal({ order, isOpen, onClose }: OrderDetailsModalP
     if (!order || !newReminder.title.trim() || !newReminder.due_date) return;
     
     try {
-      const reminder = await SupabaseService.addReminder(order.id, newReminder);
+      const reminder = await SupabaseService.addReminder(order.id, {
+        title: newReminder.title,
+        due_date: newReminder.due_date,
+        is_completed: false
+      });
       setReminders(prev => [...prev, reminder]);
-      setNewReminder({ title: '', description: '', due_date: '', is_completed: false });
+      setNewReminder({ title: '', due_date: '', is_completed: false });
     } catch (error) {
       console.error('Failed to add reminder:', error);
     }
@@ -264,7 +272,7 @@ export function OrderDetailsModal({ order, isOpen, onClose }: OrderDetailsModalP
                   {comments.map((comment) => (
                     <div key={comment.id} className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
                       <div className="flex items-start justify-between">
-                        <p className="text-sm text-gray-900 dark:text-white">{comment.text}</p>
+                                                  <p className="text-sm text-gray-900 dark:text-white">{comment.content}</p>
                         <span className="text-xs text-gray-500 dark:text-gray-400">
                           {formatDate(comment.created_at)}
                         </span>
@@ -292,13 +300,7 @@ export function OrderDetailsModal({ order, isOpen, onClose }: OrderDetailsModalP
                       placeholder="Pavadinimas"
                       className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
                     />
-                    <input
-                      type="text"
-                      value={newReminder.description}
-                      onChange={(e) => setNewReminder(prev => ({ ...prev, description: e.target.value }))}
-                      placeholder="Aprašymas"
-                      className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                    />
+
                     <input
                       type="date"
                       value={newReminder.due_date}
@@ -321,7 +323,7 @@ export function OrderDetailsModal({ order, isOpen, onClose }: OrderDetailsModalP
                       <div className="flex items-start justify-between">
                         <div>
                           <h5 className="font-medium text-gray-900 dark:text-white">{reminder.title}</h5>
-                          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{reminder.description}</p>
+
                           <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
                             Iki: {formatDate(reminder.due_date)}
                           </p>

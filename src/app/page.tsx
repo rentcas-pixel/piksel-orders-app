@@ -6,11 +6,13 @@ import { Header } from '@/components/Header';
 import { SearchAndFilters } from '@/components/SearchAndFilters';
 import { AddOrderModal } from '@/components/AddOrderModal';
 import { OrderDetailsModal } from '@/components/OrderDetailsModal';
+import { EditOrderModal } from '@/components/EditOrderModal';
 import { Order } from '@/types';
 
 export default function Home() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   
   // Get current date for default filters
@@ -31,6 +33,15 @@ export default function Home() {
     setSelectedOrder(order);
   };
 
+  const handleEditOrder = (order: Order) => {
+    setEditingOrder(order);
+  };
+
+  const handleOrderUpdated = (updatedOrder: Order) => {
+    // TODO: Update orders list
+    setEditingOrder(null);
+  };
+
 
 
   return (
@@ -49,6 +60,7 @@ export default function Home() {
           searchQuery={searchQuery}
           filters={filters}
           onOrderClick={handleOrderClick}
+          onEditOrder={handleEditOrder}
         />
       </main>
 
@@ -63,6 +75,14 @@ export default function Home() {
         order={selectedOrder}
         isOpen={!!selectedOrder}
         onClose={() => setSelectedOrder(null)}
+      />
+
+      {/* Edit Order Modal */}
+      <EditOrderModal
+        order={editingOrder}
+        isOpen={!!editingOrder}
+        onClose={() => setEditingOrder(null)}
+        onOrderUpdated={handleOrderUpdated}
       />
     </div>
   );

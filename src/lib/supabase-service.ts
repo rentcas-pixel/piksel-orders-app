@@ -14,10 +14,14 @@ export class SupabaseService {
     return data || [];
   }
 
-  static async addComment(orderId: string, text: string): Promise<Comment> {
+  static async addComment(comment: Omit<Comment, 'id' | 'created_at' | 'updated_at'>): Promise<Comment> {
     const { data, error } = await supabase
       .from('comments')
-      .insert([{ order_id: orderId, text }])
+      .insert([{ 
+        ...comment,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }])
       .select()
       .single();
 
@@ -25,10 +29,10 @@ export class SupabaseService {
     return data;
   }
 
-  static async updateComment(id: string, text: string): Promise<Comment> {
+  static async updateComment(id: string, content: string): Promise<Comment> {
     const { data, error } = await supabase
       .from('comments')
-      .update({ text, updated_at: new Date().toISOString() })
+      .update({ content, updated_at: new Date().toISOString() })
       .eq('id', id)
       .select()
       .single();
