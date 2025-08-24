@@ -1,4 +1,4 @@
-# Piksel Orders - Modernus užsakymų valdymo sistema
+# Piksel Orders - Užsakymų valdymas
 
 Modernus web interface'as reklamų užsakymų valdymui su PocketBase integracija ir Supabase papildomų duomenų valdymu.
 
