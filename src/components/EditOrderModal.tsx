@@ -36,6 +36,11 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
         final_price: order.final_price,
         invoice_sent: order.invoice_sent
       });
+      
+      // Initialize intensity if it exists in order
+      if (order.intensity) {
+        setIntensity(order.intensity);
+      }
     }
   }, [order]);
 
@@ -195,7 +200,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                 <div className="relative">
                   <input
                     type="date"
-                    value={formData.from || ''}
+                    value={formData.from ? formatDateForDisplay(formData.from) : ''}
                     onChange={(e) => handleInputChange('from', e.target.value)}
                     className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
@@ -284,7 +289,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                 <div className="relative">
                   <input
                     type="date"
-                    value={formData.to || ''}
+                    value={formData.to ? formatDateForDisplay(formData.to) : ''}
                     onChange={(e) => handleInputChange('to', e.target.value)}
                     className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
