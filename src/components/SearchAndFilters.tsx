@@ -81,7 +81,7 @@ export function SearchAndFilters({
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
             Filtrai
           </label>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <select
               value={filters.status}
               onChange={(e) => handleFilterChange('status', e.target.value)}
@@ -125,6 +125,14 @@ export function SearchAndFilters({
               placeholder="Klientas"
               value={filters.client}
               onChange={(e) => handleFilterChange('client', e.target.value)}
+              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white text-sm"
+            />
+
+            <input
+              type="text"
+              placeholder="Agentūra"
+              value={filters.agency}
+              onChange={(e) => handleFilterChange('agency', e.target.value)}
               className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white text-sm"
             />
           </div>
@@ -177,6 +185,17 @@ export function SearchAndFilters({
                   <button
                     onClick={() => handleFilterChange('client', '')}
                     className="ml-1 text-orange-600 hover:text-orange-800"
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
+              {filters.agency && (
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200">
+                  Agentūra: {filters.agency}
+                  <button
+                    onClick={() => handleFilterChange('agency', '')}
+                    className="ml-1 text-indigo-600 hover:text-indigo-800"
                   >
                     ×
                   </button>

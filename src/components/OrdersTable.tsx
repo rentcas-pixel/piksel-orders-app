@@ -29,6 +29,11 @@ export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableP
     const buildFilterString = () => {
     const filtersArray = [];
     
+    // Add search query filter
+    if (searchQuery.trim()) {
+      filtersArray.push(`(client~"${searchQuery}" || agency~"${searchQuery}" || invoice_id~"${searchQuery}")`);
+    }
+    
     if (filters.status) {
       filtersArray.push(`approved="${filters.status}"`);
     }
@@ -63,10 +68,12 @@ export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableP
         setTotalItems(result.totalItems);
       } catch (error) {
         console.error('Failed to fetch orders:', error);
-        // For demo purposes, show mock data
-        setOrders(getMockOrders());
+        // For demo purposes, show filtered mock data
+        const mockOrders = getMockOrders();
+        const filteredOrders = filterMockOrders(mockOrders);
+        setOrders(filteredOrders);
         setTotalPages(1);
-        setTotalItems(getMockOrders().length);
+        setTotalItems(filteredOrders.length);
       } finally {
         setLoading(false);
       }
@@ -117,16 +124,96 @@ export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableP
       final_price: 282.33,
       invoice_sent: false,
       updated: '2025-08-22T13:23:39Z'
+    },
+    {
+      id: '4',
+      client: 'Maxima',
+      agency: 'DDB',
+      invoice_id: '3547',
+      approved: true,
+      viaduct: false,
+      from: '2025-09-01',
+      to: '2025-09-15',
+      media_received: true,
+      final_price: 1250.00,
+      invoice_sent: true,
+      updated: '2025-08-22T14:00:00Z'
+    },
+    {
+      id: '5',
+      client: 'Lidl',
+      agency: 'McCann',
+      invoice_id: '3548',
+      approved: false,
+      viaduct: true,
+      from: '2025-09-10',
+      to: '2025-09-20',
+      media_received: false,
+      final_price: 890.50,
+      invoice_sent: false,
+      updated: '2025-08-22T14:30:00Z'
     }
   ];
+
+  const filterMockOrders = (orders: Order[]): Order[] => {
+    let filtered = [...orders];
+    
+    // Search query filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(order => 
+        order.client.toLowerCase().includes(query) ||
+        order.agency.toLowerCase().includes(query) ||
+        order.invoice_id.toLowerCase().includes(query)
+      );
+    }
+    
+    // Status filter
+    if (filters.status) {
+      if (filters.status === 'taip') {
+        filtered = filtered.filter(order => order.approved === true);
+      } else if (filters.status === 'ne') {
+        filtered = filtered.filter(order => order.approved === false);
+      }
+      // Note: 'rezervuota' and 'atšaukta' would need additional fields in the Order type
+    }
+    
+    // Client filter
+    if (filters.client) {
+      filtered = filtered.filter(order => 
+        order.client.toLowerCase().includes(filters.client.toLowerCase())
+      );
+    }
+    
+    // Agency filter
+    if (filters.agency) {
+      filtered = filtered.filter(order => 
+        order.agency.toLowerCase().includes(filters.agency.toLowerCase())
+      );
+    }
+    
+    // Month and year filter
+    if (filters.month && filters.year) {
+      filtered = filtered.filter(order => {
+        const orderDate = new Date(order.from);
+        const orderMonth = orderDate.getMonth() + 1; // getMonth() returns 0-11
+        const orderYear = orderDate.getFullYear();
+        return orderMonth === parseInt(filters.month) && orderYear === parseInt(filters.year);
+      });
+    }
+    
+    return filtered;
+  };
+
+  const getStatusText = (approved: boolean) => {
+    // For now, we only have boolean approved field
+    // In the future, this should be updated to handle 'rezervuota' and 'atšaukta'
+    return approved ? 'Patvirtinta' : 'Nepatvirtinta';
+  };
 
   const getStatusColor = (approved: boolean) => {
     if (approved) return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
     return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
-  };
-
-  const getStatusText = (approved: boolean) => {
-    return approved ? 'Patvirtinta' : 'Nepatvirtinta';
   };
 
   const formatDate = (dateString: string) => {

@@ -43,12 +43,26 @@ NEXT_PUBLIC_SUPABASE_URL=your_supabase_url_here
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key_here
 ```
 
-4. **Paleiskite development server'į:**
+## 🚀 Kaip paleisti:
+
+**Produkcijoje (rekomenduojama):**
+```
+https://piksel-orders-app-46le.vercel.app
+```
+
+**Lokaliai (development):**
+Sukurkite `.env.local` failą:
+```
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url_here
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key_here
+```
+
+Paleiskite projektą:
 ```bash
 npm run dev
 ```
 
-5. **Atidarykite naršyklę:**
+Atidarykite naršyklę:
 ```
 http://localhost:3000
 ```
