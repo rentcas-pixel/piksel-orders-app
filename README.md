@@ -147,6 +147,43 @@ Sukurkite `files` storage bucket failų saugojimui.
 - **Dark/Light mode** - automatinis perjungimas
 - **Piksel brand'as** - su logotipu ir spalvomis
 
+## 🎨 Favicon ir ikonos
+
+Sistema turi raudoną kvadratą su baltais taškeliais favicon:
+
+### 📁 Favicon failai:
+- `public/favicon.svg` - SVG favicon (32x32)
+- `public/favicon-32x32.png` - PNG favicon (32x32)
+- `public/favicon-16x16.png` - PNG favicon (16x16)
+- `public/favicon.ico` - ICO favicon
+- `public/apple-touch-icon.png` - Apple Touch Icon (180x180)
+- `public/manifest.json` - Web App Manifest
+
+### 🔧 Kaip sugeneruoti tikrus PNG/ICO failus:
+
+1. **SVG į PNG konvertavimas:**
+   - Eikite į https://convertio.co/svg-png/
+   - Įkelkite `public/favicon.svg`
+   - Nustatykite dydį: 32x32, 16x16, 180x180
+   - Parsisiųskite PNG failus
+
+2. **SVG į ICO konvertavimas:**
+   - Eikite į https://convertio.co/svg-ico/
+   - Įkelkite `public/favicon.svg`
+   - Parsisiųskite ICO failą
+
+3. **Pakeiskite placeholder failus:**
+   - `public/favicon-32x32.png`
+   - `public/favicon-16x16.png`
+   - `public/favicon.ico`
+   - `public/apple-touch-icon.png`
+
+### 🎯 Favicon dizainas:
+- **Raudonas kvadratas** (#dc2626)
+- **5 balti taškeliai** kampuose ir centre
+- **32x32 pikseliai** SVG formatas
+- **Piksel brand'o** atpažinimo elementas
+
 ## 🔄 Real-time atnaujinimai
 
 - **Polling** - duomenų atnaujinimas kas 30 sekundžių
