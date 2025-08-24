@@ -110,7 +110,7 @@ export class SupabaseService {
     const fileName = `${Date.now()}_${file.name}`;
     const filePath = `orders/${orderId}/${fileName}`;
 
-    const { data: uploadData, error: uploadError } = await supabase.storage
+    const { error: uploadError } = await supabase.storage
       .from('files')
       .upload(filePath, file);
 

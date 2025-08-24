@@ -59,7 +59,7 @@ export function AddOrderModal({ isOpen, onClose }: AddOrderModalProps) {
     }
   };
 
-  const handleInputChange = (field: keyof OrderFormData, value: any) => {
+  const handleInputChange = (field: keyof OrderFormData, value: string | number | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 

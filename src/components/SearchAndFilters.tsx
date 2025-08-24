@@ -12,7 +12,13 @@ interface SearchAndFiltersProps {
     client: string;
     agency: string;
   };
-  onFiltersChange: (filters: any) => void;
+  onFiltersChange: (filters: {
+    status: string;
+    month: string;
+    year: string;
+    client: string;
+    agency: string;
+  }) => void;
 }
 
 export function SearchAndFilters({

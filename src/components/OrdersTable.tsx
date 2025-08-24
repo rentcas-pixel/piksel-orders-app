@@ -28,7 +28,7 @@ export function OrdersTable({ searchQuery, filters, onOrderClick }: OrdersTableP
 
   useEffect(() => {
     fetchOrders();
-  }, [currentPage, searchQuery, filters]);
+  }, [currentPage, searchQuery, filters, fetchOrders]);
 
   const fetchOrders = async () => {
     try {

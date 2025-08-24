@@ -24,10 +24,7 @@ export default function Home() {
     setSelectedOrder(order);
   };
 
-  const handleCloseModals = () => {
-    setIsAddModalOpen(false);
-    setSelectedOrder(null);
-  };
+
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Dialog } from '@headlessui/react';
-import { XMarkIcon, ChatBubbleLeftIcon, BellIcon, PaperClipIcon, PlusIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, ChatBubbleLeftIcon, BellIcon, PaperClipIcon } from '@heroicons/react/24/outline';
 import { Order, Comment, Reminder, FileAttachment } from '@/types';
 import { SupabaseService } from '@/lib/supabase-service';
 import { format } from 'date-fns';
@@ -19,7 +19,7 @@ export function OrderDetailsModal({ order, isOpen, onClose }: OrderDetailsModalP
   const [comments, setComments] = useState<Comment[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [files, setFiles] = useState<FileAttachment[]>([]);
-  const [loading, setLoading] = useState(false);
+
   const [newComment, setNewComment] = useState('');
   const [newReminder, setNewReminder] = useState({ title: '', description: '', due_date: '' });
 
@@ -27,13 +27,12 @@ export function OrderDetailsModal({ order, isOpen, onClose }: OrderDetailsModalP
     if (order && isOpen) {
       loadOrderData();
     }
-  }, [order, isOpen]);
+  }, [order, isOpen, loadOrderData]);
 
   const loadOrderData = async () => {
     if (!order) return;
     
     try {
-      setLoading(true);
       const [commentsData, remindersData, filesData] = await Promise.all([
         SupabaseService.getComments(order.id),
         SupabaseService.getReminders(order.id),
@@ -45,8 +44,6 @@ export function OrderDetailsModal({ order, isOpen, onClose }: OrderDetailsModalP
       setFiles(filesData);
     } catch (error) {
       console.error('Failed to load order data:', error);
-    } finally {
-      setLoading(false);
     }
   };
 
