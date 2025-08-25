@@ -32,7 +32,6 @@ export interface Comment {
   id: string;
   order_id: string;
   content: string;
-  author: string;
   created_at: string;
   updated_at: string;
 }

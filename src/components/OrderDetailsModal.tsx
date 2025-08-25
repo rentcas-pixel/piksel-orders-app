@@ -53,8 +53,7 @@ export function OrderDetailsModal({ order, isOpen, onClose }: OrderDetailsModalP
     try {
       const comment = await SupabaseService.addComment({
         order_id: order.id,
-        content: newComment,
-        author: 'User'
+        content: newComment
       });
       setComments(prev => [comment, ...prev]);
       setNewComment('');
