@@ -115,13 +115,13 @@ export class SupabaseService {
     const filePath = `orders/${orderId}/${fileName}`;
 
     const { error: uploadError } = await supabase.storage
-      .from('files')
+      .from('orders')
       .upload(filePath, file);
 
     if (uploadError) throw uploadError;
 
     const { data: urlData } = supabase.storage
-      .from('files')
+      .from('orders')
       .getPublicUrl(filePath);
 
     const { data, error } = await supabase
@@ -153,7 +153,7 @@ export class SupabaseService {
     const filePath = file.file_url.split('/').slice(-3).join('/');
     
     const { error: deleteError } = await supabase.storage
-      .from('files')
+      .from('orders')
       .remove([filePath]);
 
     if (deleteError) throw deleteError;
