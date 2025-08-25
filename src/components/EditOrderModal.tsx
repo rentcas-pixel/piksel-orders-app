@@ -564,21 +564,13 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                 <h4 className="font-medium text-gray-700 mb-3">Mėnesių sumų pasiskirstymas:</h4>
                 <div className="space-y-2">
                   {calculateMonthlyDistribution(formData.from, formData.to, formData.final_price).map((month) => (
-                    <div key={month.month} className="flex justify-between items-center text-sm">
-                      <span className="text-gray-600">
-                        {month.monthName} {month.year} ({month.days} d.)
-                      </span>
-                      <span className="font-semibold text-purple-600">
-                        {month.amount.toFixed(2)}€
-                      </span>
+                    <div key={month.month} className="text-sm text-gray-900">
+                      {month.monthName} {month.year} ({month.days} d.) → {month.amount.toFixed(2)}€
                     </div>
                   ))}
                   <div className="pt-2 border-t border-gray-200">
-                    <div className="flex justify-between items-center font-medium">
-                      <span className="text-gray-700">Iš viso:</span>
-                      <span className="text-lg font-bold text-purple-700">
-                        {formData.final_price?.toFixed(2)}€
-                      </span>
+                    <div className="text-sm font-semibold text-gray-900">
+                      Viso: {formData.final_price?.toFixed(2)}€
                     </div>
                   </div>
                 </div>
