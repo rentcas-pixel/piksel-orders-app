@@ -25,15 +25,30 @@ export class SupabaseService {
   }
 
   static async getPrintscreensForOrder(orderId: string): Promise<FileAttachment[]> {
-    const { data, error } = await supabase
-      .from('file_attachments')
-      .select('*')
-      .eq('order_id', orderId)
-      .like('mime_type', 'image/%')
-      .order('created_at', { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from('file_attachments')
+        .select('*')
+        .eq('order_id', orderId)
+        .order('created_at', { ascending: false });
 
-    if (error) return [];
-    return data || [];
+      if (error) {
+        console.error('❌ Failed to load printscreens:', error);
+        return [];
+      }
+      
+      // Filter printscreens on client side
+      const printscreens = (data || []).filter(file => 
+        file.mime_type && file.mime_type.startsWith('image/')
+      );
+      
+      console.log('📸 Loaded printscreens:', printscreens.length);
+      return printscreens;
+      
+    } catch (error) {
+      console.error('❌ Error loading printscreens:', error);
+      return [];
+    }
   }
 
   static async addComment(comment: Omit<Comment, 'id' | 'created_at' | 'updated_at'>): Promise<Comment> {
