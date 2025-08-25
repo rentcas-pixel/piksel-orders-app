@@ -82,6 +82,18 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
     setSelectedFiles(prev => [...prev, ...files]);
   };
 
+  // Handle file download
+  const handleFileDownload = (file: File) => {
+    const url = URL.createObjectURL(file);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = file.name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   // Calculate week number
   const calculateWeek = (dateString: string) => {
     try {
@@ -248,7 +260,18 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
         });
       }
       
-      // Handle file uploads here if needed
+      // Upload files to Supabase if exists
+      if (selectedFiles.length > 0) {
+        try {
+          for (const file of selectedFiles) {
+            await SupabaseService.uploadFile(order.id, file);
+            console.log('✅ File uploaded to Supabase:', file.name);
+          }
+        } catch (error) {
+          console.error('❌ Failed to upload files:', error);
+          alert('Klaida įkeliant failus. Bandykite dar kartą.');
+        }
+      }
       
       onOrderUpdated(updatedOrder);
       onClose();
@@ -288,7 +311,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
 
   return (
     <div 
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
       onKeyDown={(e) => {
         if (e.key === 'Escape') {
           onClose();
@@ -430,7 +453,13 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                               <div key={index} className="flex items-center justify-between p-2 bg-gray-50 border border-gray-200 rounded-lg">
                                 <div className="flex items-center space-x-2">
                                   <span className="text-xs text-gray-500">📎</span>
-                                  <span className="text-sm text-gray-800 truncate max-w-32">{file.name}</span>
+                                  <button
+                                    onClick={() => handleFileDownload(file)}
+                                    className="text-sm text-blue-600 hover:text-blue-800 truncate max-w-32 cursor-pointer hover:underline"
+                                    title="Spauskite failo atsisiuntimui"
+                                  >
+                                    {file.name}
+                                  </button>
                                   <span className="text-xs text-gray-500">({(file.size / 1024).toFixed(1)} KB)</span>
                                 </div>
                                 <button
