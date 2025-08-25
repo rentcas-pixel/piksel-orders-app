@@ -134,9 +134,8 @@ export class SupabaseService {
       console.error('🔍 Supabase upload error details:', {
         error: uploadError,
         message: uploadError.message,
-        details: uploadError.details,
-        hint: uploadError.hint,
-        code: uploadError.code
+        name: uploadError.name,
+        stack: uploadError.stack
       });
       throw uploadError;
     }
