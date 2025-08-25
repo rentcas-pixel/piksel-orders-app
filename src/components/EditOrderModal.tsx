@@ -98,13 +98,21 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
     try {
       if (!fromDate || !toDate || !totalAmount) return [];
       
+      console.log('🔍 calculateMonthlyDistribution input:', { fromDate, toDate, totalAmount });
+      
       const start = new Date(fromDate);
       const end = new Date(toDate);
       
-      if (isNaN(start.getTime()) || isNaN(end.getTime())) return [];
+      console.log('🔍 Parsed dates:', { start: start.toISOString(), end: end.toISOString() });
+      
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        console.log('❌ Invalid dates');
+        return [];
+      }
       
       // Calculate total days
       const totalDays = Math.ceil((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+      console.log('🔍 Total days:', totalDays);
       
       const monthlyDistribution: Array<{
         month: string;
@@ -120,10 +128,14 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
         'Liepa', 'Rugpjūtis', 'Rugsėjis', 'Spalis', 'Lapkritis', 'Gruodis'
       ];
       
+      console.log('🔍 Starting calculation from:', current.toISOString(), 'to:', end.toISOString());
+      
       while (current <= end) {
         const month = current.getMonth();
         const year = current.getFullYear();
         const monthKey = `${year}-${month}`;
+        
+        console.log('🔍 Processing date:', current.toISOString(), 'month:', month, 'year:', year, 'monthKey:', monthKey);
         
         // Find existing month entry
         let monthEntry = monthlyDistribution.find(m => m.month === monthKey);
@@ -137,17 +149,23 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
             monthName: monthNames[month]
           };
           monthlyDistribution.push(monthEntry);
+          console.log('🔍 Created new month entry:', monthEntry);
         }
         
         monthEntry.days++;
+        console.log('🔍 Incremented days for month:', monthKey, 'new total:', monthEntry.days);
+        
+        // Move to next day
         current.setDate(current.getDate() + 1);
       }
       
       // Calculate amounts for each month
       monthlyDistribution.forEach(month => {
         month.amount = (month.days / totalDays) * totalAmount;
+        console.log('🔍 Calculated amount for', month.monthName, month.year, ':', month.days, 'days =', month.amount.toFixed(2), '€');
       });
       
+      console.log('🔍 Final monthly distribution:', monthlyDistribution);
       return monthlyDistribution;
     } catch (error) {
       console.error('❌ Error calculating monthly distribution:', error);
@@ -563,11 +581,15 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
               <div className="mt-4 pt-4 border-t border-gray-200">
 
                 <div className="space-y-2">
-                  {calculateMonthlyDistribution(formData.from, formData.to, formData.final_price).map((month) => (
-                    <div key={month.month} className="text-sm text-gray-900">
-                      {month.monthName} {month.year} ({month.days} d.) → {month.amount.toFixed(2)}€
-                    </div>
-                  ))}
+                  {(() => {
+                    const distribution = calculateMonthlyDistribution(formData.from, formData.to, formData.final_price);
+                    console.log('🔍 Monthly distribution for display:', distribution);
+                    return distribution.map((month) => (
+                      <div key={month.month} className="text-sm text-gray-900">
+                        {month.monthName} {month.year} ({month.days} d.) → {month.amount.toFixed(2)}€
+                      </div>
+                    ));
+                  })()}
                   <div className="pt-2 border-t border-gray-200">
                     <div className="text-sm font-semibold text-gray-900">
                       Viso: {formData.final_price?.toFixed(2)}€
