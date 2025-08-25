@@ -304,9 +304,28 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                 <textarea
                   value={comment}
                   onChange={(e) => setComment(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      if (comment.trim()) {
+                        handleSave();
+                      }
+                    }
+                    // Ctrl+Enter (or Cmd+Enter on Mac) also saves
+                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                      e.preventDefault();
+                      if (comment.trim()) {
+                        handleSave();
+                      }
+                    }
+                    // Shift+Enter allows new line
+                    if (e.key === 'Enter' && e.shiftKey) {
+                      // Allow default behavior (new line)
+                    }
+                  }}
                   rows={3}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Įveskite komentarą..."
+                  placeholder="Įveskite komentarą... (Enter - išsaugoti, Shift+Enter - nauja eilutė, Ctrl+Enter - išsaugoti)"
                 />
                 
                 {/* Existing Comments */}
