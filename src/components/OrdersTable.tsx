@@ -208,7 +208,13 @@ export function OrdersTable({ searchQuery, filters, onOrderClick, onEditOrder }:
     
     // Add search query filter
     if (searchQuery.trim()) {
-      filtersArray.push(`(client~"${searchQuery}" || agency~"${searchQuery}" || invoice_id~"${searchQuery}")`);
+      // Check if searching for "viadukai" to include viaduct orders
+      if (searchQuery.toLowerCase().includes('viadukai')) {
+        filtersArray.push(`(client~"${searchQuery}" || agency~"${searchQuery}" || invoice_id~"${searchQuery}" || viaduct=true)`);
+        console.log('🔍 Added viaduct filter for "viadukai" search');
+      } else {
+        filtersArray.push(`(client~"${searchQuery}" || agency~"${searchQuery}" || invoice_id~"${searchQuery}")`);
+      }
     }
     
     // Status filter - handle boolean conversion
