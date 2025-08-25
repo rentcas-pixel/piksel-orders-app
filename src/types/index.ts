@@ -31,7 +31,7 @@ export interface OrderFormData {
 export interface Comment {
   id: string;
   order_id: string;
-  content: string;
+  text: string;
   created_at: string;
   updated_at: string;
 }

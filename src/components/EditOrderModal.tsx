@@ -141,7 +141,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
       if (comment.trim()) {
         await SupabaseService.addComment({
           order_id: order.id,
-          content: comment
+          text: comment
         });
         console.log('✅ Komentaras išsaugotas Supabase');
       }

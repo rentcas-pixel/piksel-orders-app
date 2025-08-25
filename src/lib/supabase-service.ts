@@ -29,10 +29,10 @@ export class SupabaseService {
     return data;
   }
 
-  static async updateComment(id: string, content: string): Promise<Comment> {
+  static async updateComment(id: string, text: string): Promise<Comment> {
     const { data, error } = await supabase
       .from('comments')
-      .update({ content, updated_at: new Date().toISOString() })
+      .update({ text, updated_at: new Date().toISOString() })
       .eq('id', id)
       .select()
       .single();
