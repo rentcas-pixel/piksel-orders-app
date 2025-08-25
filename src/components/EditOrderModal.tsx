@@ -100,10 +100,19 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
       
       console.log('🔍 calculateMonthlyDistribution input:', { fromDate, toDate, totalAmount });
       
-      const start = new Date(fromDate);
-      const end = new Date(toDate);
+      // Parse dates without timezone issues using Date constructor with year, month, day
+      const [startYear, startMonth, startDay] = fromDate.split('-').map(Number);
+      const [endYear, endMonth, endDay] = toDate.split('-').map(Number);
       
-      console.log('🔍 Parsed dates:', { start: start.toISOString(), end: end.toISOString() });
+      const start = new Date(startYear, startMonth - 1, startDay);
+      const end = new Date(endYear, endMonth - 1, endDay);
+      
+      console.log('🔍 Parsed dates (no timezone):', { 
+        start: start.toISOString(), 
+        end: end.toISOString(),
+        startLocal: start.toLocaleDateString(),
+        endLocal: end.toLocaleDateString()
+      });
       
       if (isNaN(start.getTime()) || isNaN(end.getTime())) {
         console.log('❌ Invalid dates');
@@ -122,13 +131,12 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
         monthName: string;
       }> = [];
       
-      const current = new Date(start);
       const monthNames = [
         'Sausis', 'Vasaris', 'Kovas', 'Balandis', 'Gegužė', 'Birželis',
         'Liepa', 'Rugpjūtis', 'Rugsėjis', 'Spalis', 'Lapkritis', 'Gruodis'
       ];
       
-      console.log('🔍 Starting calculation from:', current.toISOString(), 'to:', end.toISOString());
+      console.log('🔍 Starting calculation from:', start.toLocaleDateString(), 'to:', end.toLocaleDateString());
       
       // Use a different approach - iterate through each day and ensure we include the end date
       const currentDate = new Date(start);
@@ -139,7 +147,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
         const year = currentDate.getFullYear();
         const monthKey = `${year}-${month}`;
         
-        console.log('🔍 Processing date:', currentDate.toISOString(), 'month:', month, 'year:', year, 'monthKey:', monthKey);
+        console.log('🔍 Processing date:', currentDate.toLocaleDateString(), 'month:', month, 'year:', year, 'monthKey:', monthKey);
         
         // Find existing month entry
         let monthEntry = monthlyDistribution.find(m => m.month === monthKey);
