@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Order, Comment, Reminder } from '@/types';
+import { Order, Comment, Reminder, FileAttachment } from '@/types';
 import { PocketBaseService } from '@/lib/pocketbase';
 import { SupabaseService } from '@/lib/supabase-service';
 import { XMarkIcon } from '@heroicons/react/24/outline';
@@ -24,7 +24,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
 
   const [comments, setComments] = useState<Comment[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
-  const [selectedPrintscreen, setSelectedPrintscreen] = useState<File | null>(null);
+
 
 
   // Load order data when modal opens
@@ -231,13 +231,13 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
   const handlePrintscreenUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file && file.type.startsWith('image/')) {
-      setSelectedPrintscreen(file);
       console.log('📸 Printscreen pasirinktas:', file.name);
+      // TODO: Implement printscreen upload to Supabase
     }
   };
 
   // Handle printscreen view
-  const handlePrintscreenView = (printscreen: any) => {
+  const handlePrintscreenView = (printscreen: FileAttachment) => {
     window.open(printscreen.file_url, '_blank');
   };
 
