@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Order } from '@/types';
+import { Order, Comment, Reminder } from '@/types';
 import { PocketBaseService } from '@/lib/pocketbase';
 import { SupabaseService } from '@/lib/supabase-service';
 import { XMarkIcon } from '@heroicons/react/24/outline';
@@ -21,6 +21,8 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
   const [intensity, setIntensity] = useState('kas_4');
   const [loading, setLoading] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [reminders, setReminders] = useState<Reminder[]>([]);
 
   useEffect(() => {
     if (order) {
@@ -45,6 +47,23 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
       if (order.intensity) {
         setIntensity(order.intensity);
       }
+
+      // Load comments and reminders from Supabase
+      const loadOrderData = async () => {
+        try {
+          const [commentsData, remindersData] = await Promise.all([
+            SupabaseService.getComments(order.id),
+            SupabaseService.getReminders(order.id)
+          ]);
+          setComments(commentsData);
+          setReminders(remindersData);
+          console.log('✅ Loaded comments and reminders:', { comments: commentsData, reminders: remindersData });
+        } catch (error) {
+          console.error('❌ Failed to load comments/reminders:', error);
+        }
+      };
+
+      loadOrderData();
     }
   }, [order]);
 
@@ -139,20 +158,22 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
       
       // Save comment if exists
       if (comment.trim()) {
-        await SupabaseService.addComment({
+        const newComment = await SupabaseService.addComment({
           order_id: order.id,
           text: comment
         });
+        setComments(prev => [newComment, ...prev]);
         console.log('✅ Komentaras išsaugotas Supabase');
       }
 
       // Save reminder if exists
       if (reminderDate && reminderMessage.trim()) {
-        await SupabaseService.addReminder(order.id, {
+        const newReminder = await SupabaseService.addReminder(order.id, {
           title: reminderMessage,
           due_date: reminderDate,
           is_completed: false
         });
+        setReminders(prev => [...prev, newReminder]);
         console.log('✅ Priminimas išsaugotas Supabase');
       }
 
@@ -287,6 +308,23 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="Įveskite komentarą..."
                 />
+                
+                {/* Existing Comments */}
+                {comments.length > 0 && (
+                  <div className="mt-4">
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Esami komentarai:</h4>
+                    <div className="space-y-2 max-h-32 overflow-y-auto">
+                      {comments.map((comment) => (
+                        <div key={comment.id} className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                          <p className="text-sm text-gray-800">{comment.text}</p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {new Date(comment.created_at).toLocaleString('lt-LT')}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Failai / Print screen */}
@@ -400,6 +438,23 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="Pvz.: perskambinti, patvirtinti užsakymą..."
                 />
+                
+                {/* Existing Reminders */}
+                {reminders.length > 0 && (
+                  <div className="mt-4">
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Esami priminimai:</h4>
+                    <div className="space-y-2 max-h-32 overflow-y-auto">
+                      {reminders.map((reminder) => (
+                        <div key={reminder.id} className="bg-green-50 border border-green-200 rounded-lg p-3">
+                          <p className="text-sm text-gray-800 font-medium">{reminder.title}</p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            Iki: {new Date(reminder.due_date).toLocaleDateString('lt-LT')}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
