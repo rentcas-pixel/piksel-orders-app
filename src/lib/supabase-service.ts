@@ -111,14 +111,35 @@ export class SupabaseService {
   }
 
   static async uploadFile(orderId: string, file: File): Promise<FileAttachment> {
+    // Patikrinti ar Supabase veikia ir kokie bucket'ai prieinami
+    try {
+      const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
+      if (bucketsError) {
+        console.error('❌ Failed to list buckets:', bucketsError);
+      } else {
+        console.log('🔍 Available buckets:', buckets?.map(b => ({ name: b.name, public: b.public })));
+      }
+    } catch (error) {
+      console.error('❌ Error checking buckets:', error);
+    }
+
     const fileName = `${Date.now()}_${file.name}`;
     const filePath = `${orderId}/${fileName}`;
 
-        const { error: uploadError } = await supabase.storage
+            const { error: uploadError } = await supabase.storage
       .from('orders-new')
       .upload(filePath, file);
-
-    if (uploadError) throw uploadError;
+    
+    if (uploadError) {
+      console.error('🔍 Supabase upload error details:', {
+        error: uploadError,
+        message: uploadError.message,
+        details: uploadError.details,
+        hint: uploadError.hint,
+        code: uploadError.code
+      });
+      throw uploadError;
+    }
     
     const { data: urlData } = supabase.storage
       .from('orders-new')
