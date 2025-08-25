@@ -263,10 +263,13 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
       // Upload files to Supabase if exists
       if (selectedFiles.length > 0) {
         try {
+          console.log('🚀 Starting file upload to Supabase...');
           for (const file of selectedFiles) {
+            console.log('📤 Uploading file:', file.name, 'size:', file.size);
             await SupabaseService.uploadFile(order.id, file);
             console.log('✅ File uploaded to Supabase:', file.name);
           }
+          console.log('🎉 All files uploaded successfully!');
         } catch (error) {
           console.error('❌ Failed to upload files:', error);
           alert('Klaida įkeliant failus. Bandykite dar kartą.');
