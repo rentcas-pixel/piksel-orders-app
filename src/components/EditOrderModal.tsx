@@ -146,7 +146,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
       console.log('🔍 Starting calculation from:', start.toLocaleDateString(), 'to:', end.toLocaleDateString());
       
       // Use a different approach - iterate through each day and ensure we include the end date
-      const currentDate = new Date(start);
+      let currentDate = new Date(start);
       const endDate = new Date(end);
       
       while (currentDate <= endDate) {
