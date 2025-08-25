@@ -264,6 +264,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
       if (selectedFiles.length > 0) {
         try {
           console.log('🚀 Starting file upload to Supabase...');
+          console.log('🔍 Supabase configuration check...');
           for (const file of selectedFiles) {
             console.log('📤 Uploading file:', file.name, 'size:', file.size);
             await SupabaseService.uploadFile(order.id, file);
