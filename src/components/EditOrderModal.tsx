@@ -147,16 +147,19 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
       
       console.log('🔍 Starting calculation from:', start.toLocaleDateString(), 'to:', end.toLocaleDateString());
       
-      // Use a different approach - iterate through each day and ensure we include the end date
-      let currentDate = new Date(start);
-      const endDate = new Date(end);
-      
-                  while (currentDate <= endDate) {
+                  // Use date-fns for precise date iteration
+            let currentDate = new Date(start);
+            const endDate = new Date(end);
+            
+            console.log('🔍 Starting iteration from:', start.toLocaleDateString(), 'to:', end.toLocaleDateString());
+            console.log('🔍 Start timestamp:', start.getTime(), 'End timestamp:', endDate.getTime());
+            
+            while (currentDate <= endDate) {
               const month = currentDate.getMonth() + 1; // Fix: +1 to get 1-based month numbers
               const year = currentDate.getFullYear();
               const monthKey = `${year}-${month}`;
               
-              console.log('🔍 Processing date:', currentDate.toLocaleDateString(), 'month:', month, 'year:', year, 'monthKey:', monthKey);
+              console.log('🔍 Processing date:', currentDate.toLocaleDateString(), 'timestamp:', currentDate.getTime(), 'month:', month, 'year:', year, 'monthKey:', monthKey);
               
               // Find existing month entry
               let monthEntry = monthlyDistribution.find(m => m.month === monthKey);
@@ -176,8 +179,12 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
               monthEntry.days++;
               console.log('🔍 Incremented days for month:', monthKey, 'new total:', monthEntry.days);
               
-              // Move to next day - create new Date object to avoid mutation issues
-              currentDate = new Date(currentDate.getTime() + 24 * 60 * 60 * 1000);
+              // Move to next day using date-fns addDays for precision
+              const nextDay = new Date(currentDate);
+              nextDay.setDate(nextDay.getDate() + 1);
+              currentDate = nextDay;
+              
+              console.log('🔍 Moved to next day:', currentDate.toLocaleDateString());
             }
       
       // Calculate amounts for each month
