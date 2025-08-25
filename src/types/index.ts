@@ -34,6 +34,7 @@ export interface Comment {
   text: string;
   created_at: string;
   updated_at: string;
+  printscreens?: FileAttachment[];
 }
 
 export interface Reminder {

@@ -24,6 +24,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
 
   const [comments, setComments] = useState<Comment[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [selectedPrintscreen, setSelectedPrintscreen] = useState<File | null>(null);
 
 
   // Load order data when modal opens
@@ -226,6 +227,20 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
     }
   };
 
+  // Handle printscreen upload
+  const handlePrintscreenUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      setSelectedPrintscreen(file);
+      console.log('📸 Printscreen pasirinktas:', file.name);
+    }
+  };
+
+  // Handle printscreen view
+  const handlePrintscreenView = (printscreen: any) => {
+    window.open(printscreen.file_url, '_blank');
+  };
+
   // Handle save
   const handleSave = async () => {
     if (!order) return;
@@ -383,6 +398,22 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                       placeholder="Įveskite komentarą... (Enter - išsaugoti komentarą, Shift+Enter - nauja eilutė)"
                     />
                     
+                    {/* Printscreen input */}
+                    <div className="mt-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Pridėti printscreen
+                      </label>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handlePrintscreenUpload}
+                        className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:px-4 file:py-2 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                      />
+                      <p className="text-xs text-gray-500">
+                        Galite ir įklijuoti ekrano nuotrauką su Cmd/Ctrl+V
+                      </p>
+                    </div>
+                    
                     {/* Existing Comments */}
                     {comments.length > 0 && (
                       <div className="mt-4">
@@ -394,6 +425,20 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                               <p className="text-xs text-gray-500 mt-1">
                                 {new Date(comment.created_at).toLocaleString('lt-LT')}
                               </p>
+                              {/* Printscreen thumbnails */}
+                              {comment.printscreens && comment.printscreens.length > 0 && (
+                                <div className="mt-2 flex space-x-2">
+                                  {comment.printscreens.map((printscreen) => (
+                                    <img
+                                      key={printscreen.id}
+                                      src={printscreen.file_url}
+                                      alt="Printscreen"
+                                      className="w-16 h-16 object-cover rounded border cursor-pointer hover:opacity-80"
+                                      onClick={() => handlePrintscreenView(printscreen)}
+                                    />
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>
