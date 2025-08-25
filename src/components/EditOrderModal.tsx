@@ -14,7 +14,8 @@ interface EditOrderModalProps {
 }
 
 export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditOrderModalProps) {
-  const [formData, setFormData] = useState<Partial<Order>>({});
+  // State variables
+  const [formData, setFormData] = useState<Partial<Order> & { screens?: string[] }>({});
   const [comment, setComment] = useState('');
   const [reminderDate, setReminderDate] = useState('');
   const [reminderMessage, setReminderMessage] = useState('');
@@ -23,12 +24,13 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [activeTab, setActiveTab] = useState<'main' | 'screens'>('main');
+  const [newScreen, setNewScreen] = useState('');
 
+  // Load order data when modal opens
   useEffect(() => {
     if (order) {
       console.log('🔍 EditOrderModal: order data:', order);
-      console.log('🔍 EditOrderModal: from date:', order.from, 'type:', typeof order.from);
-      console.log('🔍 EditOrderModal: to date:', order.to, 'type:', typeof order.to);
       
       setFormData({
         client: order.client,
@@ -40,10 +42,10 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
         to: order.to,
         media_received: order.media_received,
         final_price: order.final_price,
-        invoice_sent: order.invoice_sent
+        invoice_sent: order.invoice_sent,
+        screens: (order as any).screens || []
       });
       
-      // Initialize intensity if it exists in order
       if (order.intensity) {
         setIntensity(order.intensity);
       }
@@ -67,6 +69,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
     }
   }, [order]);
 
+  // Handle input changes
   const handleInputChange = (field: keyof Order, value: string | number | boolean) => {
     setFormData(prev => ({
       ...prev,
@@ -74,17 +77,16 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
     }));
   };
 
+  // Handle file upload
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
     setSelectedFiles(prev => [...prev, ...files]);
   };
 
-
-
+  // Calculate week number
   const calculateWeek = (dateString: string) => {
     try {
       const date = new Date(dateString);
-      // ISO week calculation - Monday as first day of week
       const startOfYear = new Date(date.getFullYear(), 0, 1);
       const days = Math.floor((date.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000));
       const weekNumber = Math.ceil((days + startOfYear.getDay()) / 7);
@@ -94,55 +96,36 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
     }
   };
 
+  // Calculate monthly distribution
   const calculateMonthlyDistribution = (fromDate: string, toDate: string, totalAmount: number) => {
     try {
       if (!fromDate || !toDate || !totalAmount) return [];
       
       console.log('🔍 calculateMonthlyDistribution input:', { fromDate, toDate, totalAmount });
-      console.log('🚀 NEW VERSION - Date mutation fixed!');
-      console.log('🔍 DEBUG: Starting monthly distribution calculation...');
       
-      // Parse dates without timezone issues using Date constructor with year, month, day
       // Clean dates by removing time part first
-      const cleanFromDate = fromDate.split(' ')[0]; // Take only date part, remove time
-      const cleanToDate = toDate.split(' ')[0]; // Take only date part, remove time
+      const cleanFromDate = fromDate.split(' ')[0];
+      const cleanToDate = toDate.split(' ')[0];
       
       const [startYear, startMonth, startDay] = cleanFromDate.split('-').map(Number);
       const [endYear, endMonth, endDay] = cleanToDate.split('-').map(Number);
       
-      console.log('🔍 Clean dates:', { cleanFromDate, cleanToDate });
-      console.log('🔍 Parsed date parts:', { startYear, startMonth, startDay, endYear, endMonth, endDay });
-      
       const start = new Date(startYear, startMonth - 1, startDay);
       const end = new Date(endYear, endMonth - 1, endDay);
       
-      console.log('🔍 Parsed dates (no timezone):', { 
-        start: start.toLocaleDateString(), 
-        end: end.toLocaleDateString(),
-        startISO: start.toISOString ? start.toISOString() : 'N/A', 
-        endISO: end.toISOString ? end.toISOString() : 'N/A'
-      });
-      
       if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-        console.log('❌ Invalid dates');
         return [];
       }
       
-                  // Calculate total days using date-fns differenceInDays for precision
-            const totalDays = Math.ceil((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
-            console.log('🔍 Total days calculated:', totalDays);
-            
-            // Double-check with manual count
-            let manualDayCount = 0;
-            let checkDate = new Date(start);
-            while (checkDate <= end) {
-              manualDayCount++;
-              const nextCheckDate = new Date(checkDate);
-              nextCheckDate.setDate(nextCheckDate.getDate() + 1);
-              checkDate = nextCheckDate;
-            }
-            console.log('🔍 Manual day count:', manualDayCount);
-            console.log('🔍 Using manual count for calculations');
+      // Calculate total days manually
+      let manualDayCount = 0;
+      let checkDate = new Date(start);
+      while (checkDate <= end) {
+        manualDayCount++;
+        const nextCheckDate = new Date(checkDate);
+        nextCheckDate.setDate(nextCheckDate.getDate() + 1);
+        checkDate = nextCheckDate;
+      }
       
       const monthlyDistribution: Array<{
         month: string;
@@ -157,55 +140,41 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
         'Liepa', 'Rugpjūtis', 'Rugsėjis', 'Spalis', 'Lapkritis', 'Gruodis'
       ];
       
-      console.log('🔍 Starting calculation from:', start.toLocaleDateString(), 'to:', end.toLocaleDateString());
+      // Iterate through each day
+      let currentDate = new Date(start);
+      const endDate = new Date(end);
       
-                  // Use date-fns for precise date iteration
-            let currentDate = new Date(start);
-            const endDate = new Date(end);
-            
-            console.log('🔍 Starting iteration from:', start.toLocaleDateString(), 'to:', end.toLocaleDateString());
-            console.log('🔍 Start timestamp:', start.getTime(), 'End timestamp:', endDate.getTime());
-            
-            while (currentDate <= endDate) {
-              const month = currentDate.getMonth() + 1; // Fix: +1 to get 1-based month numbers
-              const year = currentDate.getFullYear();
-              const monthKey = `${year}-${month}`;
-              
-              console.log('🔍 Processing date:', currentDate.toLocaleDateString(), 'timestamp:', currentDate.getTime(), 'month:', month, 'year:', year, 'monthKey:', monthKey);
-              
-              // Find existing month entry
-              let monthEntry = monthlyDistribution.find(m => m.month === monthKey);
-              
-              if (!monthEntry) {
-                monthEntry = {
-                  month: monthKey,
-                  year,
-                  days: 0,
-                  amount: 0,
-                  monthName: monthNames[month - 1] // Fix: -1 because monthNames is 0-based
-                };
-                monthlyDistribution.push(monthEntry);
-                console.log('🔍 Created new month entry:', monthEntry);
-              }
-              
-              monthEntry.days++;
-              console.log('🔍 Incremented days for month:', monthKey, 'new total:', monthEntry.days);
-              
-              // Move to next day using date-fns addDays for precision
-              const nextDay = new Date(currentDate);
-              nextDay.setDate(nextDay.getDate() + 1);
-              currentDate = nextDay;
-              
-              console.log('🔍 Moved to next day:', currentDate.toLocaleDateString());
-            }
+      while (currentDate <= endDate) {
+        const month = currentDate.getMonth() + 1; // +1 to get 1-based month numbers
+        const year = currentDate.getFullYear();
+        const monthKey = `${year}-${month}`;
+        
+        let monthEntry = monthlyDistribution.find(m => m.month === monthKey);
+        
+        if (!monthEntry) {
+          monthEntry = {
+            month: monthKey,
+            year,
+            days: 0,
+            amount: 0,
+            monthName: monthNames[month - 1] // -1 because monthNames is 0-based
+          };
+          monthlyDistribution.push(monthEntry);
+        }
+        
+        monthEntry.days++;
+        
+        // Move to next day
+        const nextDay = new Date(currentDate);
+        nextDay.setDate(nextDay.getDate() + 1);
+        currentDate = nextDay;
+      }
       
-                  // Calculate amounts for each month using manual day count
-            monthlyDistribution.forEach(month => {
-              month.amount = (month.days / manualDayCount) * totalAmount;
-              console.log('🔍 Calculated amount for', month.monthName, month.year, ':', month.days, 'days =', month.amount.toFixed(2), '€ (using', manualDayCount, 'total days)');
-            });
+      // Calculate amounts for each month
+      monthlyDistribution.forEach(month => {
+        month.amount = (month.days / manualDayCount) * totalAmount;
+      });
       
-      console.log('🔍 Final monthly distribution:', monthlyDistribution);
       return monthlyDistribution;
     } catch (error) {
       console.error('❌ Error calculating monthly distribution:', error);
@@ -213,60 +182,38 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
     }
   };
 
+  // Format date for display
   const formatDateForDisplay = (dateString: string) => {
-    console.log('🔍 formatDateForDisplay input:', dateString, 'type:', typeof dateString);
-    
     try {
-      // Handle different date formats from PocketBase
-      
-      // If it's already in yyyy-mm-dd format, return as is
       if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
-        console.log('✅ Already yyyy-mm-dd format:', dateString);
         return dateString;
       }
       
-      // Handle dd/mm/yyyy format specifically
       if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(dateString)) {
         const [day, month, year] = dateString.split('/');
-        const result = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-        console.log('✅ Converted dd/mm/yyyy to yyyy-mm-dd:', dateString, '→', result);
-        return result;
+        return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
       }
       
-      // Handle dd.mm.yyyy format
       if (/^\d{1,2}\.\d{1,2}\.\d{4}$/.test(dateString)) {
         const [day, month, year] = dateString.split('.');
-        const result = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-        console.log('✅ Converted dd.mm.yyyy to yyyy-mm-dd:', dateString, '→', result);
-        return result;
+        return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
       }
       
-      // Try to parse the date with other formats
       const date = new Date(dateString);
-      console.log('🔍 Parsed date:', date, 'isValid:', !isNaN(date.getTime()));
-      
-      // Check if date is valid
       if (isNaN(date.getTime())) {
-        console.log('❌ Invalid date, returning original:', dateString);
-        return dateString; // Return original if invalid
+        return dateString;
       }
       
-      // Format to yyyy-mm-dd
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, '0');
       const day = String(date.getDate()).padStart(2, '0');
-      const result = `${year}-${month}-${day}`;
-      
-      console.log('✅ Converted to yyyy-mm-dd:', dateString, '→', result);
-      return result;
+      return `${year}-${month}-${day}`;
     } catch (error) {
-      console.log('❌ Error in formatDateForDisplay:', error);
       return dateString;
     }
   };
 
-
-
+  // Handle comment save
   const handleSaveComment = async () => {
     if (!order || !comment.trim()) return;
     
@@ -276,7 +223,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
         text: comment
       });
       setComments(prev => [newComment, ...prev]);
-      setComment(''); // Clear comment input
+      setComment('');
       console.log('✅ Komentaras išsaugotas Supabase');
     } catch (error) {
       console.error('❌ Failed to save comment:', error);
@@ -284,6 +231,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
     }
   };
 
+  // Handle save
   const handleSave = async () => {
     if (!order) return;
     
@@ -294,59 +242,50 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
       
       // Save reminder if exists
       if (reminderDate && reminderMessage.trim()) {
-        const newReminder = await SupabaseService.addReminder(order.id, {
+        await SupabaseService.addReminder(order.id, {
           title: reminderMessage,
           due_date: reminderDate,
           is_completed: false
         });
-        setReminders(prev => [...prev, newReminder]);
-        console.log('✅ Priminimas išsaugotas Supabase');
       }
-
-      // Upload files if exists
-      for (const file of selectedFiles) {
-        await SupabaseService.uploadFile(order.id, file);
-        console.log('✅ Failas išsaugotas Supabase');
-      }
-
-      console.log('✅ Užsakymas atnaujintas, modalas užsidaro');
       
-      // Clear form data after successful save
-      setReminderDate('');
-      setReminderMessage('');
-      setSelectedFiles([]);
+      // Handle file uploads here if needed
       
       onOrderUpdated(updatedOrder);
       onClose();
+      console.log('✅ Order updated successfully');
     } catch (error) {
       console.error('❌ Failed to update order:', error);
-      alert('Klaida išsaugant duomenis. Bandykite dar kartą.');
+      alert('Klaida atnaujinant užsakymą. Bandykite dar kartą.');
     } finally {
       setLoading(false);
     }
   };
 
+  // Handle delete
   const handleDelete = async () => {
     if (!order || !confirm('Ar tikrai norite ištrinti šį užsakymą?')) return;
     
     try {
       await PocketBaseService.deleteOrder(order.id);
       onClose();
+      console.log('✅ Order deleted successfully');
     } catch (error) {
-      console.error('Failed to delete order:', error);
+      console.error('❌ Failed to delete order:', error);
+      alert('Klaida ištrinant užsakymą. Bandykite dar kartą.');
     }
   };
 
-  if (!isOpen || !order) return null;
-
+  // Calculate display values
   const broadcastPeriod = formData.from && formData.to 
     ? `${formatDateForDisplay(formData.from)} → ${formatDateForDisplay(formData.to)}` 
     : '';
   
-  // Calculate weeks for both dates
   const startWeek = formData.from ? calculateWeek(formData.from) : '';
   const endWeek = formData.to ? calculateWeek(formData.to) : '';
   const weeksDisplay = startWeek && endWeek ? `${startWeek} → ${endWeek}` : startWeek || endWeek || '';
+
+  if (!isOpen || !order) return null;
 
   return (
     <div 
@@ -373,272 +312,349 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
           </button>
         </div>
 
-        {/* Form */}
+        {/* Tabs */}
+        <div className="border-b border-gray-200">
+          <nav className="flex space-x-8 px-6" aria-label="Tabs">
+            <button
+              onClick={() => setActiveTab('main')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'main'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Pagrindinė informacija
+            </button>
+            <button
+              onClick={() => setActiveTab('screens')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'screens'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Ekranai
+            </button>
+          </nav>
+        </div>
+
+        {/* Content */}
         <div className="p-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Left Column */}
-            <div className="space-y-4">
-              {/* Pavadinimas */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Pavadinimas
-                </label>
-                <input
-                  type="text"
-                  value={formData.client || ''}
-                  onChange={(e) => handleInputChange('client', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-
-              {/* Užsakymo Nr. */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Užsakymo Nr.
-                </label>
-                <input
-                  type="text"
-                  value={formData.invoice_id || ''}
-                  onChange={(e) => handleInputChange('invoice_id', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-
-              {/* Data nuo */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Data nuo
-                </label>
-                <input
-                  type="text"
-                  key={`from-${formData.from}`}
-                  value={formData.from ? formatDateForDisplay(formData.from) : ''}
-                  onChange={(e) => handleInputChange('from', e.target.value)}
-                  pattern="\d{4}-\d{2}-\d{2}"
-                  placeholder="yyyy-mm-dd"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-                {/* Removed CalendarIcon - browser shows its own icon */}
-              </div>
-
-              {/* Komentaras */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Komentaras
-                </label>
-                <textarea
-                  value={comment}
-                  onChange={(e) => setComment(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      if (comment.trim()) {
-                        handleSaveComment();
-                      }
-                    }
-                    // Ctrl+Enter (or Cmd+Enter on Mac) also saves comment
-                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                      e.preventDefault();
-                      if (comment.trim()) {
-                        handleSaveComment();
-                      }
-                    }
-                    // Shift+Enter allows new line
-                    if (e.key === 'Enter' && e.shiftKey) {
-                      // Allow default behavior (new line)
-                    }
-                  }}
-                  rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Įveskite komentarą... (Enter - išsaugoti komentarą, Shift+Enter - nauja eilutė)"
-                />
-                
-                {/* Existing Comments */}
-                {comments.length > 0 && (
-                  <div className="mt-4">
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">Esami komentarai:</h4>
-                    <div className="space-y-2 max-h-32 overflow-y-auto">
-                      {comments.map((comment) => (
-                        <div key={comment.id} className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                          <p className="text-sm text-gray-800">{comment.text}</p>
-                          <p className="text-xs text-gray-500 mt-1">
-                            {new Date(comment.created_at).toLocaleString('lt-LT')}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
+          {/* Main Tab */}
+          {activeTab === 'main' && (
+            <>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Left Column */}
+                <div className="space-y-4">
+                  {/* Pavadinimas */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Pavadinimas
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.client || ''}
+                      onChange={(e) => handleInputChange('client', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
                   </div>
-                )}
-              </div>
 
-              {/* Failai / Print screen */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Failai / Print screen
-                </label>
-                <div className="space-y-2">
-                  <input
-                    type="file"
-                    multiple
-                    onChange={handleFileUpload}
-                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                  />
-                  <p className="text-xs text-gray-500">
-                    Galite ir įklijuoti ekrano nuotrauką su Cmd/Ctrl+V
-                  </p>
-                  {selectedFiles.length > 0 && (
-                    <div className="text-sm text-gray-600">
-                      Pasirinkta failų: {selectedFiles.length}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Right Column */}
-            <div className="space-y-4">
-              {/* Statusas */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Statusas
-                </label>
-                <select
-                  value={formData.approved ? 'taip' : 'ne'}
-                  onChange={(e) => handleInputChange('approved', e.target.value === 'taip')}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="taip">Patvirtinta</option>
-                  <option value="ne">Nepatvirtinta</option>
-                </select>
-              </div>
-
-              {/* Intensyvumas */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Intensyvumas
-                </label>
-                <select
-                  value={intensity}
-                  onChange={(e) => setIntensity(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="kas_4">Kas 4</option>
-                  <option value="kas_6">Kas 6</option>
-                  <option value="kas_8">Kas 8</option>
-                  <option value="kas_12">Kas 12</option>
-                  <option value="kas_24">Kas 24</option>
-                </select>
-              </div>
-
-              {/* Data iki */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Data iki
-                </label>
-                <input
-                  type="text"
-                  key={`to-${formData.to}`}
-                  value={formData.to ? formatDateForDisplay(formData.to) : ''}
-                  onChange={(e) => handleInputChange('to', e.target.value)}
-                  pattern="\d{4}-\d{2}-\d{2}"
-                  placeholder="yyyy-mm-dd"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-                {/* Removed CalendarIcon - browser shows its own icon */}
-              </div>
-
-              {/* Priminimo data */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Priminimo data
-                </label>
-                <input
-                  type="text"
-                  key={`reminder-${reminderDate}`}
-                  value={(() => {
-                    const formattedValue = reminderDate && reminderDate.trim() ? formatDateForDisplay(reminderDate) : '';
-                    console.log('🔍 Reminder date input value:', { reminderDate, formattedValue });
-                    return formattedValue;
-                  })()}
-                  onChange={(e) => {
-                    console.log('🔍 Reminder date changed:', e.target.value);
-                    setReminderDate(e.target.value);
-                  }}
-                  pattern="\d{4}-\d{2}-\d{2}"
-                  placeholder="yyyy-mm-dd"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-
-              {/* Priminimo žinutė */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Priminimo žinutė
-                </label>
-                <input
-                  type="text"
-                  value={reminderMessage}
-                  onChange={(e) => setReminderMessage(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Pvz.: perskambinti, patvirtinti užsakymą..."
-                />
-                
-                {/* Existing Reminders */}
-                {reminders.length > 0 && (
-                  <div className="mt-4">
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">Esami priminimai:</h4>
-                    <div className="space-y-2 max-h-32 overflow-y-auto">
-                      {reminders.map((reminder) => (
-                        <div key={reminder.id} className="bg-green-50 border border-green-200 rounded-lg p-3">
-                          <p className="text-sm text-gray-800 font-medium">{reminder.title}</p>
-                          <p className="text-xs text-gray-500 mt-1">
-                            Iki: {new Date(reminder.due_date).toLocaleDateString('lt-LT')}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
+                  {/* Užsakymo Nr. */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Užsakymo Nr.
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.invoice_id || ''}
+                      onChange={(e) => handleInputChange('invoice_id', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
                   </div>
-                )}
-              </div>
-            </div>
-          </div>
 
-          {/* Additional Info */}
-          <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-sm text-gray-600">
-              <div>
-                <span className="font-medium">Transliacijų laikotarpis:</span> 
-                <span className="ml-2 font-semibold text-blue-600">{broadcastPeriod}</span>
-              </div>
-              <div>
-                <span className="font-medium">Savaitės:</span> 
-                <span className="ml-2 font-semibold text-green-600">{weeksDisplay}</span>
-              </div>
-            </div>
-            
-            {/* Monthly Distribution */}
-            {formData.from && formData.to && formData.final_price && (
-              <div className="mt-4 pt-4 border-t border-gray-200">
+                  {/* Data nuo */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Data nuo
+                    </label>
+                    <input
+                      type="text"
+                      key={`from-${formData.from}`}
+                      value={formData.from ? formatDateForDisplay(formData.from) : ''}
+                      onChange={(e) => handleInputChange('from', e.target.value)}
+                      pattern="\d{4}-\d{2}-\d{2}"
+                      placeholder="yyyy-mm-dd"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
 
-                <div className="space-y-2">
-                  {(() => {
-                    const distribution = calculateMonthlyDistribution(formData.from, formData.to, formData.final_price);
-                    console.log('🔍 Monthly distribution for display:', distribution);
-                    return distribution.map((month) => (
-                      <div key={month.month} className="text-sm text-gray-900">
-                        {month.monthName} {month.year} ({month.days} d.) → {month.amount.toFixed(2)}€
+                  {/* Komentaras */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Komentaras
+                    </label>
+                    <textarea
+                      value={comment}
+                      onChange={(e) => setComment(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          if (comment.trim()) {
+                            handleSaveComment();
+                          }
+                        }
+                        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                          e.preventDefault();
+                          if (comment.trim()) {
+                            handleSaveComment();
+                          }
+                        }
+                      }}
+                      rows={3}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Įveskite komentarą... (Enter - išsaugoti komentarą, Shift+Enter - nauja eilutė)"
+                    />
+                    
+                    {/* Existing Comments */}
+                    {comments.length > 0 && (
+                      <div className="mt-4">
+                        <h4 className="text-sm font-medium text-gray-700 mb-2">Esami komentarai:</h4>
+                        <div className="space-y-2 max-h-32 overflow-y-auto">
+                          {comments.map((comment) => (
+                            <div key={comment.id} className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                              <p className="text-sm text-gray-800">{comment.text}</p>
+                              <p className="text-xs text-gray-500 mt-1">
+                                {new Date(comment.created_at).toLocaleString('lt-LT')}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    ));
-                  })()}
-                  <div className="pt-2 border-t border-gray-200">
-                    <div className="text-sm font-semibold text-gray-900">
-                      Viso: {formData.final_price?.toFixed(2)}€
+                    )}
+                  </div>
+
+                  {/* Failai / Print screen */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Failai / Print screen
+                    </label>
+                    <div className="space-y-2">
+                      <input
+                        type="file"
+                        multiple
+                        onChange={handleFileUpload}
+                        className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                      />
+                      <p className="text-xs text-gray-500">
+                        Galite ir įklijuoti ekrano nuotrauką su Cmd/Ctrl+V
+                      </p>
+                      {selectedFiles.length > 0 && (
+                        <div className="text-sm text-gray-600">
+                          Pasirinkta failų: {selectedFiles.length}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
+
+                {/* Right Column */}
+                <div className="space-y-4">
+                  {/* Statusas */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Statusas
+                    </label>
+                    <select
+                      value={formData.approved ? 'taip' : 'ne'}
+                      onChange={(e) => handleInputChange('approved', e.target.value === 'taip')}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="taip">Patvirtinta</option>
+                      <option value="ne">Nepatvirtinta</option>
+                    </select>
+                  </div>
+
+                  {/* Intensyvumas */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Intensyvumas
+                    </label>
+                    <select
+                      value={intensity}
+                      onChange={(e) => setIntensity(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="kas_4">Kas 4</option>
+                      <option value="kas_6">Kas 6</option>
+                      <option value="kas_8">Kas 8</option>
+                      <option value="kas_12">Kas 12</option>
+                      <option value="kas_24">Kas 24</option>
+                    </select>
+                  </div>
+
+                  {/* Data iki */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Data iki
+                    </label>
+                    <input
+                      type="text"
+                      key={`to-${formData.to}`}
+                      value={formData.to ? formatDateForDisplay(formData.to) : ''}
+                      onChange={(e) => handleInputChange('to', e.target.value)}
+                      pattern="\d{4}-\d{2}-\d{2}"
+                      placeholder="yyyy-mm-dd"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  {/* Priminimo data */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Priminimo data
+                    </label>
+                    <input
+                      type="text"
+                      key={`reminder-${reminderDate}`}
+                      value={reminderDate && reminderDate.trim() ? formatDateForDisplay(reminderDate) : ''}
+                      onChange={(e) => setReminderDate(e.target.value)}
+                      pattern="\d{4}-\d{2}-\d{2}"
+                      placeholder="yyyy-mm-dd"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  {/* Priminimo žinutė */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Priminimo žinutė
+                    </label>
+                    <input
+                      type="text"
+                      value={reminderMessage}
+                      onChange={(e) => setReminderMessage(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Pvz.: perskambinti, patvirtinti užsakymą..."
+                    />
+                    
+                    {/* Existing Reminders */}
+                    {reminders.length > 0 && (
+                      <div className="mt-4">
+                        <h4 className="text-sm font-medium text-gray-700 mb-2">Esami priminimai:</h4>
+                        <div className="space-y-2 max-h-32 overflow-y-auto">
+                          {reminders.map((reminder) => (
+                            <div key={reminder.id} className="bg-green-50 border border-green-200 rounded-lg p-3">
+                              <p className="text-sm text-gray-800 font-medium">{reminder.title}</p>
+                              <p className="text-xs text-gray-500 mt-1">
+                                Iki: {new Date(reminder.due_date).toLocaleDateString('lt-LT')}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
-            )}
-          </div>
+
+              {/* Additional Info */}
+              <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-sm text-gray-600">
+                  <div>
+                    <span className="font-medium">Transliacijų laikotarpis:</span> 
+                    <span className="ml-2 font-semibold text-blue-600">{broadcastPeriod}</span>
+                  </div>
+                  <div>
+                    <span className="font-medium">Savaitės:</span> 
+                    <span className="ml-2 font-semibold text-green-600">{weeksDisplay}</span>
+                  </div>
+                </div>
+                
+                {/* Monthly Distribution */}
+                {formData.from && formData.to && formData.final_price && (
+                  <div className="mt-4 pt-4 border-t border-gray-200">
+                    <div className="space-y-2">
+                      {(() => {
+                        const distribution = calculateMonthlyDistribution(formData.from, formData.to, formData.final_price);
+                        return distribution.map((month) => (
+                          <div key={month.month} className="text-sm text-gray-900">
+                            {month.monthName} {month.year} ({month.days} d.) → {month.amount.toFixed(2)}€
+                          </div>
+                        ));
+                      })()}
+                      <div className="pt-2 border-t border-gray-200">
+                        <div className="text-sm font-semibold text-gray-900">
+                          Viso: {formData.final_price?.toFixed(2)}€
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* Screens Tab */}
+          {activeTab === 'screens' && (
+            <div className="space-y-6">
+              <div className="p-4 bg-blue-50 rounded-lg">
+                <h3 className="text-lg font-medium text-blue-900 mb-4">Užsakyme esančių ekranų sąrašas</h3>
+                
+                {/* Add New Screen */}
+                <div className="mb-4 flex gap-2">
+                  <input
+                    type="text"
+                    value={newScreen}
+                    onChange={(e) => setNewScreen(e.target.value)}
+                    placeholder="Įveskite ekrano pavadinimą..."
+                    className="flex-1 px-3 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && newScreen.trim()) {
+                        const newScreens = [...(formData.screens || []), newScreen.trim()];
+                        setFormData(prev => ({ ...prev, screens: newScreens }));
+                        setNewScreen('');
+                      }
+                    }}
+                  />
+                  <button
+                    onClick={() => {
+                      if (newScreen.trim()) {
+                        const newScreens = [...(formData.screens || []), newScreen.trim()];
+                        setFormData(prev => ({ ...prev, screens: newScreens }));
+                        setNewScreen('');
+                      }
+                    }}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    Pridėti
+                  </button>
+                </div>
+                
+                {formData.screens && formData.screens.length > 0 ? (
+                  <div className="space-y-3">
+                    {formData.screens.map((screen, index) => (
+                      <div key={index} className="flex items-center justify-between p-3 bg-white border border-blue-200 rounded-lg">
+                        <span className="text-blue-900 font-medium">{screen}</span>
+                        <button
+                          onClick={() => {
+                            const newScreens = formData.screens?.filter((_, i) => i !== index) || [];
+                            setFormData(prev => ({ ...prev, screens: newScreens }));
+                          }}
+                          className="text-red-500 hover:text-red-700 transition-colors"
+                        >
+                          <XMarkIcon className="w-5 h-5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-blue-600">
+                    <p>Šiame užsakyme nėra pasirinktų ekranų</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Action Buttons */}
