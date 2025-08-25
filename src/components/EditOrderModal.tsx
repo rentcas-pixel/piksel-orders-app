@@ -43,7 +43,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
         media_received: order.media_received,
         final_price: order.final_price,
         invoice_sent: order.invoice_sent,
-        screens: (order as any).screens || []
+        screens: (order as Order & { screens?: string[] }).screens || []
       });
       
       if (order.intensity) {
@@ -208,7 +208,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
       const month = String(date.getMonth() + 1).padStart(2, '0');
       const day = String(date.getDate()).padStart(2, '0');
       return `${year}-${month}-${day}`;
-    } catch (error) {
+    } catch {
       return dateString;
     }
   };
