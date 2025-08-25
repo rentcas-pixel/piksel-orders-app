@@ -174,8 +174,8 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
         monthEntry.days++;
         console.log('🔍 Incremented days for month:', monthKey, 'new total:', monthEntry.days);
         
-        // Move to next day - use a new Date object to avoid mutation issues
-        currentDate.setDate(currentDate.getDate() + 1);
+        // Move to next day - create new Date object to avoid mutation issues
+        currentDate = new Date(currentDate.getTime() + 24 * 60 * 60 * 1000);
       }
       
       // Calculate amounts for each month
