@@ -151,34 +151,34 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
       let currentDate = new Date(start);
       const endDate = new Date(end);
       
-      while (currentDate <= endDate) {
-        const month = currentDate.getMonth();
-        const year = currentDate.getFullYear();
-        const monthKey = `${year}-${month}`;
-        
-        console.log('🔍 Processing date:', currentDate.toLocaleDateString(), 'month:', month, 'year:', year, 'monthKey:', monthKey);
-        
-        // Find existing month entry
-        let monthEntry = monthlyDistribution.find(m => m.month === monthKey);
-        
-        if (!monthEntry) {
-          monthEntry = {
-            month: monthKey,
-            year,
-            days: 0,
-            amount: 0,
-            monthName: monthNames[month]
-          };
-          monthlyDistribution.push(monthEntry);
-          console.log('🔍 Created new month entry:', monthEntry);
-        }
-        
-        monthEntry.days++;
-        console.log('🔍 Incremented days for month:', monthKey, 'new total:', monthEntry.days);
-        
-        // Move to next day - create new Date object to avoid mutation issues
-        currentDate = new Date(currentDate.getTime() + 24 * 60 * 60 * 1000);
-      }
+                  while (currentDate <= endDate) {
+              const month = currentDate.getMonth() + 1; // Fix: +1 to get 1-based month numbers
+              const year = currentDate.getFullYear();
+              const monthKey = `${year}-${month}`;
+              
+              console.log('🔍 Processing date:', currentDate.toLocaleDateString(), 'month:', month, 'year:', year, 'monthKey:', monthKey);
+              
+              // Find existing month entry
+              let monthEntry = monthlyDistribution.find(m => m.month === monthKey);
+              
+              if (!monthEntry) {
+                monthEntry = {
+                  month: monthKey,
+                  year,
+                  days: 0,
+                  amount: 0,
+                  monthName: monthNames[month - 1] // Fix: -1 because monthNames is 0-based
+                };
+                monthlyDistribution.push(monthEntry);
+                console.log('🔍 Created new month entry:', monthEntry);
+              }
+              
+              monthEntry.days++;
+              console.log('🔍 Incremented days for month:', monthKey, 'new total:', monthEntry.days);
+              
+              // Move to next day - create new Date object to avoid mutation issues
+              currentDate = new Date(currentDate.getTime() + 24 * 60 * 60 * 1000);
+            }
       
       // Calculate amounts for each month
       monthlyDistribution.forEach(month => {
