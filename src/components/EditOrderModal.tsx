@@ -128,9 +128,21 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
         return [];
       }
       
-      // Calculate total days
-      const totalDays = Math.ceil((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
-      console.log('🔍 Total days:', totalDays);
+                  // Calculate total days using date-fns differenceInDays for precision
+            const totalDays = Math.ceil((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+            console.log('🔍 Total days calculated:', totalDays);
+            
+            // Double-check with manual count
+            let manualDayCount = 0;
+            let checkDate = new Date(start);
+            while (checkDate <= end) {
+              manualDayCount++;
+              const nextCheckDate = new Date(checkDate);
+              nextCheckDate.setDate(nextCheckDate.getDate() + 1);
+              checkDate = nextCheckDate;
+            }
+            console.log('🔍 Manual day count:', manualDayCount);
+            console.log('🔍 Using manual count for calculations');
       
       const monthlyDistribution: Array<{
         month: string;
@@ -187,11 +199,11 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
               console.log('🔍 Moved to next day:', currentDate.toLocaleDateString());
             }
       
-      // Calculate amounts for each month
-      monthlyDistribution.forEach(month => {
-        month.amount = (month.days / totalDays) * totalAmount;
-        console.log('🔍 Calculated amount for', month.monthName, month.year, ':', month.days, 'days =', month.amount.toFixed(2), '€');
-      });
+                  // Calculate amounts for each month using manual day count
+            monthlyDistribution.forEach(month => {
+              month.amount = (month.days / manualDayCount) * totalAmount;
+              console.log('🔍 Calculated amount for', month.monthName, month.year, ':', month.days, 'days =', month.amount.toFixed(2), '€ (using', manualDayCount, 'total days)');
+            });
       
       console.log('🔍 Final monthly distribution:', monthlyDistribution);
       return monthlyDistribution;
