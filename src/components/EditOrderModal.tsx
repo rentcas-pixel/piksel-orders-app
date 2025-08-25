@@ -15,7 +15,7 @@ interface EditOrderModalProps {
 
 export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditOrderModalProps) {
   // State variables
-  const [formData, setFormData] = useState<Partial<Order> & { screens?: string[] }>({});
+  const [formData, setFormData] = useState<Partial<Order>>({});
   const [comment, setComment] = useState('');
   const [reminderDate, setReminderDate] = useState('');
   const [reminderMessage, setReminderMessage] = useState('');
@@ -24,8 +24,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
-  const [activeTab, setActiveTab] = useState<'main' | 'screens'>('main');
-  const [newScreen, setNewScreen] = useState('');
+
 
   // Load order data when modal opens
   useEffect(() => {
@@ -43,7 +42,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
         media_received: order.media_received,
         final_price: order.final_price,
         invoice_sent: order.invoice_sent,
-        screens: (order as Order & { screens?: string[] }).screens || []
+
       });
       
       if (order.intensity) {
@@ -312,38 +311,11 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
           </button>
         </div>
 
-        {/* Tabs */}
-        <div className="border-b border-gray-200">
-          <nav className="flex space-x-8 px-6" aria-label="Tabs">
-            <button
-              onClick={() => setActiveTab('main')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'main'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              Pagrindinė informacija
-            </button>
-            <button
-              onClick={() => setActiveTab('screens')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'screens'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              Ekranai
-            </button>
-          </nav>
-        </div>
+
 
         {/* Content */}
         <div className="p-6">
-          {/* Main Tab */}
-          {activeTab === 'main' && (
-            <>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Left Column */}
                 <div className="space-y-4">
                   {/* Pavadinimas */}
@@ -591,70 +563,6 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                   </div>
                 )}
               </div>
-            </>
-          )}
-
-          {/* Screens Tab */}
-          {activeTab === 'screens' && (
-            <div className="space-y-6">
-              <div className="p-4 bg-blue-50 rounded-lg">
-                <h3 className="text-lg font-medium text-blue-900 mb-4">Užsakyme esančių ekranų sąrašas</h3>
-                
-                {/* Add New Screen */}
-                <div className="mb-4 flex gap-2">
-                  <input
-                    type="text"
-                    value={newScreen}
-                    onChange={(e) => setNewScreen(e.target.value)}
-                    placeholder="Įveskite ekrano pavadinimą..."
-                    className="flex-1 px-3 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && newScreen.trim()) {
-                        const newScreens = [...(formData.screens || []), newScreen.trim()];
-                        setFormData(prev => ({ ...prev, screens: newScreens }));
-                        setNewScreen('');
-                      }
-                    }}
-                  />
-                  <button
-                    onClick={() => {
-                      if (newScreen.trim()) {
-                        const newScreens = [...(formData.screens || []), newScreen.trim()];
-                        setFormData(prev => ({ ...prev, screens: newScreens }));
-                        setNewScreen('');
-                      }
-                    }}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                  >
-                    Pridėti
-                  </button>
-                </div>
-                
-                {formData.screens && formData.screens.length > 0 ? (
-                  <div className="space-y-3">
-                    {formData.screens.map((screen, index) => (
-                      <div key={index} className="flex items-center justify-between p-3 bg-white border border-blue-200 rounded-lg">
-                        <span className="text-blue-900 font-medium">{screen}</span>
-                        <button
-                          onClick={() => {
-                            const newScreens = formData.screens?.filter((_, i) => i !== index) || [];
-                            setFormData(prev => ({ ...prev, screens: newScreens }));
-                          }}
-                          className="text-red-500 hover:text-red-700 transition-colors"
-                        >
-                          <XMarkIcon className="w-5 h-5" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-8 text-blue-600">
-                    <p>Šiame užsakyme nėra pasirinktų ekranų</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Action Buttons */}
