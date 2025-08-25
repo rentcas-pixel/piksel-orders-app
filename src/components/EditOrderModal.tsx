@@ -420,9 +420,34 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                       <p className="text-xs text-gray-500">
                         Galite ir įklijuoti ekrano nuotrauką su Cmd/Ctrl+V
                       </p>
+                      
+                      {/* Selected Files List */}
                       {selectedFiles.length > 0 && (
-                        <div className="text-sm text-gray-600">
-                          Pasirinkta failų: {selectedFiles.length}
+                        <div className="mt-4">
+                          <h4 className="text-sm font-medium text-gray-700 mb-2">Pasirinkti failai:</h4>
+                          <div className="space-y-2 max-h-32 overflow-y-auto">
+                            {selectedFiles.map((file, index) => (
+                              <div key={index} className="flex items-center justify-between p-2 bg-gray-50 border border-gray-200 rounded-lg">
+                                <div className="flex items-center space-x-2">
+                                  <span className="text-xs text-gray-500">📎</span>
+                                  <span className="text-sm text-gray-800 truncate max-w-32">{file.name}</span>
+                                  <span className="text-xs text-gray-500">({(file.size / 1024).toFixed(1)} KB)</span>
+                                </div>
+                                <button
+                                  onClick={() => {
+                                    const newFiles = selectedFiles.filter((_, i) => i !== index);
+                                    setSelectedFiles(newFiles);
+                                  }}
+                                  className="text-red-500 hover:text-red-700 transition-colors ml-2"
+                                >
+                                  <XMarkIcon className="w-4 h-4" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="text-sm text-gray-600 mt-2">
+                            Iš viso: {selectedFiles.length} failas(ai)
+                          </div>
                         </div>
                       )}
                     </div>
