@@ -130,12 +130,16 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
       
       console.log('🔍 Starting calculation from:', current.toISOString(), 'to:', end.toISOString());
       
-      while (current <= end) {
-        const month = current.getMonth();
-        const year = current.getFullYear();
+      // Use a different approach - iterate through each day and ensure we include the end date
+      const currentDate = new Date(start);
+      const endDate = new Date(end);
+      
+      while (currentDate <= endDate) {
+        const month = currentDate.getMonth();
+        const year = currentDate.getFullYear();
         const monthKey = `${year}-${month}`;
         
-        console.log('🔍 Processing date:', current.toISOString(), 'month:', month, 'year:', year, 'monthKey:', monthKey);
+        console.log('🔍 Processing date:', currentDate.toISOString(), 'month:', month, 'year:', year, 'monthKey:', monthKey);
         
         // Find existing month entry
         let monthEntry = monthlyDistribution.find(m => m.month === monthKey);
@@ -155,8 +159,8 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
         monthEntry.days++;
         console.log('🔍 Incremented days for month:', monthKey, 'new total:', monthEntry.days);
         
-        // Move to next day
-        current.setDate(current.getDate() + 1);
+        // Move to next day - use a new Date object to avoid mutation issues
+        currentDate.setDate(currentDate.getDate() + 1);
       }
       
       // Calculate amounts for each month
