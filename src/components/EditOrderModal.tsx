@@ -94,6 +94,67 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
     }
   };
 
+  const calculateMonthlyDistribution = (fromDate: string, toDate: string, totalAmount: number) => {
+    try {
+      if (!fromDate || !toDate || !totalAmount) return [];
+      
+      const start = new Date(fromDate);
+      const end = new Date(toDate);
+      
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) return [];
+      
+      // Calculate total days
+      const totalDays = Math.ceil((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+      
+      const monthlyDistribution: Array<{
+        month: string;
+        year: number;
+        days: number;
+        amount: number;
+        monthName: string;
+      }> = [];
+      
+      const current = new Date(start);
+      const monthNames = [
+        'Sausis', 'Vasaris', 'Kovas', 'Balandis', 'Gegužė', 'Birželis',
+        'Liepa', 'Rugpjūtis', 'Rugsėjis', 'Spalis', 'Lapkritis', 'Gruodis'
+      ];
+      
+      while (current <= end) {
+        const month = current.getMonth();
+        const year = current.getFullYear();
+        const monthKey = `${year}-${month}`;
+        
+        // Find existing month entry
+        let monthEntry = monthlyDistribution.find(m => m.month === monthKey);
+        
+        if (!monthEntry) {
+          monthEntry = {
+            month: monthKey,
+            year,
+            days: 0,
+            amount: 0,
+            monthName: monthNames[month]
+          };
+          monthlyDistribution.push(monthEntry);
+        }
+        
+        monthEntry.days++;
+        current.setDate(current.getDate() + 1);
+      }
+      
+      // Calculate amounts for each month
+      monthlyDistribution.forEach(month => {
+        month.amount = (month.days / totalDays) * totalAmount;
+      });
+      
+      return monthlyDistribution;
+    } catch (error) {
+      console.error('❌ Error calculating monthly distribution:', error);
+      return [];
+    }
+  };
+
   const formatDateForDisplay = (dateString: string) => {
     console.log('🔍 formatDateForDisplay input:', dateString, 'type:', typeof dateString);
     
@@ -496,6 +557,33 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                 <span className="ml-2 font-semibold text-green-600">{weeksDisplay}</span>
               </div>
             </div>
+            
+            {/* Monthly Distribution */}
+            {formData.from && formData.to && formData.final_price && (
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <h4 className="font-medium text-gray-700 mb-3">Mėnesių sumų pasiskirstymas:</h4>
+                <div className="space-y-2">
+                  {calculateMonthlyDistribution(formData.from, formData.to, formData.final_price).map((month) => (
+                    <div key={month.month} className="flex justify-between items-center text-sm">
+                      <span className="text-gray-600">
+                        {month.monthName} {month.year} ({month.days} d.)
+                      </span>
+                      <span className="font-semibold text-purple-600">
+                        {month.amount.toFixed(2)}€
+                      </span>
+                    </div>
+                  ))}
+                  <div className="pt-2 border-t border-gray-200">
+                    <div className="flex justify-between items-center font-medium">
+                      <span className="text-gray-700">Iš viso:</span>
+                      <span className="text-lg font-bold text-purple-700">
+                        {formData.final_price?.toFixed(2)}€
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
