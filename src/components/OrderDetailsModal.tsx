@@ -83,7 +83,7 @@ export function OrderDetailsModal({ order, isOpen, onClose }: OrderDetailsModalP
     
     try {
       const file = event.target.files[0];
-      const fileAttachment = await SupabaseService.saveFileToDatabase(order.id, file);
+      const fileAttachment = await SupabaseService.uploadFileToStorage(order.id, file);
       setFiles(prev => [fileAttachment, ...prev]);
     } catch (error) {
       console.error('Failed to upload file:', error);

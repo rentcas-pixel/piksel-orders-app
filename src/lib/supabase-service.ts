@@ -110,46 +110,72 @@ export class SupabaseService {
     return data || [];
   }
 
-  static async saveFileToDatabase(orderId: string, file: File): Promise<FileAttachment> {
-    console.log('🔍 Starting file save to database...');
+  static async uploadFileToStorage(orderId: string, file: File): Promise<FileAttachment> {
+    console.log('🔍 Starting file upload to Storage...');
     
-    // Konvertuoti failą į base64 string
-    const arrayBuffer = await file.arrayBuffer();
-    const base64String = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-    
-    // Sukurti data URL
-    const dataUrl = `data:${file.type || 'application/octet-stream'};base64,${base64String}`;
-    
-    console.log('📤 Inserting file into database:', file.name);
-    
-    // Išsaugoti failo informaciją į duomenų bazę
-    const { data: fileData, error: insertError } = await supabase
-      .from('file_attachments')
-      .insert([{
+    try {
+      // 1. Įkelti failą į Supabase Storage
+      const fileName = `${Date.now()}_${file.name}`;
+      const storagePath = `${orderId}/${fileName}`;
+      
+      console.log('📤 Uploading to Storage:', storagePath);
+      
+      const { error: uploadError } = await supabase.storage
+        .from('orders-new')
+        .upload(storagePath, file);
+      
+      if (uploadError) {
+        console.error('❌ Storage upload failed:', uploadError);
+        throw uploadError;
+      }
+      
+      // 2. Gauti public URL
+      const { data: urlData } = supabase.storage
+        .from('orders-new')
+        .getPublicUrl(storagePath);
+      
+      if (!urlData.publicUrl) {
+        throw new Error('Failed to get public URL');
+      }
+      
+      // 3. Išsaugoti metaduomenis į DB (tik plokščias objektas)
+      const metadata = {
+        order_id: orderId,
+        storage_path: storagePath,
+        original_name: file.name,
+        size_bytes: file.size,
+        mime_type: file.type || 'application/octet-stream',
+        uploaded_at: new Date().toISOString()
+      };
+      
+      console.log('📤 Saving metadata to DB:', metadata);
+      
+      const { data: fileData, error: insertError } = await supabase
+        .from('file_attachments')
+        .insert([metadata])
+        .select()
+        .single();
+      
+      if (insertError) {
+        console.error('❌ Failed to save metadata:', insertError);
+        throw insertError;
+      }
+      
+      console.log('✅ File uploaded successfully:', file.name);
+      
+      return {
+        id: fileData.id,
         order_id: orderId,
         filename: file.name,
-        file_url: dataUrl,
+        file_url: urlData.publicUrl,
         file_type: file.type || 'application/octet-stream',
-        created_at: new Date().toISOString()
-      }])
-      .select()
-      .single();
-    
-    if (insertError) {
-      console.error('❌ Failed to insert file attachment:', insertError);
-      throw insertError;
+        created_at: fileData.created_at
+      };
+      
+    } catch (error) {
+      console.error('❌ Upload failed:', error);
+      throw error;
     }
-    
-    console.log('✅ File saved to database:', file.name);
-    
-    return {
-      id: fileData.id,
-      order_id: orderId,
-      filename: file.name,
-      file_url: dataUrl,
-      file_type: file.type || 'application/octet-stream',
-      created_at: fileData.created_at
-    };
   }
 
   static async deleteFile(id: string): Promise<void> {
