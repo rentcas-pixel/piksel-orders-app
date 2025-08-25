@@ -101,9 +101,14 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
       console.log('🔍 calculateMonthlyDistribution input:', { fromDate, toDate, totalAmount });
       
       // Parse dates without timezone issues using Date constructor with year, month, day
-      const [startYear, startMonth, startDay] = fromDate.split('-').map(Number);
-      const [endYear, endMonth, endDay] = toDate.split('-').map(Number);
+      // Clean dates by removing time part first
+      const cleanFromDate = fromDate.split(' ')[0]; // Take only date part, remove time
+      const cleanToDate = toDate.split(' ')[0]; // Take only date part, remove time
       
+      const [startYear, startMonth, startDay] = cleanFromDate.split('-').map(Number);
+      const [endYear, endMonth, endDay] = cleanToDate.split('-').map(Number);
+      
+      console.log('🔍 Clean dates:', { cleanFromDate, cleanToDate });
       console.log('🔍 Parsed date parts:', { startYear, startMonth, startDay, endYear, endMonth, endDay });
       
       const start = new Date(startYear, startMonth - 1, startDay);
