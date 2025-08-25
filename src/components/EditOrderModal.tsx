@@ -100,6 +100,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
       
       console.log('🔍 calculateMonthlyDistribution input:', { fromDate, toDate, totalAmount });
       console.log('🚀 NEW VERSION - Date mutation fixed!');
+      console.log('🔍 DEBUG: Starting monthly distribution calculation...');
       
       // Parse dates without timezone issues using Date constructor with year, month, day
       // Clean dates by removing time part first
