@@ -148,6 +148,23 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
 
 
 
+  const handleSaveComment = async () => {
+    if (!order || !comment.trim()) return;
+    
+    try {
+      const newComment = await SupabaseService.addComment({
+        order_id: order.id,
+        text: comment
+      });
+      setComments(prev => [newComment, ...prev]);
+      setComment(''); // Clear comment input
+      console.log('✅ Komentaras išsaugotas Supabase');
+    } catch (error) {
+      console.error('❌ Failed to save comment:', error);
+      alert('Klaida išsaugant komentarą. Bandykite dar kartą.');
+    }
+  };
+
   const handleSave = async () => {
     if (!order) return;
     
@@ -156,16 +173,6 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
       // Update order in PocketBase
       const updatedOrder = await PocketBaseService.updateOrder(order.id, formData);
       
-      // Save comment if exists
-      if (comment.trim()) {
-        const newComment = await SupabaseService.addComment({
-          order_id: order.id,
-          text: comment
-        });
-        setComments(prev => [newComment, ...prev]);
-        console.log('✅ Komentaras išsaugotas Supabase');
-      }
-
       // Save reminder if exists
       if (reminderDate && reminderMessage.trim()) {
         const newReminder = await SupabaseService.addReminder(order.id, {
@@ -186,7 +193,6 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
       console.log('✅ Užsakymas atnaujintas, modalas užsidaro');
       
       // Clear form data after successful save
-      setComment('');
       setReminderDate('');
       setReminderMessage('');
       setSelectedFiles([]);
@@ -308,14 +314,14 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
                       if (comment.trim()) {
-                        handleSave();
+                        handleSaveComment();
                       }
                     }
-                    // Ctrl+Enter (or Cmd+Enter on Mac) also saves
+                    // Ctrl+Enter (or Cmd+Enter on Mac) also saves comment
                     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
                       e.preventDefault();
                       if (comment.trim()) {
-                        handleSave();
+                        handleSaveComment();
                       }
                     }
                     // Shift+Enter allows new line
@@ -325,7 +331,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                   }}
                   rows={3}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Įveskite komentarą... (Enter - išsaugoti, Shift+Enter - nauja eilutė, Ctrl+Enter - išsaugoti)"
+                  placeholder="Įveskite komentarą... (Enter - išsaugoti komentarą, Shift+Enter - nauja eilutė)"
                 />
                 
                 {/* Existing Comments */}
