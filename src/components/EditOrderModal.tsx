@@ -21,7 +21,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
   const [reminderMessage, setReminderMessage] = useState('');
   const [intensity, setIntensity] = useState('kas_4');
   const [loading, setLoading] = useState(false);
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+
   const [comments, setComments] = useState<Comment[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
 
@@ -76,23 +76,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
     }));
   };
 
-  // Handle file upload
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files || []);
-    setSelectedFiles(prev => [...prev, ...files]);
-  };
 
-  // Handle file download
-  const handleFileDownload = (file: File) => {
-    const url = URL.createObjectURL(file);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = file.name;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
 
   // Calculate week number
   const calculateWeek = (dateString: string) => {
@@ -260,22 +244,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
         });
       }
       
-      // Upload files to Supabase if exists
-      if (selectedFiles.length > 0) {
-        try {
-          console.log('🚀 Starting file upload to Supabase...');
-          console.log('🔍 Supabase configuration check...');
-          for (const file of selectedFiles) {
-            console.log('📤 Uploading file:', file.name, 'size:', file.size);
-            await SupabaseService.uploadFileToStorage(order.id, file);
-            console.log('✅ File uploaded to Supabase:', file.name);
-          }
-          console.log('🎉 All files uploaded successfully!');
-        } catch (error) {
-          console.error('❌ Failed to upload files:', error);
-          alert('Klaida įkeliant failus. Bandykite dar kartą.');
-        }
-      }
+
       
       onOrderUpdated(updatedOrder);
       onClose();
@@ -433,58 +402,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                   </div>
 
                   {/* Failai / Print screen */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Failai / Print screen
-                    </label>
-                    <div className="space-y-2">
-                      <input
-                        type="file"
-                        multiple
-                        onChange={handleFileUpload}
-                        className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                      />
-                      <p className="text-xs text-gray-500">
-                        Galite ir įklijuoti ekrano nuotrauką su Cmd/Ctrl+V
-                      </p>
-                      
-                      {/* Selected Files List */}
-                      {selectedFiles.length > 0 && (
-                        <div className="mt-4">
-                          <h4 className="text-sm font-medium text-gray-700 mb-2">Pasirinkti failai:</h4>
-                          <div className="space-y-2 max-h-32 overflow-y-auto">
-                            {selectedFiles.map((file, index) => (
-                              <div key={index} className="flex items-center justify-between p-2 bg-gray-50 border border-gray-200 rounded-lg">
-                                <div className="flex items-center space-x-2">
-                                  <span className="text-xs text-gray-500">📎</span>
-                                  <button
-                                    onClick={() => handleFileDownload(file)}
-                                    className="text-sm text-blue-600 hover:text-blue-800 truncate max-w-32 cursor-pointer hover:underline"
-                                    title="Spauskite failo atsisiuntimui"
-                                  >
-                                    {file.name}
-                                  </button>
-                                  <span className="text-xs text-gray-500">({(file.size / 1024).toFixed(1)} KB)</span>
-                                </div>
-                                <button
-                                  onClick={() => {
-                                    const newFiles = selectedFiles.filter((_, i) => i !== index);
-                                    setSelectedFiles(newFiles);
-                                  }}
-                                  className="text-red-500 hover:text-red-700 transition-colors ml-2"
-                                >
-                                  <XMarkIcon className="w-4 h-4" />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                          <div className="text-sm text-gray-600 mt-2">
-                            Iš viso: {selectedFiles.length} failas(ai)
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
+
                 </div>
 
                 {/* Right Column */}
