@@ -99,6 +99,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
       if (!fromDate || !toDate || !totalAmount) return [];
       
       console.log('🔍 calculateMonthlyDistribution input:', { fromDate, toDate, totalAmount });
+      console.log('🚀 NEW VERSION - Date mutation fixed!');
       
       // Parse dates without timezone issues using Date constructor with year, month, day
       // Clean dates by removing time part first
