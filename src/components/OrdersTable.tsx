@@ -208,13 +208,16 @@ export function OrdersTable({ searchQuery, filters, onOrderClick, onEditOrder }:
     
     // Add search query filter
     if (searchQuery.trim()) {
-      // Check if searching for "viadukai" to include viaduct orders
-      if (searchQuery.toLowerCase().includes('viadukai')) {
+      // Check if searching for "viad" to include viaduct orders
+      if (searchQuery.toLowerCase().startsWith('viad')) {
         filtersArray.push(`(client~"${searchQuery}" || agency~"${searchQuery}" || invoice_id~"${searchQuery}" || viaduct=true)`);
-        console.log('🔍 Added viaduct filter for "viadukai" search');
+        console.log('🔍 Added viaduct filter for "viad" search');
+        console.log('🔍 Search query starts with "viad", adding viaduct=true filter');
       } else {
         filtersArray.push(`(client~"${searchQuery}" || agency~"${searchQuery}" || invoice_id~"${searchQuery}")`);
+        console.log('🔍 Regular search filter added');
       }
+      console.log('🔍 Search query:', searchQuery);
     }
     
     // Status filter - handle boolean conversion
@@ -356,12 +359,22 @@ export function OrdersTable({ searchQuery, filters, onOrderClick, onEditOrder }:
           order.client.includes('GO3') || order.client.includes('Viadukai')
         );
         if (go3Order) {
-          console.log('🔍 Found GO3 - Viadukai order:', go3Order);
-          console.log('🔍 Order dates:', { from: go3Order.from, to: go3Order.to });
-          console.log('🔍 Order approved:', go3Order.approved);
+                  console.log('🔍 Found GO3 - Viadukai order:', go3Order);
+        console.log('🔍 Order dates:', { from: go3Order.from, to: go3Order.to });
+        console.log('🔍 Order approved:', go3Order.approved);
+        console.log('🔍 Order viaduct:', go3Order.viaduct);
+        
+        // Log all orders to see which ones have viaduct=true
+        console.log('🔍 All orders from PocketBase:', result.items);
+        console.log('🔍 Orders with viaduct=true:', result.items.filter(order => order.viaduct));
         } else {
           console.log('❌ GO3 - Viadukai order not found in response');
         }
+        
+        // Debug: Log all orders to see what we have
+        console.log('🔍 All orders from PocketBase:', result.items);
+        console.log('🔍 Orders with viaduct=true:', result.items.filter(order => order.viaduct));
+        console.log('🔍 Orders with viaduct=false:', result.items.filter(order => !order.viaduct));
         setOrders(result.items);
         setTotalPages(result.totalPages);
         setTotalItems(result.totalItems);
