@@ -144,6 +144,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
           content: comment,
           author: 'User'
         });
+        console.log('✅ Komentaras išsaugotas Supabase');
       }
 
       // Save reminder if exists
@@ -153,17 +154,28 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
           due_date: reminderDate,
           is_completed: false
         });
+        console.log('✅ Priminimas išsaugotas Supabase');
       }
 
       // Upload files if exists
       for (const file of selectedFiles) {
         await SupabaseService.uploadFile(order.id, file);
+        console.log('✅ Failas išsaugotas Supabase');
       }
 
+      console.log('✅ Užsakymas atnaujintas, modalas užsidaro');
+      
+      // Clear form data after successful save
+      setComment('');
+      setReminderDate('');
+      setReminderMessage('');
+      setSelectedFiles([]);
+      
       onOrderUpdated(updatedOrder);
       onClose();
     } catch (error) {
-      console.error('Failed to update order:', error);
+      console.error('❌ Failed to update order:', error);
+      alert('Klaida išsaugant duomenis. Bandykite dar kartą.');
     } finally {
       setLoading(false);
     }
@@ -192,7 +204,15 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
   const weeksDisplay = startWeek && endWeek ? `${startWeek} → ${endWeek}` : startWeek || endWeek || '';
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div 
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          onClose();
+        }
+      }}
+      tabIndex={0}
+    >
       <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
