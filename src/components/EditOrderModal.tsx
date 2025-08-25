@@ -104,6 +104,8 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
       const [startYear, startMonth, startDay] = fromDate.split('-').map(Number);
       const [endYear, endMonth, endDay] = toDate.split('-').map(Number);
       
+      console.log('🔍 Parsed date parts:', { startYear, startMonth, startDay, endYear, endMonth, endDay });
+      
       const start = new Date(startYear, startMonth - 1, startDay);
       const end = new Date(endYear, endMonth - 1, endDay);
       
