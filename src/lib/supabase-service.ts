@@ -113,41 +113,48 @@ export class SupabaseService {
   static async uploadFile(orderId: string, file: File): Promise<FileAttachment> {
     console.log('🔍 Using file_attachments table instead of Storage buckets');
     
-    // Konvertuoti failą į base64 string
-    const arrayBuffer = await file.arrayBuffer();
-    const base64String = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-    
-    // Sukurti data URL
-    const dataUrl = `data:${file.type || 'application/octet-stream'};base64,${base64String}`;
-    
-    // Išsaugoti failo informaciją į duomenų bazę
-    const { data: fileData, error: insertError } = await supabase
-      .from('file_attachments')
-      .insert([{
+    try {
+      // Konvertuoti failą į base64 string
+      const arrayBuffer = await file.arrayBuffer();
+      const base64String = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+      
+      // Sukurti data URL
+      const dataUrl = `data:${file.type || 'application/octet-stream'};base64,${base64String}`;
+      
+      console.log('📤 Inserting file into database:', file.name);
+      
+      // Išsaugoti failo informaciją į duomenų bazę
+      const { data: fileData, error: insertError } = await supabase
+        .from('file_attachments')
+        .insert([{
+          order_id: orderId,
+          filename: file.name,
+          file_url: dataUrl,
+          file_type: file.type || 'application/octet-stream',
+          created_at: new Date().toISOString()
+        }])
+        .select()
+        .single();
+      
+      if (insertError) {
+        console.error('❌ Failed to insert file attachment:', insertError);
+        throw insertError;
+      }
+      
+      console.log('✅ File saved to database:', file.name);
+      
+      return {
+        id: fileData.id,
         order_id: orderId,
         filename: file.name,
         file_url: dataUrl,
         file_type: file.type || 'application/octet-stream',
-        created_at: new Date().toISOString()
-      }])
-      .select()
-      .single();
-    
-    if (insertError) {
-      console.error('❌ Failed to insert file attachment:', insertError);
-      throw insertError;
+        created_at: fileData.created_at
+      };
+    } catch (error) {
+      console.error('❌ Error in uploadFile:', error);
+      throw error;
     }
-    
-    console.log('✅ File saved to database:', file.name);
-    
-    return {
-      id: fileData.id,
-      order_id: orderId,
-      filename: file.name,
-      file_url: dataUrl,
-      file_type: file.type || 'application/octet-stream',
-      created_at: fileData.created_at
-    };
   }
 
   static async deleteFile(id: string): Promise<void> {
