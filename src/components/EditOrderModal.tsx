@@ -561,7 +561,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
             {/* Monthly Distribution */}
             {formData.from && formData.to && formData.final_price && (
               <div className="mt-4 pt-4 border-t border-gray-200">
-                <h4 className="font-medium text-gray-700 mb-3">Mėnesių sumų pasiskirstymas:</h4>
+
                 <div className="space-y-2">
                   {calculateMonthlyDistribution(formData.from, formData.to, formData.final_price).map((month) => (
                     <div key={month.month} className="text-sm text-gray-900">
