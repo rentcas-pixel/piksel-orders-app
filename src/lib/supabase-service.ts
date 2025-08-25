@@ -178,6 +178,74 @@ export class SupabaseService {
     }
   }
 
+  static async uploadPrintscreen(orderId: string, file: File): Promise<FileAttachment> {
+    console.log('📸 Starting printscreen upload...');
+    
+    try {
+      // 1. Įkelti printscreen į Supabase Storage
+      const fileName = `printscreen_${Date.now()}_${file.name}`;
+      const storagePath = `${orderId}/printscreens/${fileName}`;
+      
+      console.log('📤 Uploading printscreen to Storage:', storagePath);
+      
+      const { error: uploadError } = await supabase.storage
+        .from('orders-new')
+        .upload(storagePath, file);
+      
+      if (uploadError) {
+        console.error('❌ Printscreen upload failed:', uploadError);
+        throw uploadError;
+      }
+      
+      // 2. Gauti public URL
+      const { data: urlData } = supabase.storage
+        .from('orders-new')
+        .getPublicUrl(storagePath);
+      
+      if (!urlData.publicUrl) {
+        throw new Error('Failed to get public URL');
+      }
+      
+      // 3. Išsaugoti printscreen metaduomenis į DB
+      const metadata = {
+        order_id: orderId,
+        storage_path: storagePath,
+        original_name: file.name,
+        size_bytes: file.size,
+        mime_type: file.type || 'image/png',
+        uploaded_at: new Date().toISOString()
+      };
+      
+      console.log('📤 Saving printscreen metadata to DB:', metadata);
+      
+      const { data: fileData, error: insertError } = await supabase
+        .from('file_attachments')
+        .insert([metadata])
+        .select()
+        .single();
+      
+      if (insertError) {
+        console.error('❌ Failed to save printscreen metadata:', insertError);
+        throw insertError;
+      }
+      
+      console.log('✅ Printscreen uploaded successfully:', file.name);
+      
+      return {
+        id: fileData.id,
+        order_id: orderId,
+        filename: file.name,
+        file_url: urlData.publicUrl,
+        file_type: file.type || 'image/png',
+        created_at: fileData.created_at
+      };
+      
+    } catch (error) {
+      console.error('❌ Printscreen upload failed:', error);
+      throw error;
+    }
+  }
+
   static async deleteFile(id: string): Promise<void> {
     const { data: file, error: fetchError } = await supabase
       .from('file_attachments')

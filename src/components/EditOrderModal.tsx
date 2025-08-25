@@ -228,11 +228,28 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
   };
 
   // Handle printscreen upload
-  const handlePrintscreenUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePrintscreenUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file && file.type.startsWith('image/')) {
-      console.log('📸 Printscreen pasirinktas:', file.name);
-      // TODO: Implement printscreen upload to Supabase
+    if (file && file.type.startsWith('image/') && order) {
+      try {
+        console.log('📸 Uploading printscreen:', file.name);
+        
+        // Upload to Supabase Storage
+        const printscreen = await SupabaseService.uploadPrintscreen(order.id, file);
+        
+        // Add to current comment if exists
+        if (comment.trim()) {
+          // TODO: Save comment with printscreen
+          console.log('✅ Printscreen uploaded:', printscreen);
+        }
+        
+        // Clear file input
+        event.target.value = '';
+        
+      } catch (error) {
+        console.error('❌ Failed to upload printscreen:', error);
+        alert('Klaida įkeliant printscreen. Bandykite dar kartą.');
+      }
     }
   };
 
