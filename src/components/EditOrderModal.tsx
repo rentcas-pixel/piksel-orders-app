@@ -110,10 +110,10 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
       const end = new Date(endYear, endMonth - 1, endDay);
       
       console.log('🔍 Parsed dates (no timezone):', { 
-        start: start.toISOString(), 
-        end: end.toISOString(),
-        startLocal: start.toLocaleDateString(),
-        endLocal: end.toLocaleDateString()
+        start: start.toLocaleDateString(), 
+        end: end.toLocaleDateString(),
+        startISO: start.toISOString ? start.toISOString() : 'N/A', 
+        endISO: end.toISOString ? end.toISOString() : 'N/A'
       });
       
       if (isNaN(start.getTime()) || isNaN(end.getTime())) {
