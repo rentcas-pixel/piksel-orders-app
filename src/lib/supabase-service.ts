@@ -110,8 +110,8 @@ export class SupabaseService {
     return data || [];
   }
 
-  static async uploadFile(orderId: string, file: File): Promise<FileAttachment> {
-    console.log('🔍 Starting file upload to database...');
+  static async saveFileToDatabase(orderId: string, file: File): Promise<FileAttachment> {
+    console.log('🔍 Starting file save to database...');
     
     // Konvertuoti failą į base64 string
     const arrayBuffer = await file.arrayBuffer();
