@@ -11,6 +11,28 @@ export class SupabaseService {
       .order('created_at', { ascending: false });
 
     if (error) throw error;
+    
+    // Load printscreens for this order
+    const printscreens = await this.getPrintscreensForOrder(orderId);
+    
+    // Add printscreens to all comments (simple approach)
+    const commentsWithPrintscreens = (data || []).map(comment => ({
+      ...comment,
+      printscreens: printscreens
+    }));
+    
+    return commentsWithPrintscreens;
+  }
+
+  static async getPrintscreensForOrder(orderId: string): Promise<FileAttachment[]> {
+    const { data, error } = await supabase
+      .from('file_attachments')
+      .select('*')
+      .eq('order_id', orderId)
+      .like('mime_type', 'image/%')
+      .order('created_at', { ascending: false });
+
+    if (error) return [];
     return data || [];
   }
 
