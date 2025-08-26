@@ -326,57 +326,58 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Statusas
-              </label>
-              <select
-                value={formData.approved ? 'taip' : 'ne'}
-                onChange={(e) => handleInputChange('approved', e.target.value === 'taip')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="ne">Nepatvirtinta</option>
-                <option value="taip">Patvirtinta</option>
-                <option value="rezervuota">Rezervuota</option>
-                <option value="atšaukta">Atšaukta</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Toggle Switches */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="flex items-center space-x-3">
-              <span className="text-sm font-medium text-gray-700">Media</span>
-              <button
-                type="button"
-                onClick={() => handleInputChange('media_received', !formData.media_received)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                  formData.media_received ? 'bg-green-600' : 'bg-gray-200'
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    formData.media_received ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
-            </div>
-            
-            <div className="flex items-center space-x-3">
-              <span className="text-sm font-medium text-gray-700">Sąskaita</span>
-              <button
-                type="button"
-                onClick={() => handleInputChange('invoice_sent', !formData.invoice_sent)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                  formData.invoice_sent ? 'bg-green-600' : 'bg-gray-200'
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    formData.invoice_sent ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
+            <div className="flex items-end space-x-4">
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Statusas
+                </label>
+                <select
+                  value={formData.approved ? 'taip' : 'ne'}
+                  onChange={(e) => handleInputChange('approved', e.target.value === 'taip')}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="ne">Nepatvirtinta</option>
+                  <option value="taip">Patvirtinta</option>
+                  <option value="rezervuota">Rezervuota</option>
+                  <option value="atšaukta">Atšaukta</option>
+                </select>
+              </div>
+              
+              <div className="flex space-x-4">
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm font-medium text-gray-700">Media</span>
+                  <button
+                    type="button"
+                    onClick={() => handleInputChange('media_received', !formData.media_received)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                      formData.media_received ? 'bg-green-600' : 'bg-gray-200'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        formData.media_received ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm font-medium text-gray-700">Sąskaita</span>
+                  <button
+                    type="button"
+                    onClick={() => handleInputChange('invoice_sent', !formData.invoice_sent)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                      formData.invoice_sent ? 'bg-green-600' : 'bg-gray-200'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        formData.invoice_sent ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
