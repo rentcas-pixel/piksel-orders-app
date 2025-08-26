@@ -43,7 +43,6 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
         media_received: order.media_received,
         final_price: order.final_price,
         invoice_sent: order.invoice_sent,
-
       });
       
       if (order.intensity) {
@@ -329,7 +328,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <div>
             <h2 className="text-2xl font-bold text-gray-900">{order.client}</h2>
-            <p className="text-gray-600">Kliento detalės</p>
+            <p className="text-gray-600">{order.agency} | {order.invoice_id}</p>
           </div>
           <button
             onClick={onClose}
@@ -343,264 +342,371 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
 
         {/* Content */}
         <div className="p-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Left Column */}
-                <div className="space-y-4">
-                  {/* Pavadinimas */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Pavadinimas
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.client || ''}
-                      onChange={(e) => handleInputChange('client', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  {/* Užsakymo Nr. */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Užsakymo Nr.
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.invoice_id || ''}
-                      onChange={(e) => handleInputChange('invoice_id', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  {/* Data nuo */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Data nuo
-                    </label>
-                    <input
-                      type="text"
-                      key={`from-${formData.from}`}
-                      value={formData.from ? formatDateForDisplay(formData.from) : ''}
-                      onChange={(e) => handleInputChange('from', e.target.value)}
-                      pattern="\d{4}-\d{2}-\d{2}"
-                      placeholder="yyyy-mm-dd"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  {/* Komentaras */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Komentaras
-                    </label>
-                    <textarea
-                      value={comment}
-                      onChange={(e) => setComment(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
-                          if (comment.trim()) {
-                            handleSaveComment();
-                          }
-                        }
-                        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                          e.preventDefault();
-                          if (comment.trim()) {
-                            handleSaveComment();
-                          }
-                        }
-                      }}
-                      rows={3}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="Įveskite komentarą... (Enter - išsaugoti komentarą, Shift+Enter - nauja eilutė)"
-                    />
-                    
-                    {/* Printscreen input */}
-                    <div className="mt-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Pridėti printscreen
-                      </label>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handlePrintscreenUpload}
-                        className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:px-4 file:py-2 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                      />
-                      <p className="text-xs text-gray-500">
-                        Galite ir įklijuoti ekrano nuotrauką su Cmd/Ctrl+V
-                      </p>
-                    </div>
-                    
-                    {/* Existing Comments */}
-                    {comments.length > 0 && (
-                      <div className="mt-4">
-                        <h4 className="text-sm font-medium text-gray-700 mb-2">Esami komentarai:</h4>
-                        <div className="space-y-2 max-h-32 overflow-y-auto">
-                          {comments.map((comment) => (
-                            <div key={comment.id} className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                              <p className="text-sm text-gray-800">{comment.text}</p>
-                              <p className="text-xs text-gray-500 mt-1">
-                                {new Date(comment.created_at).toLocaleString('lt-LT')}
-                              </p>
-                              {/* Printscreen thumbnails */}
-                              {comment.printscreens && comment.printscreens.length > 0 && (
-                                <div className="mt-2 flex space-x-2">
-                                  {comment.printscreens.map((printscreen) => (
-                                    <img
-                                      key={printscreen.id}
-                                      src={printscreen.file_url}
-                                      alt="Printscreen"
-                                      className="w-16 h-16 object-cover rounded border cursor-pointer hover:opacity-80"
-                                      onClick={() => handlePrintscreenView(printscreen)}
-                                    />
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Failai / Print screen */}
-
-                </div>
-
-                {/* Right Column */}
-                <div className="space-y-4">
-                  {/* Statusas */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Statusas
-                    </label>
-                    <select
-                      value={formData.approved ? 'taip' : 'ne'}
-                      onChange={(e) => handleInputChange('approved', e.target.value === 'taip')}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      <option value="taip">Patvirtinta</option>
-                      <option value="ne">Nepatvirtinta</option>
-                    </select>
-                  </div>
-
-                  {/* Intensyvumas */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Intensyvumas
-                    </label>
-                    <select
-                      value={intensity}
-                      onChange={(e) => setIntensity(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      <option value="kas_4">Kas 4</option>
-                      <option value="kas_6">Kas 6</option>
-                      <option value="kas_8">Kas 8</option>
-                      <option value="kas_12">Kas 12</option>
-                      <option value="kas_24">Kas 24</option>
-                    </select>
-                  </div>
-
-                  {/* Data iki */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Data iki
-                    </label>
-                    <input
-                      type="text"
-                      key={`to-${formData.to}`}
-                      value={formData.to ? formatDateForDisplay(formData.to) : ''}
-                      onChange={(e) => handleInputChange('to', e.target.value)}
-                      pattern="\d{4}-\d{2}-\d{2}"
-                      placeholder="yyyy-mm-dd"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  {/* Priminimo data */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Priminimo data
-                    </label>
-                    <input
-                      type="text"
-                      key={`reminder-${reminderDate}`}
-                      value={reminderDate && reminderDate.trim() ? formatDateForDisplay(reminderDate) : ''}
-                      onChange={(e) => setReminderDate(e.target.value)}
-                      pattern="\d{4}-\d{2}-\d{2}"
-                      placeholder="yyyy-mm-dd"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  {/* Priminimo žinutė */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Priminimo žinutė
-                    </label>
-                    <input
-                      type="text"
-                      value={reminderMessage}
-                      onChange={(e) => setReminderMessage(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="Pvz.: perskambinti, patvirtinti užsakymą..."
-                    />
-                    
-                    {/* Existing Reminders */}
-                    {reminders.length > 0 && (
-                      <div className="mt-4">
-                        <h4 className="text-sm font-medium text-gray-700 mb-2">Esami priminimai:</h4>
-                        <div className="space-y-2 max-h-32 overflow-y-auto">
-                          {reminders.map((reminder) => (
-                            <div key={reminder.id} className="bg-green-50 border border-green-200 rounded-lg p-3">
-                              <p className="text-sm text-gray-800 font-medium">{reminder.title}</p>
-                              <p className="text-xs text-gray-500 mt-1">
-                                Iki: {new Date(reminder.due_date).toLocaleDateString('lt-LT')}
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
+          {/* Main Form Section */}
+          <div className="space-y-6">
+            {/* Pavadinimas ir Statusas */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Pavadinimas
+                </label>
+                <input
+                  type="text"
+                  value={formData.client || ''}
+                  onChange={(e) => handleInputChange('client', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
               </div>
 
-              {/* Additional Info */}
-              <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-sm text-gray-600">
-                  <div>
-                    <span className="font-medium">Transliacijų laikotarpis:</span> 
-                    <span className="ml-2 font-semibold text-blue-600">{broadcastPeriod}</span>
-                  </div>
-                  <div>
-                    <span className="font-medium">Savaitės:</span> 
-                    <span className="ml-2 font-semibold text-green-600">{weeksDisplay}</span>
-                  </div>
+              <div className="flex items-end space-x-4">
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Statusas
+                  </label>
+                  <select
+                    value={formData.approved ? 'taip' : 'ne'}
+                    onChange={(e) => handleInputChange('approved', e.target.value === 'taip')}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="taip">Patvirtinta</option>
+                    <option value="ne">Nepatvirtinta</option>
+                    <option value="rezervuota">Rezervuota</option>
+                    <option value="atšaukta">Atšaukta</option>
+                  </select>
                 </div>
                 
-                {/* Monthly Distribution */}
-                {formData.from && formData.to && formData.final_price && (
-                  <div className="mt-4 pt-4 border-t border-gray-200">
-                    <div className="space-y-2">
-                      {(() => {
-                        const distribution = calculateMonthlyDistribution(formData.from, formData.to, formData.final_price);
-                        return distribution.map((month) => (
-                          <div key={month.month} className="text-sm text-gray-900">
-                            {month.monthName} {month.year} ({month.days} d.) → {month.amount.toFixed(2)}€
+                {/* Toggle Switches */}
+                <div className="flex space-x-4">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm font-medium text-gray-700">Media</span>
+                    <button
+                      type="button"
+                      onClick={() => handleInputChange('media_received', !formData.media_received)}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                        formData.media_received ? 'bg-green-600' : 'bg-gray-200'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          formData.media_received ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm font-medium text-gray-700">Invoice</span>
+                    <button
+                      type="button"
+                      onClick={() => handleInputChange('invoice_sent', !formData.invoice_sent)}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                        formData.invoice_sent ? 'bg-green-600' : 'bg-gray-200'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          formData.invoice_sent ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Datų sekcija */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Transliacijų laikotarpis
+                </label>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="text"
+                    key={`from-${formData.from}`}
+                    value={formData.from ? formatDateForDisplay(formData.from) : ''}
+                    onChange={(e) => handleInputChange('from', e.target.value)}
+                    pattern="\d{4}-\d{2}-\d{2}"
+                    placeholder="yyyy-mm-dd"
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <span className="text-gray-500">→</span>
+                  <input
+                    type="text"
+                    key={`to-${formData.to}`}
+                    value={formData.to ? formatDateForDisplay(formData.to) : ''}
+                    onChange={(e) => handleInputChange('to', e.target.value)}
+                    pattern="\d{4}-\d{2}-\d{2}"
+                    placeholder="yyyy-mm-dd"
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Savaitės
+                </label>
+                <div className="px-3 py-2 text-green-600 font-semibold">
+                  {weeksDisplay}
+                </div>
+              </div>
+            </div>
+
+            {/* Additional Fields */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Agentūra */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Agentūra
+                </label>
+                <input
+                  type="text"
+                  value={formData.agency || ''}
+                  onChange={(e) => handleInputChange('agency', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              {/* Užsakymo Nr. */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Užsakymo Nr.
+                </label>
+                <input
+                  type="text"
+                  value={formData.invoice_id || ''}
+                  onChange={(e) => handleInputChange('invoice_id', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              {/* Intensyvumas */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Intensyvumas
+                </label>
+                <select
+                  value={intensity}
+                  onChange={(e) => setIntensity(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="kas_4">Kas 4</option>
+                  <option value="kas_6">Kas 6</option>
+                  <option value="kas_8">Kas 8</option>
+                  <option value="kas_12">Kas 12</option>
+                  <option value="kas_24">Kas 24</option>
+                </select>
+              </div>
+
+              {/* Galutinė kaina */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Galutinė kaina (€)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={formData.final_price || ''}
+                  onChange={(e) => handleInputChange('final_price', parseFloat(e.target.value) || 0)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+            </div>
+
+            {/* Viaduktas toggle */}
+            <div className="flex items-center space-x-3">
+              <span className="text-sm font-medium text-gray-700">Viaduktas</span>
+              <button
+                type="button"
+                onClick={() => handleInputChange('viaduct', !formData.viaduct)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                  formData.viaduct ? 'bg-green-600' : 'bg-gray-200'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    formData.viaduct ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* Komentaras */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Įveskite komentarą...
+              </label>
+              <div className="flex space-x-4">
+                <div className="flex-1">
+                  <textarea
+                    value={comment}
+                    onChange={(e) => setComment(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        if (comment.trim()) {
+                          handleSaveComment();
+                        }
+                      }
+                      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                        e.preventDefault();
+                        if (comment.trim()) {
+                          handleSaveComment();
+                        }
+                      }
+                    }}
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="(Enter - išsaugoti komentarą, Shift+Enter - nauja eilutė)"
+                  />
+                </div>
+                
+                {/* Printscreen thumbnails */}
+                <div className="flex flex-col space-y-2">
+                  <div className="w-16 h-16 bg-gray-100 border-2 border-dashed border-gray-300 rounded flex items-center justify-center">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handlePrintscreenUpload}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    />
+                    <span className="text-gray-400 text-xs">+</span>
+                  </div>
+                  <div className="w-16 h-16 bg-gray-100 border-2 border-dashed border-gray-300 rounded flex items-center justify-center">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handlePrintscreenUpload}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    />
+                    <span className="text-gray-400 text-xs">+</span>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Existing Comments */}
+              {comments.length > 0 && (
+                <div className="mt-4">
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Esami komentarai:</h4>
+                  <div className="space-y-2 max-h-32 overflow-y-auto">
+                    {comments.map((comment) => (
+                      <div key={comment.id} className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                        <p className="text-sm text-gray-800">{comment.text}</p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {new Date(comment.created_at).toLocaleString('lt-LT')}
+                        </p>
+                        {/* Printscreen thumbnails */}
+                        {comment.printscreens && comment.printscreens.length > 0 && (
+                          <div className="mt-2 flex space-x-2">
+                            {comment.printscreens.map((printscreen) => (
+                              <div key={printscreen.id} className="relative">
+                                <img
+                                  src={printscreen.file_url}
+                                  alt="Printscreen"
+                                  className="w-16 h-16 object-cover rounded border cursor-pointer hover:opacity-80"
+                                  onClick={() => handlePrintscreenView(printscreen)}
+                                />
+                                <button
+                                  onClick={() => {/* TODO: Delete printscreen */}}
+                                  className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-xs hover:bg-red-600"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            ))}
                           </div>
-                        ));
-                      })()}
-                      <div className="pt-2 border-t border-gray-200">
-                        <div className="text-sm font-semibold text-gray-900">
-                          Viso: {formData.final_price?.toFixed(2)}€
-                        </div>
+                        )}
                       </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Priminimai */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Data
+                </label>
+                <input
+                  type="text"
+                  key={`reminder-${reminderDate}`}
+                  value={reminderDate && reminderDate.trim() ? formatDateForDisplay(reminderDate) : ''}
+                  onChange={(e) => setReminderDate(e.target.value)}
+                  pattern="\d{4}-\d{2}-\d{2}"
+                  placeholder="yyyy-mm-dd"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Priminimo žinutė
+                </label>
+                <input
+                  type="text"
+                  value={reminderMessage}
+                  onChange={(e) => setReminderMessage(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Pvz.: perskambinti, patvirtinti užsakymą..."
+                />
+              </div>
+            </div>
+            
+            {/* Existing Reminders */}
+            {reminders.length > 0 && (
+              <div>
+                <h4 className="text-sm font-medium text-gray-700 mb-2">Esami priminimai:</h4>
+                <div className="space-y-2 max-h-32 overflow-y-auto">
+                  {reminders.map((reminder) => (
+                    <div key={reminder.id} className="bg-green-50 border border-green-200 rounded-lg p-3">
+                      <p className="text-sm text-gray-800 font-medium">{reminder.title}</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Iki: {new Date(reminder.due_date).toLocaleDateString('lt-LT')}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Additional Info */}
+          <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-sm text-gray-600">
+              <div>
+                <span className="font-medium">Transliacijų laikotarpis:</span> 
+                <span className="ml-2 font-semibold text-blue-600">{broadcastPeriod}</span>
+              </div>
+              <div>
+                <span className="font-medium">Savaitės:</span> 
+                <span className="ml-2 font-semibold text-green-600">{weeksDisplay}</span>
+              </div>
+            </div>
+            
+            {/* Monthly Distribution */}
+            {formData.from && formData.to && formData.final_price && (
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <div className="space-y-2">
+                  {(() => {
+                    const distribution = calculateMonthlyDistribution(formData.from, formData.to, formData.final_price);
+                    return distribution.map((month) => (
+                      <div key={month.month} className="text-sm text-gray-900">
+                        {month.monthName} {month.year} ({month.days} d.) → {month.amount.toFixed(2)}€
+                      </div>
+                    ));
+                  })()}
+                  <div className="pt-2 border-t border-gray-200">
+                    <div className="text-sm font-semibold text-gray-900">
+                      Viso: {formData.final_price?.toFixed(2)}€
                     </div>
                   </div>
-                )}
+                </div>
               </div>
+            )}
+          </div>
         </div>
 
         {/* Action Buttons */}

@@ -90,3 +90,5 @@ piksel-pocket/
 **Backup sukurtas automatiškai** - saugokite šiuos failus saugioje vietoje! 🔒
 
 
+
+
