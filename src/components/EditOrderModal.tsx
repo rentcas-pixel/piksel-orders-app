@@ -19,13 +19,9 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
   const [comment, setComment] = useState('');
   const [reminderDate, setReminderDate] = useState('');
   const [reminderMessage, setReminderMessage] = useState('');
-  const [intensity, setIntensity] = useState('kas_4');
   const [loading, setLoading] = useState(false);
-
   const [comments, setComments] = useState<Comment[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
-
-
 
   // Load order data when modal opens
   useEffect(() => {
@@ -44,10 +40,6 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
         final_price: order.final_price,
         invoice_sent: order.invoice_sent,
       });
-      
-      if (order.intensity) {
-        setIntensity(order.intensity);
-      }
 
       // Load comments and reminders from Supabase
       const loadOrderData = async () => {
@@ -76,8 +68,6 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
     }));
   };
 
-
-
   // Calculate week number
   const calculateWeek = (dateString: string) => {
     try {
@@ -96,9 +86,6 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
     try {
       if (!fromDate || !toDate || !totalAmount) return [];
       
-      console.log('🔍 calculateMonthlyDistribution input:', { fromDate, toDate, totalAmount });
-      
-      // Clean dates by removing time part first
       const cleanFromDate = fromDate.split(' ')[0];
       const cleanToDate = toDate.split(' ')[0];
       
@@ -112,7 +99,6 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
         return [];
       }
       
-      // Calculate total days manually
       let manualDayCount = 0;
       let checkDate = new Date(start);
       while (checkDate <= end) {
@@ -135,12 +121,11 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
         'Liepa', 'Rugpjūtis', 'Rugsėjis', 'Spalis', 'Lapkritis', 'Gruodis'
       ];
       
-      // Iterate through each day
       let currentDate = new Date(start);
       const endDate = new Date(end);
       
       while (currentDate <= endDate) {
-        const month = currentDate.getMonth() + 1; // +1 to get 1-based month numbers
+        const month = currentDate.getMonth() + 1;
         const year = currentDate.getFullYear();
         const monthKey = `${year}-${month}`;
         
@@ -152,20 +137,18 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
             year,
             days: 0,
             amount: 0,
-            monthName: monthNames[month - 1] // -1 because monthNames is 0-based
+            monthName: monthNames[month - 1]
           };
           monthlyDistribution.push(monthEntry);
         }
         
         monthEntry.days++;
         
-        // Move to next day
         const nextDay = new Date(currentDate);
         nextDay.setDate(nextDay.getDate() + 1);
         currentDate = nextDay;
       }
       
-      // Calculate amounts for each month
       monthlyDistribution.forEach(month => {
         month.amount = (month.days / manualDayCount) * totalAmount;
       });
@@ -233,16 +216,9 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
       try {
         console.log('📸 Uploading printscreen:', file.name);
         
-        // Upload to Supabase Storage
         const printscreen = await SupabaseService.uploadPrintscreen(order.id, file);
+        console.log('✅ Printscreen uploaded:', printscreen);
         
-        // Add to current comment if exists
-        if (comment.trim()) {
-          // TODO: Save comment with printscreen
-          console.log('✅ Printscreen uploaded:', printscreen);
-        }
-        
-        // Clear file input
         event.target.value = '';
         
       } catch (error) {
@@ -263,10 +239,8 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
     
     setLoading(true);
     try {
-      // Update order in PocketBase
       const updatedOrder = await PocketBaseService.updateOrder(order.id, formData);
       
-      // Save reminder if exists
       if (reminderDate && reminderMessage.trim()) {
         await SupabaseService.addReminder(order.id, {
           title: reminderMessage,
@@ -274,8 +248,6 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
           is_completed: false
         });
       }
-      
-
       
       onOrderUpdated(updatedOrder);
       onClose();
@@ -338,334 +310,214 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
           </button>
         </div>
 
-
-
         {/* Content */}
-        <div className="p-6">
-          {/* Main Form Section */}
-          <div className="space-y-6">
-            {/* Pavadinimas ir Statusas */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Pavadinimas
-                </label>
-                <input
-                  type="text"
-                  value={formData.client || ''}
-                  onChange={(e) => handleInputChange('client', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-
-              <div className="flex items-end space-x-4">
-                <div className="flex-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Statusas
-                  </label>
-                  <select
-                    value={formData.approved ? 'taip' : 'ne'}
-                    onChange={(e) => handleInputChange('approved', e.target.value === 'taip')}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="taip">Patvirtinta</option>
-                    <option value="ne">Nepatvirtinta</option>
-                    <option value="rezervuota">Rezervuota</option>
-                    <option value="atšaukta">Atšaukta</option>
-                  </select>
-                </div>
-                
-                {/* Toggle Switches */}
-                <div className="flex space-x-4">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-sm font-medium text-gray-700">Media</span>
-                    <button
-                      type="button"
-                      onClick={() => handleInputChange('media_received', !formData.media_received)}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                        formData.media_received ? 'bg-green-600' : 'bg-gray-200'
-                      }`}
-                    >
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                          formData.media_received ? 'translate-x-6' : 'translate-x-1'
-                        }`}
-                      />
-                    </button>
-                  </div>
-                  
-                  <div className="flex items-center space-x-2">
-                    <span className="text-sm font-medium text-gray-700">Invoice</span>
-                    <button
-                      type="button"
-                      onClick={() => handleInputChange('invoice_sent', !formData.invoice_sent)}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                        formData.invoice_sent ? 'bg-green-600' : 'bg-gray-200'
-                      }`}
-                    >
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                          formData.invoice_sent ? 'translate-x-6' : 'translate-x-1'
-                        }`}
-                      />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Datų sekcija */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Transliacijų laikotarpis
-                </label>
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="text"
-                    key={`from-${formData.from}`}
-                    value={formData.from ? formatDateForDisplay(formData.from) : ''}
-                    onChange={(e) => handleInputChange('from', e.target.value)}
-                    pattern="\d{4}-\d{2}-\d{2}"
-                    placeholder="yyyy-mm-dd"
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                  <span className="text-gray-500">→</span>
-                  <input
-                    type="text"
-                    key={`to-${formData.to}`}
-                    value={formData.to ? formatDateForDisplay(formData.to) : ''}
-                    onChange={(e) => handleInputChange('to', e.target.value)}
-                    pattern="\d{4}-\d{2}-\d{2}"
-                    placeholder="yyyy-mm-dd"
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Savaitės
-                </label>
-                <div className="px-3 py-2 text-green-600 font-semibold">
-                  {weeksDisplay}
-                </div>
-              </div>
-            </div>
-
-            {/* Additional Fields */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Agentūra */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Agentūra
-                </label>
-                <input
-                  type="text"
-                  value={formData.agency || ''}
-                  onChange={(e) => handleInputChange('agency', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-
-              {/* Užsakymo Nr. */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Užsakymo Nr.
-                </label>
-                <input
-                  type="text"
-                  value={formData.invoice_id || ''}
-                  onChange={(e) => handleInputChange('invoice_id', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-
-              {/* Intensyvumas */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Intensyvumas
-                </label>
-                <select
-                  value={intensity}
-                  onChange={(e) => setIntensity(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="kas_4">Kas 4</option>
-                  <option value="kas_6">Kas 6</option>
-                  <option value="kas_8">Kas 8</option>
-                  <option value="kas_12">Kas 12</option>
-                  <option value="kas_24">Kas 24</option>
-                </select>
-              </div>
-
-              {/* Galutinė kaina */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Galutinė kaina (€)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.final_price || ''}
-                  onChange={(e) => handleInputChange('final_price', parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-            </div>
-
-            {/* Viaduktas toggle */}
-            <div className="flex items-center space-x-3">
-              <span className="text-sm font-medium text-gray-700">Viaduktas</span>
-              <button
-                type="button"
-                onClick={() => handleInputChange('viaduct', !formData.viaduct)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                  formData.viaduct ? 'bg-green-600' : 'bg-gray-200'
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    formData.viaduct ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
-            </div>
-
-            {/* Komentaras */}
+        <div className="p-6 space-y-6">
+          {/* Main Fields */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Įveskite komentarą...
+                Pavadinimas
               </label>
-              <div className="flex space-x-4">
-                <div className="flex-1">
-                  <textarea
-                    value={comment}
-                    onChange={(e) => setComment(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        if (comment.trim()) {
-                          handleSaveComment();
-                        }
-                      }
-                      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                        e.preventDefault();
-                        if (comment.trim()) {
-                          handleSaveComment();
-                        }
-                      }
-                    }}
-                    rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="(Enter - išsaugoti komentarą, Shift+Enter - nauja eilutė)"
-                  />
-                </div>
-                
-                {/* Printscreen thumbnails */}
-                <div className="flex flex-col space-y-2">
-                  <div className="w-16 h-16 bg-gray-100 border-2 border-dashed border-gray-300 rounded flex items-center justify-center">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handlePrintscreenUpload}
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    />
-                    <span className="text-gray-400 text-xs">+</span>
-                  </div>
-                  <div className="w-16 h-16 bg-gray-100 border-2 border-dashed border-gray-300 rounded flex items-center justify-center">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handlePrintscreenUpload}
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    />
-                    <span className="text-gray-400 text-xs">+</span>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Existing Comments */}
-              {comments.length > 0 && (
-                <div className="mt-4">
-                  <h4 className="text-sm font-medium text-gray-700 mb-2">Esami komentarai:</h4>
-                  <div className="space-y-2 max-h-32 overflow-y-auto">
-                    {comments.map((comment) => (
-                      <div key={comment.id} className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                        <p className="text-sm text-gray-800">{comment.text}</p>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {new Date(comment.created_at).toLocaleString('lt-LT')}
-                        </p>
-                        {/* Printscreen thumbnails */}
-                        {comment.printscreens && comment.printscreens.length > 0 && (
-                          <div className="mt-2 flex space-x-2">
-                            {comment.printscreens.map((printscreen) => (
-                              <div key={printscreen.id} className="relative">
-                                <img
-                                  src={printscreen.file_url}
-                                  alt="Printscreen"
-                                  className="w-16 h-16 object-cover rounded border cursor-pointer hover:opacity-80"
-                                  onClick={() => handlePrintscreenView(printscreen)}
-                                />
-                                <button
-                                  onClick={() => {/* TODO: Delete printscreen */}}
-                                  className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-xs hover:bg-red-600"
-                                >
-                                  ×
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <input
+                type="text"
+                value={formData.client || ''}
+                onChange={(e) => handleInputChange('client', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
             </div>
 
-            {/* Priminimai */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
+            <div className="flex items-end space-x-4">
+              <div className="flex-1">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Data
+                  Statusas
                 </label>
-                <input
-                  type="text"
-                  key={`reminder-${reminderDate}`}
-                  value={reminderDate && reminderDate.trim() ? formatDateForDisplay(reminderDate) : ''}
-                  onChange={(e) => setReminderDate(e.target.value)}
-                  pattern="\d{4}-\d{2}-\d{2}"
-                  placeholder="yyyy-mm-dd"
+                <select
+                  value={formData.approved ? 'taip' : 'ne'}
+                  onChange={(e) => handleInputChange('approved', e.target.value === 'taip')}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
+                >
+                  <option value="ne">Nepatvirtinta</option>
+                  <option value="taip">Patvirtinta</option>
+                  <option value="rezervuota">Rezervuota</option>
+                  <option value="atšaukta">Atšaukta</option>
+                </select>
               </div>
               
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Priminimo žinutė
-                </label>
+              <div className="flex space-x-4">
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm font-medium text-gray-700">Media</span>
+                  <button
+                    type="button"
+                    onClick={() => handleInputChange('media_received', !formData.media_received)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                      formData.media_received ? 'bg-green-600' : 'bg-gray-200'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        formData.media_received ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm font-medium text-gray-700">Sąskaita</span>
+                  <button
+                    type="button"
+                    onClick={() => handleInputChange('invoice_sent', !formData.invoice_sent)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                      formData.invoice_sent ? 'bg-green-600' : 'bg-gray-200'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        formData.invoice_sent ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Dates Section */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Transliacijų laikotarpis
+              </label>
+              <div className="flex items-center space-x-2">
                 <input
                   type="text"
-                  value={reminderMessage}
-                  onChange={(e) => setReminderMessage(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Pvz.: perskambinti, patvirtinti užsakymą..."
+                  value={formData.from ? formatDateForDisplay(formData.from) : ''}
+                  onChange={(e) => handleInputChange('from', e.target.value)}
+                  pattern="\d{4}-\d{2}-\d{2}"
+                  placeholder="yyyy-mm-dd"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                <span className="text-gray-500">→</span>
+                <input
+                  type="text"
+                  value={formData.to ? formatDateForDisplay(formData.to) : ''}
+                  onChange={(e) => handleInputChange('to', e.target.value)}
+                  pattern="\d{4}-\d{2}-\d{2}"
+                  placeholder="yyyy-mm-dd"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
             </div>
             
-            {/* Existing Reminders */}
-            {reminders.length > 0 && (
-              <div>
-                <h4 className="text-sm font-medium text-gray-700 mb-2">Esami priminimai:</h4>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Savaitės
+              </label>
+              <div className="px-3 py-2 text-green-600 font-semibold">
+                {weeksDisplay}
+              </div>
+            </div>
+          </div>
+
+          {/* Sums Section */}
+          {formData.from && formData.to && formData.final_price && (
+            <div className="bg-gray-50 rounded-lg p-4">
+              <h3 className="text-sm font-medium text-gray-700 mb-3">Sumos pamenesiui</h3>
+              <div className="space-y-2">
+                {(() => {
+                  const distribution = calculateMonthlyDistribution(formData.from, formData.to, formData.final_price);
+                  return distribution.map((month) => (
+                    <div key={month.month} className="text-sm text-gray-900">
+                      {month.monthName} {month.year} ({month.days} d.) → {month.amount.toFixed(2)}€
+                    </div>
+                  ));
+                })()}
+                <div className="pt-2 border-t border-gray-200">
+                  <div className="text-sm font-semibold text-gray-900">
+                    Viso: {formData.final_price?.toFixed(2)}€
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Comments Section */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Komentaras
+            </label>
+            <div className="flex space-x-4">
+              <div className="flex-1">
+                <textarea
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      if (comment.trim()) {
+                        handleSaveComment();
+                      }
+                    }
+                  }}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Įveskite komentarą... (Enter - išsaugoti)"
+                />
+              </div>
+              
+              {/* Printscreen thumbnails */}
+              <div className="flex flex-col space-y-2">
+                <div className="w-16 h-16 bg-gray-100 border-2 border-dashed border-gray-300 rounded flex items-center justify-center">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handlePrintscreenUpload}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  />
+                  <span className="text-gray-400 text-xs">+</span>
+                </div>
+                <div className="w-16 h-16 bg-gray-100 border-2 border-dashed border-gray-300 rounded flex items-center justify-center">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handlePrintscreenUpload}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  />
+                  <span className="text-gray-400 text-xs">+</span>
+                </div>
+              </div>
+            </div>
+            
+            {/* Existing Comments */}
+            {comments.length > 0 && (
+              <div className="mt-4">
+                <h4 className="text-sm font-medium text-gray-700 mb-2">Esami komentarai:</h4>
                 <div className="space-y-2 max-h-32 overflow-y-auto">
-                  {reminders.map((reminder) => (
-                    <div key={reminder.id} className="bg-green-50 border border-green-200 rounded-lg p-3">
-                      <p className="text-sm text-gray-800 font-medium">{reminder.title}</p>
+                  {comments.map((comment) => (
+                    <div key={comment.id} className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                      <p className="text-sm text-gray-800">{comment.text}</p>
                       <p className="text-xs text-gray-500 mt-1">
-                        Iki: {new Date(reminder.due_date).toLocaleDateString('lt-LT')}
+                        {new Date(comment.created_at).toLocaleString('lt-LT')}
                       </p>
+                      {comment.printscreens && comment.printscreens.length > 0 && (
+                        <div className="mt-2 flex space-x-2">
+                          {comment.printscreens.map((printscreen) => (
+                            <div key={printscreen.id} className="relative">
+                              <img
+                                src={printscreen.file_url}
+                                alt="Printscreen"
+                                className="w-16 h-16 object-cover rounded border cursor-pointer hover:opacity-80"
+                                onClick={() => handlePrintscreenView(printscreen)}
+                              />
+                              <button
+                                onClick={() => {/* TODO: Delete printscreen */}}
+                                className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-xs hover:bg-red-600"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -673,40 +525,52 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
             )}
           </div>
 
-          {/* Additional Info */}
-          <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-sm text-gray-600">
-              <div>
-                <span className="font-medium">Transliacijų laikotarpis:</span> 
-                <span className="ml-2 font-semibold text-blue-600">{broadcastPeriod}</span>
-              </div>
-              <div>
-                <span className="font-medium">Savaitės:</span> 
-                <span className="ml-2 font-semibold text-green-600">{weeksDisplay}</span>
-              </div>
+          {/* Reminders Section */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Priminimo data
+              </label>
+              <input
+                type="text"
+                value={reminderDate && reminderDate.trim() ? formatDateForDisplay(reminderDate) : ''}
+                onChange={(e) => setReminderDate(e.target.value)}
+                pattern="\d{4}-\d{2}-\d{2}"
+                placeholder="yyyy-mm-dd"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
             </div>
             
-            {/* Monthly Distribution */}
-            {formData.from && formData.to && formData.final_price && (
-              <div className="mt-4 pt-4 border-t border-gray-200">
-                <div className="space-y-2">
-                  {(() => {
-                    const distribution = calculateMonthlyDistribution(formData.from, formData.to, formData.final_price);
-                    return distribution.map((month) => (
-                      <div key={month.month} className="text-sm text-gray-900">
-                        {month.monthName} {month.year} ({month.days} d.) → {month.amount.toFixed(2)}€
-                      </div>
-                    ));
-                  })()}
-                  <div className="pt-2 border-t border-gray-200">
-                    <div className="text-sm font-semibold text-gray-900">
-                      Viso: {formData.final_price?.toFixed(2)}€
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Priminimo žinutė
+              </label>
+              <input
+                type="text"
+                value={reminderMessage}
+                onChange={(e) => setReminderMessage(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="Pvz.: perskambinti, patvirtinti užsakymą..."
+              />
+            </div>
           </div>
+          
+          {/* Existing Reminders */}
+          {reminders.length > 0 && (
+            <div>
+              <h4 className="text-sm font-medium text-gray-700 mb-2">Esami priminimai:</h4>
+              <div className="space-y-2 max-h-32 overflow-y-auto">
+                {reminders.map((reminder) => (
+                  <div key={reminder.id} className="bg-green-50 border border-green-200 rounded-lg p-3">
+                    <p className="text-sm text-gray-800 font-medium">{reminder.title}</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Iki: {new Date(reminder.due_date).toLocaleDateString('lt-LT')}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Action Buttons */}
