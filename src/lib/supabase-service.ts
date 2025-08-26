@@ -39,10 +39,10 @@ export class SupabaseService {
       
       // Filter printscreens on client side
       const printscreens = (data || []).filter(file => 
-        file.mime_type && file.mime_type.startsWith('image/')
+        file.file_type && file.file_type.startsWith('image/')
       );
       
-      console.log('📸 Loaded printscreens:', printscreens.length);
+
       return printscreens;
       
     } catch (error) {
@@ -158,7 +158,7 @@ export class SupabaseService {
       console.log('📤 Uploading to Storage:', storagePath);
       
       const { error: uploadError } = await supabase.storage
-        .from('orders-new')
+        .from('files')
         .upload(storagePath, file);
       
       if (uploadError) {
@@ -168,7 +168,7 @@ export class SupabaseService {
       
       // 2. Gauti public URL
       const { data: urlData } = supabase.storage
-        .from('orders-new')
+        .from('files')
         .getPublicUrl(storagePath);
       
       if (!urlData.publicUrl) {
@@ -178,11 +178,10 @@ export class SupabaseService {
       // 3. Išsaugoti metaduomenis į DB (tik plokščias objektas)
       const metadata = {
         order_id: orderId,
-        storage_path: storagePath,
-        original_name: file.name,
-        size_bytes: file.size,
-        mime_type: file.type || 'application/octet-stream',
-        uploaded_at: new Date().toISOString()
+        filename: file.name,
+        file_url: urlData.publicUrl,
+        file_type: file.type || 'application/octet-stream',
+        created_at: new Date().toISOString()
       };
       
       console.log('📤 Saving metadata to DB:', metadata);
@@ -216,27 +215,22 @@ export class SupabaseService {
   }
 
   static async uploadPrintscreen(orderId: string, file: File): Promise<FileAttachment> {
-    console.log('📸 Starting printscreen upload...');
-    
     try {
       // 1. Įkelti printscreen į Supabase Storage
       const fileName = `printscreen_${Date.now()}_${file.name}`;
       const storagePath = `${orderId}/printscreens/${fileName}`;
       
-      console.log('📤 Uploading printscreen to Storage:', storagePath);
-      
       const { error: uploadError } = await supabase.storage
-        .from('orders-new')
+        .from('files')
         .upload(storagePath, file);
       
       if (uploadError) {
-        console.error('❌ Printscreen upload failed:', uploadError);
         throw uploadError;
       }
       
       // 2. Gauti public URL
       const { data: urlData } = supabase.storage
-        .from('orders-new')
+        .from('files')
         .getPublicUrl(storagePath);
       
       if (!urlData.publicUrl) {
@@ -246,14 +240,11 @@ export class SupabaseService {
       // 3. Išsaugoti printscreen metaduomenis į DB
       const metadata = {
         order_id: orderId,
-        storage_path: storagePath,
-        original_name: file.name,
-        size_bytes: file.size,
-        mime_type: file.type || 'image/png',
-        uploaded_at: new Date().toISOString()
+        filename: file.name,
+        file_url: urlData.publicUrl,
+        file_type: file.type || 'image/png',
+        created_at: new Date().toISOString()
       };
-      
-      console.log('📤 Saving printscreen metadata to DB:', metadata);
       
       const { data: fileData, error: insertError } = await supabase
         .from('file_attachments')
@@ -262,11 +253,8 @@ export class SupabaseService {
         .single();
       
       if (insertError) {
-        console.error('❌ Failed to save printscreen metadata:', insertError);
         throw insertError;
       }
-      
-      console.log('✅ Printscreen uploaded successfully:', file.name);
       
       return {
         id: fileData.id,
@@ -278,7 +266,7 @@ export class SupabaseService {
       };
       
     } catch (error) {
-      console.error('❌ Printscreen upload failed:', error);
+      console.error('Printscreen upload failed:', error);
       throw error;
     }
   }
@@ -292,20 +280,27 @@ export class SupabaseService {
 
     if (fetchError) throw fetchError;
 
-    // Extract file path from URL
-    const filePath = file.file_url.split('/').slice(-2).join('/');
+    // Extract file path from URL - get everything after the bucket name
+    const url = new URL(file.file_url);
+    const pathParts = url.pathname.split('/');
+    const bucketIndex = pathParts.findIndex(part => part === 'files');
+    const filePath = pathParts.slice(bucketIndex + 1).join('/');
     
     const { error: deleteError } = await supabase.storage
-      .from('orders-new')
+      .from('files')
       .remove([filePath]);
 
-    if (deleteError) throw deleteError;
+    if (deleteError) {
+      throw deleteError;
+    }
 
     const { error: dbError } = await supabase
       .from('file_attachments')
       .delete()
       .eq('id', id);
 
-    if (dbError) throw dbError;
+    if (dbError) {
+      throw dbError;
+    }
   }
 }

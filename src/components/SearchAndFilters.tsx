@@ -12,6 +12,7 @@ interface SearchAndFiltersProps {
     client: string;
     agency: string;
     media_received: string;
+    invoice_sent: string;
   };
   onFiltersChange: (filters: {
     status: string;
@@ -20,6 +21,7 @@ interface SearchAndFiltersProps {
     client: string;
     agency: string;
     media_received: string;
+    invoice_sent: string;
   }) => void;
 }
 
@@ -59,6 +61,8 @@ export function SearchAndFilters({
     { value: 'true', label: 'Media gautas' },
     { value: 'false', label: 'Media negautas' }
   ];
+
+
 
   const handleFilterChange = (key: string, value: string) => {
     onFiltersChange({ ...filters, [key]: value });

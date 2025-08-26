@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Order } from '@/types';
 import { PocketBaseService } from '@/lib/pocketbase';
 import { format } from 'date-fns';
-import { EyeIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
+
 
 interface OrdersTableProps {
   searchQuery: string;
@@ -16,11 +16,10 @@ interface OrdersTableProps {
     agency: string;
     media_received: string;
   };
-  onOrderClick: (order: Order) => void;
   onEditOrder: (order: Order) => void;
 }
 
-export function OrdersTable({ searchQuery, filters, onOrderClick, onEditOrder }: OrdersTableProps) {
+export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTableProps) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
@@ -28,6 +27,42 @@ export function OrdersTable({ searchQuery, filters, onOrderClick, onEditOrder }:
   const [totalItems, setTotalItems] = useState(0);
   const [sortField, setSortField] = useState<string>('updated');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+
+  // Function to check if media alert should be shown
+  const shouldShowMediaAlert = (order: Order): boolean => {
+    if (!order.approved || order.media_received) {
+      return false;
+    }
+
+    try {
+      const fromDate = new Date(order.from);
+      const today = new Date();
+      const timeDiff = fromDate.getTime() - today.getTime();
+      const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
+      
+      // Show alert if: 2 days or less remaining, OR deadline has passed, OR today
+      return daysDiff <= 2;
+    } catch {
+      return false;
+    }
+  };
+
+  // Function to toggle invoice sent status
+  const handleToggleInvoiceSent = async (order: Order) => {
+    try {
+      const updatedOrder = { ...order, invoice_sent: !order.invoice_sent };
+      await PocketBaseService.updateOrder(order.id, updatedOrder);
+      
+      // Update local state
+      setOrders(prev => prev.map(o => 
+        o.id === order.id ? { ...o, invoice_sent: !o.invoice_sent } : o
+      ));
+    } catch (error) {
+      console.error('Error updating invoice status:', error);
+    }
+  };
+
+
 
   const getMockOrders = (): Order[] => [
     {
@@ -527,8 +562,14 @@ export function OrdersTable({ searchQuery, filters, onOrderClick, onEditOrder }:
                   {getSortIcon('final_price')}
                 </div>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                Veiksmai
+              <th 
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                onClick={() => handleSort('invoice_sent')}
+              >
+                <div className="flex items-center space-x-1">
+                  <span>Sąskaita</span>
+                  {getSortIcon('invoice_sent')}
+                </div>
               </th>
             </tr>
           </thead>
@@ -548,6 +589,11 @@ export function OrdersTable({ searchQuery, filters, onOrderClick, onEditOrder }:
                     )}
                     <div className="text-sm font-medium text-gray-900 dark:text-white">
                       {order.client}
+                      {shouldShowMediaAlert(order) && (
+                        <span className="ml-2 text-red-600 animate-pulse">
+                          ⚠️
+                        </span>
+                      )}
                     </div>
                   </div>
                 </td>
@@ -590,38 +636,22 @@ export function OrdersTable({ searchQuery, filters, onOrderClick, onEditOrder }:
                     {formatPrice(order.final_price)}
                   </div>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onOrderClick(order);
-                      }}
-                      className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
-                      title="Peržiūrėti užsakymą"
-                    >
-                      <EyeIcon className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onOrderClick(order);
-                      }}
-                      className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-blue-300"
-                      title="Redaguoti užsakymą (eilutės paspaudimas)"
-                    >
-                      <PencilIcon className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        // TODO: Implement delete
-                      }}
-                      className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
-                    >
-                      <TrashIcon className="w-4 h-4" />
-                    </button>
-                  </div>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleToggleInvoiceSent(order);
+                    }}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                      order.invoice_sent ? 'bg-green-300' : 'bg-gray-200'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        order.invoice_sent ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
                 </td>
               </tr>
             ))}

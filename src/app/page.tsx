@@ -7,6 +7,8 @@ import { SearchAndFilters } from '@/components/SearchAndFilters';
 import { AddOrderModal } from '@/components/AddOrderModal';
 import { OrderDetailsModal } from '@/components/OrderDetailsModal';
 import { EditOrderModal } from '@/components/EditOrderModal';
+import { ReminderNotifications } from '@/components/ReminderNotifications';
+import { PocketBaseService } from '@/lib/pocketbase';
 import { Order } from '@/types';
 
 export default function Home() {
@@ -14,6 +16,8 @@ export default function Home() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showReminders, setShowReminders] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
   
   // Get current date for default filters
   const now = new Date();
@@ -26,20 +30,29 @@ export default function Home() {
     year: currentYear.toString(), // Default: einamieji metai (2025)
     client: '',
     agency: '',
-    media_received: ''
+    media_received: '',
+    invoice_sent: ''
   });
 
-  const handleOrderClick = (order: Order) => {
-    setSelectedOrder(order);
-  };
+
 
   const handleEditOrder = (order: Order) => {
     setEditingOrder(order);
   };
 
   const handleOrderUpdated = () => {
-    // TODO: Update orders list
+    // Force OrdersTable to refresh by updating the refresh key
+    setRefreshKey(prev => prev + 1);
     setEditingOrder(null);
+  };
+
+  const handleOpenEditModalFromReminder = async (orderId: string) => {
+    try {
+      const order = await PocketBaseService.getOrder(orderId);
+      setEditingOrder(order);
+    } catch (error) {
+      console.error('Error loading order for edit:', error);
+    }
   };
 
   return (
@@ -55,9 +68,9 @@ export default function Home() {
         />
         
         <OrdersTable
+          key={refreshKey}
           searchQuery={searchQuery}
           filters={filters}
-          onOrderClick={handleOrderClick}
           onEditOrder={handleEditOrder}
         />
       </main>
@@ -82,6 +95,14 @@ export default function Home() {
         onClose={() => setEditingOrder(null)}
         onOrderUpdated={handleOrderUpdated}
       />
+
+      {/* Reminder Notifications */}
+      {showReminders && (
+        <ReminderNotifications
+          onClose={() => setShowReminders(false)}
+          onOpenEditModal={handleOpenEditModalFromReminder}
+        />
+      )}
     </div>
   );
 }
