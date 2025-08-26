@@ -1,13 +1,16 @@
 'use client';
 
 import { useState } from 'react';
+import { OrdersTable } from '@/components/OrdersTable';
 import { Header } from '@/components/Header';
 import { SearchAndFilters } from '@/components/SearchAndFilters';
+import { AddOrderModal } from '@/components/AddOrderModal';
 import { OrderDetailsModal } from '@/components/OrderDetailsModal';
 import { EditOrderModal } from '@/components/EditOrderModal';
 import { Order } from '@/types';
 
 export default function Home() {
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -41,7 +44,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <Header onAddOrder={() => {}} />
+      <Header onAddOrder={() => setIsAddModalOpen(true)} />
       
       <main className="container mx-auto px-4 py-6">
         <SearchAndFilters
@@ -51,12 +54,19 @@ export default function Home() {
           onFiltersChange={setFilters}
         />
         
-        {/* TODO: Add OrdersTable component */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-xl font-semibold mb-4">Užsakymai</h2>
-          <p className="text-gray-600">OrdersTable komponentas bus pridėtas vėliau.</p>
-        </div>
+        <OrdersTable
+          searchQuery={searchQuery}
+          filters={filters}
+          onOrderClick={handleOrderClick}
+          onEditOrder={handleEditOrder}
+        />
       </main>
+
+      {/* Add Order Modal */}
+      <AddOrderModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+      />
 
       {/* Order Details Modal */}
       <OrderDetailsModal
