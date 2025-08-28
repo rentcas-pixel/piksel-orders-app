@@ -5,7 +5,7 @@ import { config } from '@/config';
 
 export default function TestPocketBase() {
   const [status, setStatus] = useState<string>('Testing...');
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<{ items?: unknown[]; totalItems?: number; totalPages?: number } | null>(null);
 
   const testPocketBase = async () => {
     try {

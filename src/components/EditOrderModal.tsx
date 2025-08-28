@@ -26,7 +26,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
   const [pendingPrintscreens, setPendingPrintscreens] = useState<FileAttachment[]>([]);
   const [quote, setQuote] = useState<{ link: string; viaduct_link: string } | null>(null);
 
-  const loadQuote = async () => {
+  const loadQuote = useCallback(async () => {
     if (!order) return;
     
     try {
@@ -35,7 +35,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
     } catch {
       console.log('No quote found for order:', order.invoice_id);
     }
-  };
+  }, [order]);
 
   useEffect(() => {
     if (order) {
