@@ -17,6 +17,7 @@ export class PocketBaseService {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private static async makeRequest(endpoint: string, options: RequestInit = {}): Promise<any> {
     const url = `${POCKETBASE_URL}/api/collections/${COLLECTION}${endpoint}`;
+    console.log('🔍 PocketBase full URL:', url);
     
     // Add timeout to fetch
     const controller = new AbortController();
