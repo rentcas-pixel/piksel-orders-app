@@ -2,6 +2,7 @@
 
 
 import { SunIcon, MoonIcon, CalendarIcon } from '@heroicons/react/24/outline';
+import Image from 'next/image';
 
 interface HeaderProps {
   onAddOrder: () => void;
@@ -18,9 +19,11 @@ export function Header({ onAddOrder, isDarkMode, onToggleDarkMode }: HeaderProps
           {/* Logo in center */}
           <div className="absolute left-1/2 transform -translate-x-1/2">
             <div className="w-[90px] h-[90px] flex items-center justify-center">
-              <img 
+              <Image 
                 src={isDarkMode ? "/Piksel-logo-black-2023.png" : "/Piksel-logo-black-2023.png"} 
                 alt="Piksel Logo" 
+                width={90}
+                height={90}
                 className={`w-full h-full object-contain ${isDarkMode ? 'brightness-0 invert' : ''}`}
               />
             </div>

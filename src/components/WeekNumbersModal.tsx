@@ -10,7 +10,7 @@ interface WeekNumbersModalProps {
 
 export function WeekNumbersModal({ isOpen, onClose }: WeekNumbersModalProps) {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+  const [selectedMonth] = useState(new Date().getMonth());
 
   React.useEffect(() => {
     if (isOpen) {

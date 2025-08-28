@@ -451,8 +451,8 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
         
         // Calculate sum asynchronously in background (non-blocking)
         calculateSumAsync(filterString);
-      } catch (error) {
-        console.error('❌ Failed to fetch orders:', error);
+          } catch {
+      console.error('❌ Failed to fetch orders');
         // For demo purposes, show filtered and sorted mock data
         const mockOrders = getMockOrders();
         const filteredOrders = filterMockOrders(mockOrders);
@@ -466,7 +466,7 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
     };
 
     fetchOrders();
-  }, [currentPage, searchQuery, filters, sortField, sortDirection, buildFilterString, filterMockOrders, sortOrders]);
+  }, [currentPage, searchQuery, filters, sortField, sortDirection, buildFilterString, filterMockOrders, sortOrders, calculateSumAsync]);
 
 
 

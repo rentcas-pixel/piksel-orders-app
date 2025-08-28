@@ -24,7 +24,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
   const [reminderDate, setReminderDate] = useState('');
   const [reminderMessage, setReminderMessage] = useState('');
   const [pendingPrintscreens, setPendingPrintscreens] = useState<FileAttachment[]>([]);
-  const [quote, setQuote] = useState<any>(null);
+  const [quote, setQuote] = useState<{ link: string; viaduct_link: string } | null>(null);
 
   const loadQuote = async () => {
     if (!order) return;
@@ -32,7 +32,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
     try {
       const quoteData = await PocketBaseService.getQuoteByOrderId(order.invoice_id);
       setQuote(quoteData);
-    } catch (error) {
+    } catch {
       console.log('No quote found for order:', order.invoice_id);
     }
   };
@@ -54,7 +54,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
       
       loadQuote();
     }
-  }, [order]);
+  }, [order, loadQuote]);
 
   useEffect(() => {
     if (isOpen) {
@@ -73,8 +73,8 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
       setComments(sortedComments);
-    } catch (error) {
-      console.error('Error loading comments:', error);
+    } catch {
+      console.error('Error loading comments');
     }
   }, [order]);
 
@@ -83,8 +83,8 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
     try {
       const remindersData = await SupabaseService.getReminders(order.id);
       setReminders(remindersData);
-    } catch (error) {
-      console.error('Error loading reminders:', error);
+    } catch {
+      console.error('Error loading reminders');
     }
   }, [order]);
 
@@ -94,8 +94,8 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
       const printScreensData = await SupabaseService.getPrintscreensForOrder(order.id);
       setPrintScreens(printScreensData);
       setPendingPrintscreens([]);
-    } catch (error) {
-      console.error('Error loading print screens:', error);
+    } catch {
+      console.error('Error loading print screens');
     }
   }, [order]);
 
@@ -127,8 +127,8 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
       const updatedOrder = await PocketBaseService.updateOrder(order.id, formData);
       onOrderUpdated(updatedOrder);
       onClose();
-    } catch (error) {
-      console.error('Error updating order:', error);
+    } catch {
+      console.error('Error updating order');
     } finally {
       setLoading(false);
     }
@@ -141,9 +141,9 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
       try {
         await PocketBaseService.deleteOrder(order.id);
         onClose();
-      } catch (error) {
-        console.error('Error deleting order:', error);
-      }
+          } catch {
+      console.error('Error deleting order');
+    }
     }
   };
 
@@ -163,8 +163,8 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
       if (contentEditableElement) {
         contentEditableElement.textContent = '';
       }
-    } catch (error) {
-      console.error('Error adding comment:', error);
+    } catch {
+      console.error('Error adding comment');
       const tempComment = {
         id: `temp-${Date.now()}`,
         text: newComment.trim(),
@@ -196,8 +196,8 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
       setReminders(prev => [...prev, reminder]);
       setReminderDate('');
       setReminderMessage('');
-    } catch (error) {
-      console.error('Error adding reminder:', error);
+    } catch {
+      console.error('Error adding reminder');
       const tempReminder = {
           id: `temp-${Date.now()}`,
           due_date: reminderDate,
@@ -217,8 +217,8 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
     try {
       await SupabaseService.deleteReminder(reminderId);
       setReminders(prev => prev.filter(r => r.id !== reminderId));
-    } catch (error) {
-      console.error('Error deleting reminder:', error);
+    } catch {
+      console.error('Error deleting reminder');
     }
   };
 
@@ -243,8 +243,8 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
           
           setPendingPrintscreens(prev => [...prev, uploadedFile]);
           
-        } catch (error) {
-          console.error('Error uploading printscreen:', error);
+        } catch {
+          console.error('Error uploading printscreen');
         }
       }
     }
@@ -351,8 +351,8 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
         days: m.days,
         amount: m.amount
       }));
-    } catch (error) {
-      console.error('Error in calculateMonthlyDistribution:', error);
+    } catch {
+      console.error('Error in calculateMonthlyDistribution');
       return [];
     }
   };
@@ -581,8 +581,8 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                             await SupabaseService.deleteFile(printscreen.id);
                             setPendingPrintscreens(prev => prev.filter(p => p.id !== printscreen.id));
                             setPrintScreens(prev => prev.filter(p => p.id !== printscreen.id));
-                          } catch (error) {
-                            console.error('Error deleting printscreen:', error);
+                          } catch {
+                            console.error('Error deleting printscreen');
                           }
                         }}
                         className="absolute -top-1 -right-1 w-4 h-4 bg-black text-white rounded-full text-xs hover:bg-gray-800 flex items-center justify-center"
@@ -608,8 +608,8 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                           try {
                             await SupabaseService.deleteFile(printscreen.id);
                             setPrintScreens(prev => prev.filter(p => p.id !== printscreen.id));
-                          } catch (error) {
-                            console.error('Error deleting printscreen:', error);
+                          } catch {
+                            console.error('Error deleting printscreen');
                           }
                         }}
                         className="absolute -top-1 -right-1 w-4 h-4 bg-black text-white rounded-full text-xs hover:bg-gray-800 flex items-center justify-center"
