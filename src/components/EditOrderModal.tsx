@@ -499,7 +499,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                       {(() => {
                         const distribution = calculateMonthlyDistribution(formData.from, formData.to, formData.final_price);
                         return distribution.map((month) => (
-                          <div key={month.month} className="text-sm text-gray-900 dark:text-white">
+                          <div key={`${month.year}-${month.month}`} className="text-sm text-gray-900 dark:text-white">
                             {month.monthName.charAt(0).toUpperCase() + month.monthName.slice(1)} {month.year} ({month.days} d.) → {month.amount.toFixed(2)}€
                           </div>
                         ));

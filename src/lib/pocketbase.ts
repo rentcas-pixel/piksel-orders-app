@@ -1,8 +1,15 @@
 import { config } from '@/config';
-import { Order } from '@/types';
+import { Order, Screen, Partner } from '@/types';
 
 const POCKETBASE_URL = config.pocketbase.url;
 const COLLECTION = config.pocketbase.collection;
+const SCREENS_COLLECTION = 'screens';
+const PARTNERS_COLLECTION = 'partners';
+
+// In-memory cache for screen names (60 min) - sumažina PocketBase apkrovą
+const screenNamesCache = new Map<string, { data: Record<string, Screen>; expires: number }>();
+const partnersCache = new Map<string, { data: Partner[]; expires: number }>();
+const SCREEN_CACHE_TTL = 60 * 60 * 1000;
 
 // Connection pool and retry configuration
 const REQUEST_TIMEOUT = 10000; // 10 seconds
@@ -17,7 +24,6 @@ export class PocketBaseService {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private static async makeRequest(endpoint: string, options: RequestInit = {}): Promise<any> {
     const url = `${POCKETBASE_URL}/api/collections/${COLLECTION}${endpoint}`;
-    console.log('🔍 PocketBase full URL:', url);
     
     // Add timeout to fetch
     const controller = new AbortController();
@@ -60,7 +66,6 @@ export class PocketBaseService {
       return await this.makeRequest(endpoint, options);
     } catch (error) {
       if (retries > 0 && error instanceof Error && error.message !== 'Request timeout') {
-        console.log(`🔄 Retrying request (${retries} attempts left)...`);
         await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
         return this.makeRequestWithRetry(endpoint, options, retries - 1);
       }
@@ -118,12 +123,8 @@ export class PocketBaseService {
     });
 
     const url = `/records?${queryParams}`;
-    console.log('🌐 PocketBase request URL:', url);
-    console.log('🌐 PocketBase filter:', filter);
     
     const response = await this.makeRequestWithRetry(url);
-    
-    console.log('📦 PocketBase raw response:', response);
     
     return {
       items: response.items || [],
@@ -160,8 +161,7 @@ export class PocketBaseService {
   static async getQuoteByOrderId(orderId: string): Promise<{ link: string; viaduct_link: string } | null> {
     try {
       const url = `${POCKETBASE_URL}/api/collections/quotes/records?filter=order_id="${orderId}"&perPage=1`;
-      console.log('🔍 Trying to fetch quote from:', url);
-      
+
       const response = await fetch(url, {
         headers: {
           'Content-Type': 'application/json',
@@ -177,7 +177,6 @@ export class PocketBaseService {
       const data = await response.json();
       return data.items?.[0] || null;
     } catch {
-      console.log('No quote found for order:', orderId);
       return null;
     }
   }
@@ -202,6 +201,122 @@ export class PocketBaseService {
     }
     
     return results;
+  }
+
+  /** Gauti visus partnerius – cache 60 min */
+  static async getPartners(): Promise<Partner[]> {
+    const cacheKey = 'partners_all';
+    const cached = partnersCache.get(cacheKey);
+    if (cached && cached.expires > Date.now()) return cached.data;
+
+    try {
+      const url = `${POCKETBASE_URL}/api/collections/${PARTNERS_COLLECTION}/records?perPage=100`;
+      const response = await fetch(url, {
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!response.ok) return [];
+      const data = await response.json();
+      const items = data.items || [];
+      const result = items.map((p: { id: string; name: string; slug?: string }) => ({
+        id: p.id,
+        name: p.name || 'Nežinomas',
+        slug: p.slug,
+      }));
+      partnersCache.set(cacheKey, { data: result, expires: Date.now() + SCREEN_CACHE_TTL });
+      return result;
+    } catch {
+      return [];
+    }
+  }
+
+  /** Gauti ekranus su partner info (expand=partner) – viena batch užklausa */
+  static async getScreensWithPartner(screenIds: string[]): Promise<Record<string, Screen>> {
+    const uniqueIds = [...new Set(screenIds)].filter(Boolean);
+    if (uniqueIds.length === 0) return {};
+
+    const cacheKey = `screens_partner_${uniqueIds.sort().join(',')}`;
+    const cached = screenNamesCache.get(cacheKey);
+    if (cached && cached.expires > Date.now()) return cached.data;
+
+    try {
+      const filter = uniqueIds.map(id => `id="${id}"`).join(' || ');
+      const url = `${POCKETBASE_URL}/api/collections/${SCREENS_COLLECTION}/records?filter=(${filter})&perPage=100&expand=partner`;
+      const response = await fetch(url, {
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!response.ok) return this.emptyScreenNames(uniqueIds);
+
+      const data = await response.json();
+      const items = data.items || [];
+      const result: Record<string, Screen> = {};
+      for (const item of items) {
+        const partnerId = item.partner ?? item.expand?.partner?.id;
+        result[item.id] = {
+          id: item.id,
+          name: item.name || 'Nežinomas',
+          city: item.city,
+          type: item.type,
+          viaduct: item.viaduct,
+          partner: partnerId,
+        };
+      }
+      for (const id of uniqueIds) {
+        if (!result[id]) result[id] = { id, name: `ID: ${id.slice(0, 8)}...` };
+      }
+      screenNamesCache.set(cacheKey, { data: result, expires: Date.now() + SCREEN_CACHE_TTL });
+      return result;
+    } catch {
+      return this.emptyScreenNames(uniqueIds);
+    }
+  }
+
+  /** Gauti ekranų pavadinimus pagal ID masyvą – VIENA batch užklausa (ne N atskirų) */
+  static async getScreenNames(screenIds: string[]): Promise<Record<string, Screen>> {
+    const uniqueIds = [...new Set(screenIds)].filter(Boolean);
+    if (uniqueIds.length === 0) return {};
+
+    const cacheKey = uniqueIds.sort().join(',');
+    const cached = screenNamesCache.get(cacheKey);
+    if (cached && cached.expires > Date.now()) return cached.data;
+
+    try {
+      const filter = uniqueIds.map(id => `id="${id}"`).join(' || ');
+      const url = `${POCKETBASE_URL}/api/collections/${SCREENS_COLLECTION}/records?filter=(${filter})&perPage=100`;
+      const response = await fetch(url, {
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!response.ok) return this.emptyScreenNames(uniqueIds);
+
+      const data = await response.json();
+      const items = data.items || [];
+      const result: Record<string, Screen> = {};
+      for (const item of items) {
+        result[item.id] = {
+          id: item.id,
+          name: item.name || 'Nežinomas',
+          city: item.city,
+          type: item.type,
+          viaduct: item.viaduct,
+        };
+      }
+      for (const id of uniqueIds) {
+        if (!result[id]) result[id] = { id, name: `ID: ${id.slice(0, 8)}...` };
+      }
+
+      screenNamesCache.set(cacheKey, { data: result, expires: Date.now() + SCREEN_CACHE_TTL });
+      return result;
+    } catch {
+      return this.emptyScreenNames(uniqueIds);
+    }
+  }
+
+  private static emptyScreenNames(ids: string[]): Record<string, Screen> {
+    const r: Record<string, Screen> = {};
+    for (const id of ids) r[id] = { id, name: `ID: ${id.slice(0, 8)}...` };
+    return r;
   }
 
   // Health check method

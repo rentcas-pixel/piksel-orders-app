@@ -1,7 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
+import { useDebounce } from '@/hooks/useDebounce';
 import { OrdersTable } from '@/components/OrdersTable';
+import { ScreenRevenueAnalysis } from '@/components/ScreenRevenueAnalysis';
+import { PartnerRevenueAnalysis } from '@/components/PartnerRevenueAnalysis';
 import { Header } from '@/components/Header';
 import { SearchAndFilters } from '@/components/SearchAndFilters';
 import { AddOrderModal } from '@/components/AddOrderModal';
@@ -20,36 +23,13 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showReminders, setShowReminders] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [isDarkMode, setIsDarkMode] = useState(false);
 
-  // Load dark mode preference from localStorage
-  useEffect(() => {
-    const savedDarkMode = localStorage.getItem('darkMode');
-    if (savedDarkMode !== null) {
-      setIsDarkMode(JSON.parse(savedDarkMode));
-    }
-  }, []);
-
-  // Save dark mode preference to localStorage
-  useEffect(() => {
-    localStorage.setItem('darkMode', JSON.stringify(isDarkMode));
-    // Apply dark mode class to document
-    if (isDarkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, [isDarkMode]);
-
-  const toggleDarkMode = () => {
-    setIsDarkMode(!isDarkMode);
-  };
-  
   // Get current date for default filters
   const now = new Date();
   const currentMonth = String(now.getMonth() + 1).padStart(2, '0'); // 01-12
   const currentYear = now.getFullYear();
   
+  const [activeTab, setActiveTab] = useState<'orders' | 'revenue' | 'partners'>('orders');
   const [filters, setFilters] = useState({
     status: 'taip', // Default: Patvirtinta - rodo tik patvirtintus užsakymus
     month: currentMonth, // Default: einamasis mėnuo (dabar rugpjūtis)
@@ -60,7 +40,15 @@ export default function Home() {
     invoice_sent: ''
   });
 
-
+  // Debounce – sumažina PocketBase apkrovą (ne kiekvienas įvedimas trigerina užklausą)
+  const debouncedSearch = useDebounce(searchQuery, 400);
+  const debouncedClient = useDebounce(filters.client, 400);
+  const debouncedAgency = useDebounce(filters.agency, 400);
+  const debouncedFilters = useMemo(() => ({
+    ...filters,
+    client: debouncedClient,
+    agency: debouncedAgency,
+  }), [filters, debouncedClient, debouncedAgency]);
 
   const handleEditOrder = (order: Order) => {
     setEditingOrder(order);
@@ -85,8 +73,6 @@ export default function Home() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <Header 
         onAddOrder={() => setIsWeekNumbersModalOpen(true)} 
-        isDarkMode={isDarkMode}
-        onToggleDarkMode={toggleDarkMode}
       />
       
       <main className="container mx-auto px-4 py-6">
@@ -96,13 +82,67 @@ export default function Home() {
           filters={filters}
           onFiltersChange={setFilters}
         />
-        
-        <OrdersTable
-          key={refreshKey}
-          searchQuery={searchQuery}
-          filters={filters}
-          onEditOrder={handleEditOrder}
-        />
+
+        {/* Tabs */}
+        <div className="mb-4 mt-6 border-b border-gray-200 dark:border-gray-700">
+          <nav className="flex space-x-8">
+            <button
+              onClick={() => setActiveTab('orders')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === 'orders'
+                  ? 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+              }`}
+            >
+              Užsakymai
+            </button>
+            <button
+              onClick={() => setActiveTab('revenue')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === 'revenue'
+                  ? 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+              }`}
+            >
+              Ekranų pajamos
+            </button>
+            <button
+              onClick={() => setActiveTab('partners')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === 'partners'
+                  ? 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+              }`}
+            >
+              Partneriai
+            </button>
+          </nav>
+        </div>
+
+        {activeTab === 'orders' && (
+          <OrdersTable
+            key={refreshKey}
+            searchQuery={debouncedSearch}
+            filters={debouncedFilters}
+            onEditOrder={handleEditOrder}
+          />
+        )}
+
+        {activeTab === 'revenue' && (
+          <ScreenRevenueAnalysis
+            filters={debouncedFilters}
+            onEditOrder={handleEditOrder}
+            refreshKey={refreshKey}
+          />
+        )}
+
+        {activeTab === 'partners' && (
+          <PartnerRevenueAnalysis
+            filters={debouncedFilters}
+            onEditOrder={handleEditOrder}
+            refreshKey={refreshKey}
+          />
+        )}
       </main>
 
       {/* Add Order Modal */}

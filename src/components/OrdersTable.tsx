@@ -1,11 +1,11 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import { Order } from '@/types';
 import { PocketBaseService } from '@/lib/pocketbase';
 import { format } from 'date-fns';
-import { useCache } from '@/hooks/useCache';
-
+import { downloadExcel } from '@/lib/export-excel';
 
 interface OrdersTableProps {
   searchQuery: string;
@@ -26,42 +26,9 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
-  const [totalSum, setTotalSum] = useState(0);
   const [sortField, setSortField] = useState<string>('updated');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
-  
-  // Cache for sums
-  const sumsCache = useCache<number>(10 * 60 * 1000); // 10 minutes
-
-  // Optimized sum calculation with caching and reduced load
-  const calculateSumAsync = useCallback(async (filterString: string) => {
-    // Check if we already have the sum for this filter
-    const cacheKey = `sum_${filterString}`;
-    const cachedSum = sumsCache.get(cacheKey);
-    if (cachedSum) {
-      setTotalSum(cachedSum);
-      return;
-    }
-
-    try {
-      // Use smaller batch size to reduce server load
-      const allOrdersForSum = await PocketBaseService.getOrders({
-        page: 1,
-        perPage: 100, // Reduced from 200 to 100
-        sort: '-updated',
-        filter: filterString
-      });
-      
-      const approvedOrders = allOrdersForSum.items.filter(order => order.approved);
-      const sum = approvedOrders.reduce((total, order) => total + (order.final_price || 0), 0);
-      
-      // Cache the result for 10 minutes
-      sumsCache.set(cacheKey, sum, 10 * 60 * 1000);
-      setTotalSum(sum);
-    } catch {
-      setTotalSum(0);
-    }
-  }, [sumsCache]);
+  const [exporting, setExporting] = useState(false);
 
   // Function to check if media alert should be shown
   const shouldShowMediaAlert = (order: Order): boolean => {
@@ -274,74 +241,62 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
   const buildFilterString = useCallback(() => {
     const filtersArray = [];
     
-    console.log('🔍 Building filter string with:', { searchQuery, filters });
-    
     // Add search query filter
     if (searchQuery.trim()) {
       // Check if searching for "viad" to include viaduct orders
       if (searchQuery.toLowerCase().startsWith('viad')) {
         filtersArray.push(`(client~"${searchQuery}" || agency~"${searchQuery}" || invoice_id~"${searchQuery}" || viaduct=true)`);
-        console.log('🔍 Added viaduct filter for "viad" search');
-        console.log('🔍 Search query starts with "viad", adding viaduct=true filter');
       } else {
         filtersArray.push(`(client~"${searchQuery}" || agency~"${searchQuery}" || invoice_id~"${searchQuery}")`);
-        console.log('🔍 Regular search filter added');
       }
-      console.log('🔍 Search query:', searchQuery);
     }
     
     // Status filter - handle boolean conversion
     if (filters.status) {
       if (filters.status === 'taip') {
         filtersArray.push(`approved=true`);
-        console.log('🔍 Added status filter: approved=true');
       } else if (filters.status === 'ne') {
         filtersArray.push(`approved=false`);
-        console.log('🔍 Added status filter: approved=false');
       }
     }
     
     // Client filter
     if (filters.client.trim()) {
       filtersArray.push(`client~"${filters.client}"`);
-      console.log('🔍 Added client filter:', filters.client);
     }
     
     // Agency filter
     if (filters.agency.trim()) {
       filtersArray.push(`agency~"${filters.agency}"`);
-      console.log('🔍 Added agency filter:', filters.agency);
     }
     
     // Media received filter
     if (filters.media_received) {
       if (filters.media_received === 'true') {
         filtersArray.push(`media_received=true`);
-        console.log('🔍 Added media filter: media_received=true');
       } else if (filters.media_received === 'false') {
         filtersArray.push(`media_received=false`);
-        console.log('🔍 Added media filter: media_received=false');
       }
     }
     
-              // Date filters - show orders that overlap with the selected month
-          if (filters.month && filters.year) {
-            const startDate = `${filters.year}-${filters.month.padStart(2, '0')}-01`;
-            const endDate = `${filters.year}-${filters.month.padStart(2, '0')}-31`;
-            // Show orders that overlap with the selected month:
-            // - order starts before month ends AND order ends after month starts
-            filtersArray.push(`(from<="${endDate}" && to>="${startDate}")`);
-            console.log('🔍 Added date filter:', { startDate, endDate, month: filters.month, year: filters.year });
-          }
+    // Date filters - show orders that overlap with the selected month
+    if (filters.month && filters.year) {
+      const y = parseInt(filters.year, 10);
+      const m = parseInt(filters.month, 10);
+      const lastDay = new Date(y, m, 0).getDate(); // last day of month (Feb=28, etc.)
+      const startDate = `${filters.year}-${filters.month.padStart(2, '0')}-01`;
+      const endDate = `${filters.year}-${filters.month.padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+      // Show orders that overlap with the selected month:
+      // - order starts before month ends AND order ends after month starts
+      filtersArray.push(`(from<="${endDate}" && to>="${startDate}")`);
+    }
     
     // If no filters, return empty string
     if (filtersArray.length === 0) {
-      console.log('🔍 No filters applied, returning empty string');
       return '';
     }
     
     const result = filtersArray.join(' && ');
-    console.log('🔍 Final filter string:', result);
     return result;
   }, [searchQuery, filters]);
 
@@ -402,15 +357,47 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
     }).format(price);
   };
 
+  const handleExportExcel = useCallback(async () => {
+    setExporting(true);
+    try {
+      const filterString = buildFilterString();
+      const result = await PocketBaseService.getOrders({
+        page: 1,
+        perPage: 500,
+        sort: `${sortDirection === 'desc' ? '-' : ''}${sortField}`,
+        filter: filterString,
+      });
+      const items = result.items || [];
+      const monthName = filters.month && filters.year
+        ? `${['Sausis','Vasaris','Kovas','Balandis','Gegužė','Birželis','Liepa','Rugpjūtis','Rugsėjis','Spalis','Lapkritis','Gruodis'][parseInt(filters.month, 10) - 1]}_${filters.year}`
+        : 'visi';
+      const data: unknown[][] = [
+        ['Klientas', 'Agentūra', 'Užsakymo Nr.', 'Statusas', 'Data nuo', 'Data iki', 'Media gautas', 'Kaina', 'Sąskaita'],
+        ...items.map(o => [
+          o.client,
+          o.agency,
+          String(o.invoice_id),
+          o.approved ? 'Patvirtinta' : 'Nepatvirtinta',
+          format(new Date(o.from), 'yyyy-MM-dd'),
+          format(new Date(o.to), 'yyyy-MM-dd'),
+          o.media_received ? 'Taip' : 'Ne',
+          o.final_price ?? 0,
+          o.invoice_sent ? 'Taip' : 'Ne',
+        ]),
+      ];
+      downloadExcel(data, `Uzsakymai_${monthName}`);
+    } catch {
+      console.error('Export failed');
+    } finally {
+      setExporting(false);
+    }
+  }, [searchQuery, filters, sortField, sortDirection, buildFilterString]);
+
   useEffect(() => {
     const fetchOrders = async () => {
       try {
         setLoading(true);
         const filterString = buildFilterString();
-        console.log('🔍 PocketBase filter string:', filterString);
-        console.log('🔍 Current filters:', filters);
-        console.log('🔍 Search query:', searchQuery);
-        console.log('🔍 Sort field:', sortField, 'direction:', sortDirection);
         
         const result = await PocketBaseService.getOrders({
           page: currentPage,
@@ -419,40 +406,11 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
           filter: filterString
         });
         
-        console.log('✅ PocketBase response:', result);
-        console.log('🔍 Filter string sent to PocketBase:', filterString);
-        console.log('🔍 Current filters:', filters);
-        console.log('🔍 Search query:', searchQuery);
-        
-        // Debug: check if GO3 - Viadukai is in response
-        const go3Order = result.items.find(order => 
-          order.client.includes('GO3') || order.client.includes('Viadukai')
-        );
-        if (go3Order) {
-                  console.log('🔍 Found GO3 - Viadukai order:', go3Order);
-        console.log('🔍 Order dates:', { from: go3Order.from, to: go3Order.to });
-        console.log('🔍 Order approved:', go3Order.approved);
-        console.log('🔍 Order viaduct:', go3Order.viaduct);
-        
-        // Log all orders to see which ones have viaduct=true
-        console.log('🔍 All orders from PocketBase:', result.items);
-        console.log('🔍 Orders with viaduct=true:', result.items.filter(order => order.viaduct));
-        } else {
-          console.log('❌ GO3 - Viadukai order not found in response');
-        }
-        
-        // Debug: Log all orders to see what we have
-        console.log('🔍 All orders from PocketBase:', result.items);
-        console.log('🔍 Orders with viaduct=true:', result.items.filter(order => order.viaduct));
-        console.log('🔍 Orders with viaduct=false:', result.items.filter(order => !order.viaduct));
         setOrders(result.items);
         setTotalPages(result.totalPages);
         setTotalItems(result.totalItems);
-        
-        // Calculate sum asynchronously in background (non-blocking)
-        calculateSumAsync(filterString);
-          } catch {
-      console.error('❌ Failed to fetch orders');
+      } catch {
+        console.error('❌ Failed to fetch orders');
         // For demo purposes, show filtered and sorted mock data
         const mockOrders = getMockOrders();
         const filteredOrders = filterMockOrders(mockOrders);
@@ -466,7 +424,10 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
     };
 
     fetchOrders();
-  }, [currentPage, searchQuery, filters, sortField, sortDirection, buildFilterString, filterMockOrders, sortOrders, calculateSumAsync]);
+    // Only depend on primitives to avoid infinite loops from object/function reference changes.
+    // buildFilterString, filterMockOrders, sortOrders, calculateSumAsync are derived from these.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage, searchQuery, filters.status, filters.month, filters.year, filters.client, filters.agency, filters.media_received, sortField, sortDirection]);
 
 
 
@@ -508,12 +469,7 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Užsakymai ({totalItems})
-              {totalSum > 0 && (
-                <span className="ml-2 text-sm font-normal text-black dark:text-white">
-                  - Suma: €{totalSum.toLocaleString('lt-LT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              )}
+              Užsakymai
             </h2>
             {sortField && (
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
@@ -522,8 +478,18 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
               </p>
             )}
           </div>
-          <div className="text-sm text-gray-500 dark:text-gray-400">
-            Puslapis {currentPage} iš {totalPages}
+          <div className="flex items-center gap-4">
+            <button
+              onClick={handleExportExcel}
+              disabled={exporting}
+              className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50"
+            >
+              <ArrowDownTrayIcon className="w-4 h-4 mr-2" />
+              {exporting ? 'Eksportuojama...' : 'Excel'}
+            </button>
+            <span className="text-sm text-gray-500 dark:text-gray-400">
+              Puslapis {currentPage} iš {totalPages}
+            </span>
           </div>
         </div>
       </div>

@@ -1,7 +1,3 @@
-<<<<<<< HEAD
-.vercel
-node_modules
-=======
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies
@@ -34,7 +30,7 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files (opt-in for committing if needed)
 .env*
 
 # vercel
@@ -43,4 +39,3 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
->>>>>>> da0612add0d9c8405829605f99dec67237845133

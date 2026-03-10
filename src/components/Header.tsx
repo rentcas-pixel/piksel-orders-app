@@ -1,40 +1,45 @@
 'use client';
 
-
-import { SunIcon, MoonIcon, CalendarIcon } from '@heroicons/react/24/outline';
+import { useState } from 'react';
 import Image from 'next/image';
+import { SunIcon, MoonIcon, CalendarDaysIcon } from '@heroicons/react/24/outline';
 
 interface HeaderProps {
   onAddOrder: () => void;
-  isDarkMode: boolean;
-  onToggleDarkMode: () => void;
 }
 
-export function Header({ onAddOrder, isDarkMode, onToggleDarkMode }: HeaderProps) {
+export function Header({ onAddOrder }: HeaderProps) {
+  const [isDarkMode, setIsDarkMode] = useState(false);
+
+  const toggleDarkMode = () => {
+    setIsDarkMode(!isDarkMode);
+    document.documentElement.classList.toggle('dark');
+  };
 
   return (
     <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
-      <div className="container mx-auto px-4">
-        <div className="flex items-center justify-center h-16 relative">
-          {/* Logo in center */}
-          <div className="absolute left-1/2 transform -translate-x-1/2">
-            <div className="w-[90px] h-[90px] flex items-center justify-center">
-              <Image 
-                src={isDarkMode ? "/Piksel-logo-black-2023.png" : "/Piksel-logo-black-2023.png"} 
-                alt="Piksel Logo" 
-                width={90}
-                height={90}
-                className={`w-full h-full object-contain ${isDarkMode ? 'brightness-0 invert' : ''}`}
-              />
-            </div>
+      <div className="container mx-auto px-4 relative">
+        <div className="flex items-center justify-between h-24">
+          {/* Spacer for balance */}
+          <div className="w-12" />
+
+          {/* Piksel logo - center */}
+          <div className="absolute left-1/2 transform -translate-x-1/2 flex items-center justify-center py-5">
+            <Image
+              src="/Piksel-Logotipas-juodas-RGB.jpg?v=2"
+              alt="Piksel"
+              width={240}
+              height={80}
+              className="h-14 w-auto dark:invert"
+            />
           </div>
 
-          {/* Actions on the right */}
-          <div className="absolute right-4 flex items-center space-x-4">
+          {/* Actions */}
+          <div className="flex items-center space-x-4">
             {/* Dark Mode Toggle */}
             <button
-              onClick={onToggleDarkMode}
-              className="p-2 rounded-lg bg-green-600 hover:bg-green-700 text-white transition-colors"
+              onClick={toggleDarkMode}
+              className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
             >
               {isDarkMode ? (
                 <SunIcon className="w-5 h-5" />
@@ -43,13 +48,13 @@ export function Header({ onAddOrder, isDarkMode, onToggleDarkMode }: HeaderProps
               )}
             </button>
 
-            {/* Week Numbers Button */}
+            {/* Add Order Button */}
             <button
               onClick={onAddOrder}
-              className="inline-flex items-center p-3 bg-gray-700 hover:bg-gray-800 text-white font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-all duration-200 shadow-lg hover:shadow-xl"
-              title="Savaičių numeriai"
+              title="Pridėti užsakymą"
+              className="p-2 rounded-lg bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors"
             >
-              <CalendarIcon className="w-6 h-6" />
+              <CalendarDaysIcon className="w-5 h-5" />
             </button>
           </div>
         </div>

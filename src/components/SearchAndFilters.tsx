@@ -1,6 +1,5 @@
 'use client';
 
-import React from 'react';
 import { MagnifyingGlassIcon, FunnelIcon } from '@heroicons/react/24/outline';
 
 interface SearchAndFiltersProps {
@@ -33,7 +32,6 @@ export function SearchAndFilters({
   onFiltersChange
 }: SearchAndFiltersProps) {
   const months = [
-    { value: '', label: 'Visi mėnesiai' },
     { value: '01', label: 'Sausis' },
     { value: '02', label: 'Vasaris' },
     { value: '03', label: 'Kovas' },
@@ -49,7 +47,6 @@ export function SearchAndFilters({
   ];
 
   const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
-  const currentYear = new Date().getFullYear();
 
   const statuses = [
     { value: '', label: 'Visi statusai' },
@@ -70,20 +67,6 @@ export function SearchAndFilters({
   const handleFilterChange = (key: string, value: string) => {
     onFiltersChange({ ...filters, [key]: value });
   };
-
-  // Set default filters when component mounts
-  React.useEffect(() => {
-    // Force set default filters on first load
-    onFiltersChange({
-      status: '', // Visi statusai
-      month: '', // Visi mėnesiai
-      year: currentYear.toString(), // 2025 metai
-      client: '',
-      agency: '',
-      media_received: '',
-      invoice_sent: ''
-    });
-  }, [currentYear, onFiltersChange]);
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
@@ -110,17 +93,10 @@ export function SearchAndFilters({
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
             Filtrai
           </label>
-          {/* Active filters info */}
-          {(filters.status || filters.month || filters.client || filters.agency) && (
-            <div className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-3 py-2 rounded-md">
-              ℹ️ Aktyvūs filtrai: {filters.status ? `${statuses.find(s => s.value === filters.status)?.label}, ` : ''}{filters.month ? `${months.find(m => m.value === filters.month)?.label}, ` : ''}{filters.client ? `Klientas: ${filters.client}, ` : ''}{filters.agency ? `Agentūra: ${filters.agency}` : ''}
-            </div>
-          )}
-          
           {/* Default filters info */}
-          {filters.status === '' && filters.month === '' && filters.year === currentYear.toString() && (
-            <div className="text-xs text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 px-3 py-2 rounded-md">
-              🎯 By default: Visi statusai, Visi mėnesiai, 2025 metai
+          {(filters.status === 'taip' || filters.month || filters.year) && (
+            <div className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-3 py-2 rounded-md">
+              ℹ️ Aktyvūs filtrai: {filters.status === 'taip' ? 'Patvirtinta, ' : ''}{filters.month ? `${months.find(m => m.value === filters.month)?.label}, ` : ''}{filters.year ? `${filters.year} metai` : ''}
             </div>
           )}
           <div className="grid grid-cols-3 gap-3">
@@ -141,6 +117,7 @@ export function SearchAndFilters({
               onChange={(e) => handleFilterChange('month', e.target.value)}
               className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white text-sm"
             >
+              <option value="">Visi mėnesiai</option>
               {months.map((month) => (
                 <option key={month.value} value={month.value}>
                   {month.label}
@@ -153,6 +130,7 @@ export function SearchAndFilters({
               onChange={(e) => handleFilterChange('year', e.target.value)}
               className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white text-sm"
             >
+              <option value="">Visi metai</option>
               {years.map((year) => (
                 <option key={year} value={year.toString()}>
                   {year}

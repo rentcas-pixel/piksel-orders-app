@@ -12,6 +12,27 @@ export interface Order {
   invoice_sent: boolean;
   updated: string;
   intensity?: string; // Kas 4, Kas 6, Kas 8, Kas 12, Kas 24
+  /** Ekranų ID masyvas iš PocketBase */
+  screens?: string[];
+  /** Ekrano kainos pagal ID (jei yra) */
+  details?: {
+    screenPrices?: Record<string, number>;
+  };
+}
+
+export interface Screen {
+  id: string;
+  name: string;
+  city?: string;
+  type?: string;
+  viaduct?: boolean;
+  partner?: string; // Partner ID
+}
+
+export interface Partner {
+  id: string;
+  name: string;
+  slug?: string;
 }
 
 export interface OrderFormData {
