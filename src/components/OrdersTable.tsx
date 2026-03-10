@@ -391,7 +391,7 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
     } finally {
       setExporting(false);
     }
-  }, [searchQuery, filters, sortField, sortDirection, buildFilterString]);
+  }, [filters, sortField, sortDirection, buildFilterString]);
 
   useEffect(() => {
     const fetchOrders = async () => {

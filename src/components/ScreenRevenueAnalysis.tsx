@@ -11,7 +11,7 @@ import { downloadExcel } from '@/lib/export-excel';
 const MONTH_NAMES = ['Sausis', 'Vasaris', 'Kovas', 'Balandis', 'Gegužė', 'Birželis', 'Liepa', 'Rugpjūtis', 'Rugsėjis', 'Spalis', 'Lapkritis', 'Gruodis'];
 
 const REVENUE_CACHE_TTL = 5 * 60 * 1000; // 5 min
-const revenueCache = new Map<string, { orders: Order[]; revenues: ReturnType<typeof calculateScreenRevenues>; expires: number }>();
+const revenueCache = new Map<string, { revenues: ReturnType<typeof calculateScreenRevenues>; expires: number }>();
 
 interface ScreenRevenueAnalysisProps {
   filters: { month: string; year: string; status: string };
@@ -20,7 +20,6 @@ interface ScreenRevenueAnalysisProps {
 }
 
 export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: ScreenRevenueAnalysisProps) {
-  const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [revenues, setRevenues] = useState<ReturnType<typeof calculateScreenRevenues>>([]);
   const [expandedScreen, setExpandedScreen] = useState<string | null>(null);
@@ -52,7 +51,6 @@ export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: Scre
     const cacheKey = `${filters.month}-${filters.year}`;
     const cached = revenueCache.get(cacheKey);
     if (cached && cached.expires > Date.now()) {
-      setOrders(cached.orders);
       setRevenues(cached.revenues);
       setLoading(false);
       return;
@@ -83,11 +81,9 @@ export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: Scre
       const screenNames = await PocketBaseService.getScreenNames(screenIds);
       const calculated = calculateScreenRevenues(items, screenNames, y, m);
 
-      setOrders(items);
       setRevenues(calculated);
-      revenueCache.set(cacheKey, { orders: items, revenues: calculated, expires: Date.now() + REVENUE_CACHE_TTL });
+      revenueCache.set(cacheKey, { revenues: calculated, expires: Date.now() + REVENUE_CACHE_TTL });
     } catch {
-      setOrders([]);
       setRevenues([]);
     } finally {
       setLoading(false);
