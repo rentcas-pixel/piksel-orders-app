@@ -30,20 +30,16 @@ export function getDaysInMonth(
   return daysInclusiveBetween(overlapStart, overlapEnd);
 }
 
-/** Ekrano kaina užsakyme: iš details.screenPrices arba lygiai padalinta final_price */
-export function getScreenPriceInOrder(order: Order, screenId: string): number {
-  const screenPrices = order.details?.screenPrices;
-  if (screenPrices && typeof screenPrices[screenId] === 'number') {
-    return screenPrices[screenId];
-  }
-  const screens = order.screens?.length || 1;
-  return order.final_price / screens;
+/** Ekrano kaina užsakyme: final_price padalinta iš unikalių ekranų skaičiaus */
+export function getScreenPriceInOrder(order: Order): number {
+  const uniqueScreenCount = new Set(order.screens?.filter(Boolean) || []).size || 1;
+  return order.final_price / uniqueScreenCount;
 }
 
 /** Pajamos vienam ekranui per dieną: suma / dienų / ekranų */
 export function getRevenuePerScreenPerDay(order: Order): number {
   const days = getDaysInRange(order.from, order.to);
-  const screenCount = order.screens?.length || 1;
+  const screenCount = new Set(order.screens?.filter(Boolean) || []).size || 1;
   if (days <= 0 || screenCount <= 0) return 0;
   return order.final_price / days / screenCount;
 }
@@ -80,7 +76,7 @@ export function calculateScreenRevenues(
 
   for (const order of orders) {
     if (!order.approved) continue;
-    const screenIds = order.screens?.filter(Boolean);
+    const screenIds = [...new Set(order.screens?.filter(Boolean) || [])];
     if (!screenIds?.length) continue; // Nerodyti užsakymų be priskirtų ekranų
     const totalDays = getDaysInRange(order.from, order.to);
     if (totalDays <= 0) continue;
@@ -90,7 +86,7 @@ export function calculateScreenRevenues(
 
       if (daysInMonth <= 0) continue;
 
-      const screenPrice = getScreenPriceInOrder(order, screenId);
+      const screenPrice = getScreenPriceInOrder(order);
       const revenueForMonth = (screenPrice / totalDays) * daysInMonth;
 
       const existing = screenMap.get(screenId);
