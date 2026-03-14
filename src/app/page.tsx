@@ -7,8 +7,6 @@ import { ScreenRevenueAnalysis } from '@/components/ScreenRevenueAnalysis';
 import { PartnerRevenueAnalysis } from '@/components/PartnerRevenueAnalysis';
 import { Header } from '@/components/Header';
 import { SearchAndFilters } from '@/components/SearchAndFilters';
-import { AddOrderModal } from '@/components/AddOrderModal';
-import { OrderDetailsModal } from '@/components/OrderDetailsModal';
 import { EditOrderModal } from '@/components/EditOrderModal';
 import { ReminderNotifications } from '@/components/ReminderNotifications';
 import { WeekNumbersModal } from '@/components/WeekNumbersModal';
@@ -16,9 +14,7 @@ import { PocketBaseService } from '@/lib/pocketbase';
 import { Order } from '@/types';
 
 export default function Home() {
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isWeekNumbersModalOpen, setIsWeekNumbersModalOpen] = useState(false);
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showReminders, setShowReminders] = useState(true);
@@ -144,19 +140,6 @@ export default function Home() {
           />
         )}
       </main>
-
-      {/* Add Order Modal */}
-      <AddOrderModal
-        isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
-      />
-
-      {/* Order Details Modal */}
-      <OrderDetailsModal
-        order={selectedOrder}
-        isOpen={!!selectedOrder}
-        onClose={() => setSelectedOrder(null)}
-      />
 
       {/* Edit Order Modal */}
       <EditOrderModal
