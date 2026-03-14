@@ -1,5 +1,5 @@
 import { Order, Screen, Partner } from '@/types';
-import { getDaysInRange, getDaysInMonth, getScreenPriceInOrder } from './screen-revenue';
+import { getDaysInRange, getDaysInMonth } from './screen-revenue';
 
 export interface PartnerRevenueSummary {
   partnerId: string;
@@ -23,7 +23,7 @@ export function calculatePartnerRevenues(
 
   for (const order of orders) {
     if (!order.approved) continue;
-    const screenIds = order.screens?.filter(Boolean);
+    const screenIds = [...new Set(order.screens?.filter(Boolean) || [])];
     if (!screenIds?.length) continue;
 
     const totalDays = getDaysInRange(order.from, order.to);
@@ -39,7 +39,8 @@ export function calculatePartnerRevenues(
       const partnerId = screen?.partner;
       if (!partnerId) continue;
 
-      const screenPrice = getScreenPriceInOrder(order, screenId);
+      // Partner split must be based on final order amount distributed by screen count.
+      const screenPrice = order.final_price / screenIds.length;
       const revenueForMonth = (screenPrice / totalDays) * daysInMonth;
 
       partnerAmounts.set(partnerId, (partnerAmounts.get(partnerId) || 0) + revenueForMonth);

@@ -35,6 +35,9 @@ export function formatDateInputValue(value: string): string {
 
 export function daysInclusiveBetween(start: Date, end: Date): number {
   if (start > end) return 0;
-  const diff = end.getTime() - start.getTime();
+  // Compare by calendar day in UTC to avoid DST shifts affecting day counts.
+  const startUtc = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());
+  const endUtc = Date.UTC(end.getFullYear(), end.getMonth(), end.getDate());
+  const diff = endUtc - startUtc;
   return Math.floor(diff / (1000 * 60 * 60 * 24)) + 1;
 }

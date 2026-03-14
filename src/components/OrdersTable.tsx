@@ -412,6 +412,22 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
     }
   }, [filters, sortField, sortDirection, buildFilterString]);
 
+  // Reset pagination when search/filters/sort changes to avoid invalid states like "Page 2 of 1"
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [
+    searchQuery,
+    filters.status,
+    filters.month,
+    filters.year,
+    filters.client,
+    filters.agency,
+    filters.media_received,
+    filters.invoice_sent,
+    sortField,
+    sortDirection,
+  ]);
+
   useEffect(() => {
     const fetchOrders = async () => {
       try {
