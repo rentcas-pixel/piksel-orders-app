@@ -142,8 +142,6 @@ export function AddOrderModal({ isOpen, onClose }: AddOrderModalProps) {
                 >
                   <option value="ne">Nepatvirtinta</option>
                   <option value="taip">Patvirtinta</option>
-                  <option value="rezervuota">Rezervuota</option>
-                  <option value="atšaukta">Atšaukta</option>
                 </select>
               </div>
 

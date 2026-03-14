@@ -39,7 +39,7 @@ export interface OrderFormData {
   client: string;
   agency: string;
   invoice_id: string;
-  approved: 'taip' | 'ne' | 'rezervuota' | 'atšaukta';
+  approved: 'taip' | 'ne';
   viaduct: boolean;
   from: string;
   to: string;
@@ -90,4 +90,4 @@ export interface Collection {
   created_at: string;
 }
 
-export type OrderStatus = 'taip' | 'ne' | 'rezervuota' | 'atšaukta';
+export type OrderStatus = 'taip' | 'ne';

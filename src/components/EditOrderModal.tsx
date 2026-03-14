@@ -30,10 +30,13 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
     if (!order) return;
     
     try {
-      const quoteData = await PocketBaseService.getQuoteByOrderId(order.invoice_id);
+      // Prefer real order ID and keep invoice fallback for legacy quote records.
+      const quoteData =
+        await PocketBaseService.getQuoteByOrderId(order.id) ??
+        await PocketBaseService.getQuoteByOrderId(order.invoice_id);
       setQuote(quoteData);
     } catch {
-      console.log('No quote found for order:', order.invoice_id);
+      console.log('No quote found for order:', order.id, order.invoice_id);
     }
   }, [order]);
 
@@ -140,10 +143,11 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
     if (confirm('Ar tikrai norite ištrinti šį užsakymą?')) {
       try {
         await PocketBaseService.deleteOrder(order.id);
+        onOrderUpdated(order);
         onClose();
-          } catch {
-      console.error('Error deleting order');
-    }
+      } catch {
+        console.error('Error deleting order');
+      }
     }
   };
 
@@ -186,10 +190,8 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
     if (!order || !reminderDate || !reminderMessage.trim()) return;
     
     try {
-      const formattedDate = new Date(reminderDate).toISOString().split('T')[0];
-      
       const reminder = await SupabaseService.addReminder(order.id, {
-        due_date: formattedDate,
+        due_date: reminderDate,
         title: reminderMessage.trim(),
         is_completed: false
       });
@@ -453,8 +455,6 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                     >
                 <option value="ne">Nepatvirtinta</option>
                       <option value="taip">Patvirtinta</option>
-                <option value="rezervuota">Rezervuota</option>
-                <option value="atšaukta">Atšaukta</option>
                     </select>
                   </div>
                   </div>

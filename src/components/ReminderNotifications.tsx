@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { PocketBaseService } from '@/lib/pocketbase';
 import { Reminder } from '@/types';
@@ -10,16 +10,19 @@ interface ReminderNotificationProps {
   onOpenEditModal: (orderId: string) => void;
 }
 
+function toYmdLocal(date: Date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 export function ReminderNotifications({ onClose, onOpenEditModal }: ReminderNotificationProps) {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [loading, setLoading] = useState(true);
   const [orderClients, setOrderClients] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    loadAllReminders();
-  }, []);
-
-  const loadAllReminders = async () => {
+  const loadAllReminders = useCallback(async () => {
     try {
       // Get reminders that are due today or in the next 7 days, or overdue
       const today = new Date();
@@ -30,7 +33,7 @@ export function ReminderNotifications({ onClose, onOpenEditModal }: ReminderNoti
         .from('reminders')
         .select('*')
         .eq('is_completed', false)
-        .lte('due_date', nextWeek.toISOString().split('T')[0]) // Due today or earlier
+        .lte('due_date', toYmdLocal(nextWeek)) // Due today or earlier
         .order('due_date', { ascending: true });
 
       if (error) throw error;
@@ -52,15 +55,13 @@ export function ReminderNotifications({ onClose, onOpenEditModal }: ReminderNoti
       if (relevantReminders && relevantReminders.length > 0) {
         const orderIds = [...new Set(relevantReminders.map(r => r.order_id))];
         const clients: Record<string, string> = {};
-        
+
+        const orders = await PocketBaseService.getOrdersBatch(orderIds);
+        for (const order of orders) {
+          clients[order.id] = order.client;
+        }
         for (const orderId of orderIds) {
-          try {
-            const order = await PocketBaseService.getOrder(orderId);
-            clients[orderId] = order.client;
-          } catch (error) {
-            console.error(`Error loading order ${orderId}:`, error);
-            clients[orderId] = 'Nežinomas klientas';
-          }
+          if (!clients[orderId]) clients[orderId] = 'Nežinomas klientas';
         }
         
         setOrderClients(clients);
@@ -70,7 +71,11 @@ export function ReminderNotifications({ onClose, onOpenEditModal }: ReminderNoti
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadAllReminders();
+  }, [loadAllReminders]);
 
   if (loading) {
     return (
