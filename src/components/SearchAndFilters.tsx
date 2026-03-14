@@ -51,15 +51,19 @@ export function SearchAndFilters({
   const statuses = [
     { value: '', label: 'Visi statusai' },
     { value: 'taip', label: 'Patvirtinta' },
-    { value: 'ne', label: 'Nepatvirtinta' },
-    { value: 'rezervuota', label: 'Rezervuota' },
-    { value: 'atšaukta', label: 'Atšaukta' }
+    { value: 'ne', label: 'Nepatvirtinta' }
   ];
 
   const mediaReceivedOptions = [
     { value: '', label: 'Visi media' },
     { value: 'true', label: 'Media gautas' },
     { value: 'false', label: 'Media negautas' }
+  ];
+
+  const invoiceSentOptions = [
+    { value: '', label: 'Visos sąskaitos' },
+    { value: 'true', label: 'Sąskaita išsiųsta' },
+    { value: 'false', label: 'Sąskaita neišsiųsta' },
   ];
 
 
@@ -150,6 +154,18 @@ export function SearchAndFilters({
               ))}
             </select>
 
+            <select
+              value={filters.invoice_sent}
+              onChange={(e) => handleFilterChange('invoice_sent', e.target.value)}
+              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white text-sm"
+            >
+              {invoiceSentOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+
             <input
               type="text"
               placeholder="Klientas"
@@ -170,7 +186,7 @@ export function SearchAndFilters({
       </div>
 
       {/* Active Filters Display */}
-      {(filters.status || filters.month || filters.year || filters.client || filters.agency) && (
+      {(filters.status || filters.month || filters.year || filters.client || filters.agency || filters.invoice_sent) && (
         <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
           <div className="flex items-center space-x-2">
             <FunnelIcon className="w-4 h-4 text-gray-500" />
@@ -215,6 +231,17 @@ export function SearchAndFilters({
                   <button
                     onClick={() => handleFilterChange('client', '')}
                     className="ml-1 text-orange-600 hover:text-orange-800"
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
+              {filters.invoice_sent && (
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200">
+                  Sąskaita: {filters.invoice_sent === 'true' ? 'Išsiųsta' : 'Neišsiųsta'}
+                  <button
+                    onClick={() => handleFilterChange('invoice_sent', '')}
+                    className="ml-1 text-teal-600 hover:text-teal-800"
                   >
                     ×
                   </button>

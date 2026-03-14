@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { Order, Comment, Reminder, FileAttachment } from '@/types';
 import { PocketBaseService } from '@/lib/pocketbase';
 import { SupabaseService } from '@/lib/supabase-service';
+import { formatDateInputValue, parseDateOnlyLocal } from '@/lib/date-utils';
 
 interface EditOrderModalProps {
   order: Order | null;
@@ -254,8 +255,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
 
   const formatDateForDisplay = (dateString: string) => {
     try {
-      const date = new Date(dateString);
-      return date.toISOString().split('T')[0];
+      return formatDateInputValue(dateString);
     } catch {
       return dateString;
     }
@@ -281,17 +281,10 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
   const calculateMonthlyDistribution = (fromDate: string, toDate: string, totalAmount: number) => {
     try {
       if (!fromDate || !toDate || !totalAmount) return [];
+      const start = parseDateOnlyLocal(fromDate);
+      const end = parseDateOnlyLocal(toDate);
       
-      const cleanFromDate = fromDate.split(' ')[0];
-      const cleanToDate = toDate.split(' ')[0];
-      
-      const [startYear, startMonth, startDay] = cleanFromDate.split('-').map(Number);
-      const [endYear, endMonth, endDay] = cleanToDate.split('-').map(Number);
-      
-      const start = new Date(startYear, startMonth - 1, startDay);
-      const end = new Date(endYear, endMonth - 1, endDay);
-      
-      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      if (!start || !end || isNaN(start.getTime()) || isNaN(end.getTime())) {
         return [];
       }
       

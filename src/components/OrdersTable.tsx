@@ -16,6 +16,7 @@ interface OrdersTableProps {
     client: string;
     agency: string;
     media_received: string;
+    invoice_sent: string;
   };
   onEditOrder: (order: Order) => void;
 }
@@ -183,6 +184,15 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
         filtered = filtered.filter(order => order.media_received === false);
       }
     }
+
+    // Invoice sent filter
+    if (filters.invoice_sent) {
+      if (filters.invoice_sent === 'true') {
+        filtered = filtered.filter(order => order.invoice_sent === true);
+      } else if (filters.invoice_sent === 'false') {
+        filtered = filtered.filter(order => order.invoice_sent === false);
+      }
+    }
     
     // Month and year filter
     if (filters.month && filters.year) {
@@ -276,6 +286,15 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
         filtersArray.push(`media_received=true`);
       } else if (filters.media_received === 'false') {
         filtersArray.push(`media_received=false`);
+      }
+    }
+
+    // Invoice sent filter
+    if (filters.invoice_sent) {
+      if (filters.invoice_sent === 'true') {
+        filtersArray.push(`invoice_sent=true`);
+      } else if (filters.invoice_sent === 'false') {
+        filtersArray.push(`invoice_sent=false`);
       }
     }
     
@@ -427,7 +446,7 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
     // Only depend on primitives to avoid infinite loops from object/function reference changes.
     // buildFilterString, filterMockOrders, sortOrders, calculateSumAsync are derived from these.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, searchQuery, filters.status, filters.month, filters.year, filters.client, filters.agency, filters.media_received, sortField, sortDirection]);
+  }, [currentPage, searchQuery, filters.status, filters.month, filters.year, filters.client, filters.agency, filters.media_received, filters.invoice_sent, sortField, sortDirection]);
 
 
 

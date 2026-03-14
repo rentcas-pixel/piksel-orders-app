@@ -1,11 +1,12 @@
 import { Order, Screen } from '@/types';
+import { daysInclusiveBetween, parseDateOnlyLocal } from './date-utils';
 
 /** Dienų skaičius laikotarpyje (nuo iki, imtinai) */
 export function getDaysInRange(from: string, to: string): number {
-  const start = new Date(from);
-  const end = new Date(to);
-  const diff = end.getTime() - start.getTime();
-  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24))) + 1;
+  const start = parseDateOnlyLocal(from);
+  const end = parseDateOnlyLocal(to);
+  if (!start || !end) return 0;
+  return daysInclusiveBetween(start, end);
 }
 
 /** Kiek dienų užsakymo laikotarpis kerta su nurodytu mėnesiu */
@@ -15,8 +16,9 @@ export function getDaysInMonth(
   year: number,
   month: number
 ): number {
-  const orderStart = new Date(orderFrom);
-  const orderEnd = new Date(orderTo);
+  const orderStart = parseDateOnlyLocal(orderFrom);
+  const orderEnd = parseDateOnlyLocal(orderTo);
+  if (!orderStart || !orderEnd) return 0;
   const monthStart = new Date(year, month - 1, 1);
   const lastDay = new Date(year, month, 0).getDate();
   const monthEnd = new Date(year, month - 1, lastDay);
@@ -25,8 +27,7 @@ export function getDaysInMonth(
   const overlapEnd = orderEnd < monthEnd ? orderEnd : monthEnd;
 
   if (overlapStart > overlapEnd) return 0;
-  const diff = overlapEnd.getTime() - overlapStart.getTime();
-  return Math.ceil(diff / (1000 * 60 * 60 * 24)) + 1;
+  return daysInclusiveBetween(overlapStart, overlapEnd);
 }
 
 /** Ekrano kaina užsakyme: iš details.screenPrices arba lygiai padalinta final_price */
