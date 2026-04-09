@@ -76,6 +76,16 @@ export interface FileAttachment {
   created_at: string;
 }
 
+export interface OrderApprovalEvent {
+  id: string;
+  order_id: string;
+  approved_at: string;
+  approved_by?: string | null;
+  snapshot_client?: string | null;
+  snapshot_amount?: number | null;
+  created_at: string;
+}
+
 export interface Collection {
   id: string;
   name: string;

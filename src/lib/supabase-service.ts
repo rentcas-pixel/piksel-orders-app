@@ -1,7 +1,45 @@
 import { supabase } from './supabase';
-import { Comment, Reminder, FileAttachment } from '@/types';
+import { Comment, Reminder, FileAttachment, OrderApprovalEvent } from '@/types';
 
 export class SupabaseService {
+  // Approval Events
+  static async getRecentApprovalEvents(limit = 50): Promise<OrderApprovalEvent[]> {
+    const { data, error } = await supabase
+      .from('order_approval_events')
+      .select('*')
+      .order('approved_at', { ascending: false })
+      .limit(limit);
+
+    if (error) throw error;
+    return data || [];
+  }
+
+  static async addApprovalEvent(event: {
+    order_id: string;
+    approved_at?: string;
+    approved_by?: string;
+    snapshot_client?: string;
+    snapshot_amount?: number;
+  }): Promise<OrderApprovalEvent> {
+    const { data, error } = await supabase
+      .from('order_approval_events')
+      .insert([
+        {
+          order_id: event.order_id,
+          approved_at: event.approved_at || new Date().toISOString(),
+          approved_by: event.approved_by || null,
+          snapshot_client: event.snapshot_client || null,
+          snapshot_amount: event.snapshot_amount ?? null,
+          created_at: new Date().toISOString(),
+        },
+      ])
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
   // Comments
   static async getComments(orderId: string): Promise<Comment[]> {
     const { data, error } = await supabase

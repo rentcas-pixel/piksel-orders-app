@@ -29,15 +29,31 @@ CREATE TABLE IF NOT EXISTS file_attachments (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 4. RLS (Row Level Security) įjungimas
+-- 4. Patvirtinimo įvykiai (audit trail)
+CREATE TABLE IF NOT EXISTS order_approval_events (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  order_id TEXT NOT NULL,
+  approved_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  approved_by TEXT,
+  snapshot_client TEXT,
+  snapshot_amount NUMERIC,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_order_approval_events_order_id ON order_approval_events(order_id);
+CREATE INDEX IF NOT EXISTS idx_order_approval_events_approved_at ON order_approval_events(approved_at DESC);
+
+-- 5. RLS (Row Level Security) įjungimas
 ALTER TABLE comments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE reminders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE file_attachments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE order_approval_events ENABLE ROW LEVEL SECURITY;
 
--- 5. RLS politikos (visi gali skaityti ir rašyti)
+-- 6. RLS politikos (visi gali skaityti ir rašyti)
 CREATE POLICY "Allow all operations on comments" ON comments FOR ALL USING (true);
 CREATE POLICY "Allow all operations on reminders" ON reminders FOR ALL USING (true);
 CREATE POLICY "Allow all operations on file_attachments" ON file_attachments FOR ALL USING (true);
+CREATE POLICY "Allow all operations on order_approval_events" ON order_approval_events FOR ALL USING (true);
 
--- 6. Storage bucket sukūrimas (reikia atlikti per Supabase dashboard)
+-- 7. Storage bucket sukūrimas (reikia atlikti per Supabase dashboard)
 -- Eikite į Storage -> New Bucket -> pavadinimas: "files" -> public

@@ -128,7 +128,25 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
     
     setLoading(true);
     try {
+      const nextApproved =
+        typeof formData.approved === 'boolean' ? formData.approved : order.approved;
+      const wasApproved = !!order.approved;
       const updatedOrder = await PocketBaseService.updateOrder(order.id, formData);
+
+      // Track approval moment in Supabase when status changes from not approved to approved.
+      if (!wasApproved && nextApproved) {
+        try {
+          await SupabaseService.addApprovalEvent({
+            order_id: updatedOrder.id,
+            snapshot_client: updatedOrder.client,
+            snapshot_amount: updatedOrder.final_price,
+          });
+        } catch (approvalError) {
+          // Do not block order updates if Supabase approval events are not configured yet.
+          console.error('Failed to save approval event:', approvalError);
+        }
+      }
+
       onOrderUpdated(updatedOrder);
       onClose();
     } catch {
