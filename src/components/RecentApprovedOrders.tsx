@@ -36,7 +36,7 @@ export function RecentApprovedOrders({ onEditOrder, refreshKey }: RecentApproved
   >([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [usingFallback, setUsingFallback] = useState(false);
+  const [estimatedDateCount, setEstimatedDateCount] = useState(0);
   const [approvalStats, setApprovalStats] = useState<{ approved: number; total: number } | null>(null);
 
   const fetchRecentApproved = useCallback(async () => {
@@ -72,57 +72,42 @@ export function RecentApprovedOrders({ onEditOrder, refreshKey }: RecentApproved
         setApprovalStats(null);
       }
 
-      setUsingFallback(false);
+      const result = await PocketBaseService.getOrders({
+        page: 1,
+        perPage: 50,
+        sort: '-updated',
+        filter: 'approved=true',
+      });
 
+      const activeApprovedOrders = result.items || [];
+      const orderIds = activeApprovedOrders.map(order => order.id);
+
+      let latestEventsByOrder: Record<string, { approved_at: string }> = {};
       try {
-        const events = await SupabaseService.getRecentApprovalEvents(50);
-        const uniqueOrderIds = [...new Set(events.map(event => event.order_id))];
-        const eventOrders = await PocketBaseService.getOrdersBatch(uniqueOrderIds);
-        const orderMap = new Map(eventOrders.map(order => [order.id, order]));
-
-        const mappedRows = events
-          .map(event => ({
-            key: event.id,
-            orderId: event.order_id,
-            approvedAt: event.approved_at,
-            order: orderMap.get(event.order_id),
-            snapshotClient: event.snapshot_client,
-            snapshotAmount: event.snapshot_amount,
-          }))
-          // Show only currently active approvals.
-          .filter(row => row.order?.approved);
-        
-        // Keep only the newest approval event per order to avoid duplicates in the UI.
-        const latestByOrder = new Map<string, (typeof mappedRows)[number]>();
-        for (const row of mappedRows) {
-          if (!latestByOrder.has(row.orderId)) {
-            latestByOrder.set(row.orderId, row);
-          }
-        }
-        setRows(Array.from(latestByOrder.values()));
+        latestEventsByOrder = await SupabaseService.getLatestApprovalEventsByOrderIds(orderIds);
       } catch {
-        // Fallback for environments where approval-events table is not set up yet.
-        setUsingFallback(true);
-        const result = await PocketBaseService.getOrders({
-          page: 1,
-          perPage: 50,
-          sort: '-updated',
-          filter: 'approved=true',
-        });
+        latestEventsByOrder = {};
+      }
 
-        setRows(
-          (result.items || []).map(order => ({
-            key: order.id,
+      const mappedRows = activeApprovedOrders
+        .map(order => {
+          const latestEvent = latestEventsByOrder[order.id];
+          return {
+            key: latestEvent?.approved_at ? `${order.id}-${latestEvent.approved_at}` : order.id,
             orderId: order.id,
-            approvedAt: order.updated,
+            approvedAt: latestEvent?.approved_at || order.updated,
             order,
             snapshotClient: order.client,
             snapshotAmount: order.final_price,
-          }))
-        );
-      }
+          };
+        })
+        .sort((a, b) => new Date(b.approvedAt).getTime() - new Date(a.approvedAt).getTime());
+
+      setEstimatedDateCount(mappedRows.filter(row => !latestEventsByOrder[row.orderId]).length);
+      setRows(mappedRows);
     } catch {
       setRows([]);
+      setEstimatedDateCount(0);
       setError('Nepavyko užkrauti naujausių patvirtintų užsakymų.');
     } finally {
       setLoading(false);
@@ -147,9 +132,9 @@ export function RecentApprovedOrders({ onEditOrder, refreshKey }: RecentApproved
               ({approvalStats.approved} iš {approvalStats.total})
             </p>
           )}
-          {usingFallback && (
+          {estimatedDateCount > 0 && (
             <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-              Rodoma pagal atnaujinimo datą, kol Supabase patvirtinimų lentelė nepasiekiama.
+              {estimatedDateCount} įraš. data paimta iš atnaujinimo laiko, nes jiems dar nėra patvirtinimo event.
             </p>
           )}
         </div>

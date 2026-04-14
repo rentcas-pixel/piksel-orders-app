@@ -14,6 +14,24 @@ export class SupabaseService {
     return data || [];
   }
 
+  static async getLatestApprovalEventsByOrderIds(orderIds: string[]): Promise<Record<string, OrderApprovalEvent>> {
+    if (orderIds.length === 0) return {};
+
+    const { data, error } = await supabase
+      .from('order_approval_events')
+      .select('*')
+      .in('order_id', orderIds)
+      .order('approved_at', { ascending: false });
+
+    if (error) throw error;
+
+    const latest: Record<string, OrderApprovalEvent> = {};
+    for (const event of data || []) {
+      if (!latest[event.order_id]) latest[event.order_id] = event;
+    }
+    return latest;
+  }
+
   static async addApprovalEvent(event: {
     order_id: string;
     approved_at?: string;
