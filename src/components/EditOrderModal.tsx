@@ -17,6 +17,7 @@ interface EditOrderModalProps {
 
 export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditOrderModalProps) {
   const [formData, setFormData] = useState<Partial<Order>>({});
+  const [invoiceStatus, setInvoiceStatus] = useState({ invoice_issued: false, invoice_sent: false });
   const [comments, setComments] = useState<Comment[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [printScreens, setPrintScreens] = useState<FileAttachment[]>([]);
@@ -52,13 +53,28 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
         final_price: order.final_price || 0,
         approved: order.approved,
         media_received: order.media_received,
-        invoice_sent: order.invoice_sent,
         viaduct: order.viaduct,
       });
       
       loadQuote();
     }
   }, [order, loadQuote]);
+
+  const loadInvoiceStatus = useCallback(async () => {
+    if (!order) return;
+
+    try {
+      const statusMap = await SupabaseService.getInvoiceStatuses([order.id]);
+      const status = statusMap[order.id];
+      setInvoiceStatus({
+        invoice_issued: status?.invoice_issued ?? !!order.invoice_sent,
+        invoice_sent: status?.invoice_sent ?? false,
+      });
+    } catch (error) {
+      console.error('Error loading invoice status:', error);
+      setInvoiceStatus({ invoice_issued: !!order.invoice_sent, invoice_sent: false });
+    }
+  }, [order]);
 
   useEffect(() => {
     if (isOpen) {
@@ -106,6 +122,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
   useEffect(() => {
     if (order && isOpen) {
       loadComments();
+      loadInvoiceStatus();
       
       const timer = setTimeout(() => {
         loadReminders();
@@ -114,7 +131,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
       
       return () => clearTimeout(timer);
     }
-  }, [order, isOpen, loadComments, loadReminders, loadPrintScreens]);
+  }, [order, isOpen, loadComments, loadReminders, loadPrintScreens, loadInvoiceStatus]);
 
   const handleInputChange = (field: keyof Order, value: string | number | boolean) => {
     setFormData(prev => ({
@@ -131,7 +148,19 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
       const nextApproved =
         typeof formData.approved === 'boolean' ? formData.approved : order.approved;
       const wasApproved = !!order.approved;
-      const updatedOrder = await PocketBaseService.updateOrder(order.id, formData);
+      const orderPayload = { ...formData };
+      delete orderPayload.invoice_sent;
+      const updatedOrder = await PocketBaseService.updateOrder(order.id, orderPayload);
+
+      try {
+        await SupabaseService.upsertInvoiceStatus(order.id, {
+          invoice_issued: invoiceStatus.invoice_issued,
+          invoice_sent: invoiceStatus.invoice_sent,
+        });
+      } catch (invoiceError) {
+        // Do not block order save if Supabase invoice status is temporarily unavailable.
+        console.error('Failed to save invoice status:', invoiceError);
+      }
 
       // Track approval moment in Supabase when status changes from not approved to approved.
       if (!wasApproved && nextApproved) {
@@ -418,14 +447,31 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
               <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Sąskaita</span>
               <button
                 type="button"
-                onClick={() => handleInputChange('invoice_sent', !formData.invoice_sent)}
+                onClick={() => setInvoiceStatus(prev => ({ ...prev, invoice_issued: !prev.invoice_issued }))}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                  formData.invoice_sent ? 'bg-green-600' : 'bg-gray-200 dark:bg-gray-600'
+                  invoiceStatus.invoice_issued ? 'bg-green-600' : 'bg-gray-200 dark:bg-gray-600'
                 }`}
               >
                 <span
                   className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    formData.invoice_sent ? 'translate-x-6' : 'translate-x-1'
+                    invoiceStatus.invoice_issued ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Išsiųsta</span>
+              <button
+                type="button"
+                onClick={() => setInvoiceStatus(prev => ({ ...prev, invoice_sent: !prev.invoice_sent }))}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                  invoiceStatus.invoice_sent ? 'bg-green-600' : 'bg-gray-200 dark:bg-gray-600'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    invoiceStatus.invoice_sent ? 'translate-x-6' : 'translate-x-1'
                   }`}
                 />
               </button>

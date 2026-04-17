@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
-import { Order } from '@/types';
+import { Order, OrderInvoiceStatus } from '@/types';
 import { PocketBaseService } from '@/lib/pocketbase';
+import { SupabaseService } from '@/lib/supabase-service';
 import { format } from 'date-fns';
 import { downloadExcel } from '@/lib/export-excel';
 
@@ -30,6 +31,7 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
   const [sortField, setSortField] = useState<string>('updated');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [exporting, setExporting] = useState(false);
+  const [invoiceStatuses, setInvoiceStatuses] = useState<Record<string, OrderInvoiceStatus>>({});
 
   // Function to check if media alert should be shown
   const shouldShowMediaAlert = (order: Order): boolean => {
@@ -50,18 +52,63 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
     }
   };
 
-  // Function to toggle invoice sent status
-  const handleToggleInvoiceSent = async (order: Order) => {
+  const getInvoiceStatus = useCallback(
+    (orderId: string) => invoiceStatuses[orderId] ?? null,
+    [invoiceStatuses]
+  );
+
+  const getInvoiceIssued = useCallback(
+    (order: Order) => {
+      const status = getInvoiceStatus(order.id);
+      return status?.invoice_issued ?? !!order.invoice_sent;
+    },
+    [getInvoiceStatus]
+  );
+
+  const getInvoiceSent = useCallback(
+    (orderId: string) => getInvoiceStatus(orderId)?.invoice_sent ?? false,
+    [getInvoiceStatus]
+  );
+
+  const handleToggleInvoiceStatus = async (
+    orderId: string,
+    field: 'invoice_issued' | 'invoice_sent',
+    value: boolean
+  ) => {
+    const previousStatus = invoiceStatuses[orderId];
+    const optimisticStatus: OrderInvoiceStatus = {
+      order_id: orderId,
+      invoice_issued: previousStatus?.invoice_issued ?? false,
+      invoice_sent: previousStatus?.invoice_sent ?? false,
+      updated_at: new Date().toISOString(),
+      [field]: value,
+    };
+
+    setInvoiceStatuses(prev => ({
+      ...prev,
+      [orderId]: optimisticStatus,
+    }));
+
     try {
-      const updatedOrder = { ...order, invoice_sent: !order.invoice_sent };
-      await PocketBaseService.updateOrder(order.id, updatedOrder);
-      
-      // Update local state
-      setOrders(prev => prev.map(o => 
-        o.id === order.id ? { ...o, invoice_sent: !o.invoice_sent } : o
-      ));
+      const savedStatus = await SupabaseService.upsertInvoiceStatus(orderId, {
+        invoice_issued: optimisticStatus.invoice_issued,
+        invoice_sent: optimisticStatus.invoice_sent,
+      });
+      setInvoiceStatuses(prev => ({
+        ...prev,
+        [orderId]: savedStatus,
+      }));
     } catch (error) {
       console.error('Error updating invoice status:', error);
+      setInvoiceStatuses(prev => {
+        const next = { ...prev };
+        if (previousStatus) {
+          next[orderId] = previousStatus;
+        } else {
+          delete next[orderId];
+        }
+        return next;
+      });
     }
   };
 
@@ -289,15 +336,6 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
       }
     }
 
-    // Invoice sent filter
-    if (filters.invoice_sent) {
-      if (filters.invoice_sent === 'true') {
-        filtersArray.push(`invoice_sent=true`);
-      } else if (filters.invoice_sent === 'false') {
-        filtersArray.push(`invoice_sent=false`);
-      }
-    }
-    
     // Date filters - show orders that overlap with the selected month
     if (filters.month && filters.year) {
       const y = parseInt(filters.year, 10);
@@ -380,19 +418,27 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
     setExporting(true);
     try {
       const filterString = buildFilterString();
+      const serverSortField = sortField === 'invoice_issued' || sortField === 'invoice_sent' ? 'updated' : sortField;
       const result = await PocketBaseService.getOrders({
         page: 1,
         perPage: 500,
-        sort: `${sortDirection === 'desc' ? '-' : ''}${sortField}`,
+        sort: `${sortDirection === 'desc' ? '-' : ''}${serverSortField}`,
         filter: filterString,
       });
       const items = result.items || [];
+      const statusMap = await SupabaseService.getInvoiceStatuses(items.map(item => item.id));
+      const invoiceFilteredItems = filters.invoice_sent
+        ? items.filter(item => {
+            const issued = statusMap[item.id]?.invoice_issued ?? !!item.invoice_sent;
+            return filters.invoice_sent === 'true' ? issued : !issued;
+          })
+        : items;
       const monthName = filters.month && filters.year
         ? `${['Sausis','Vasaris','Kovas','Balandis','Gegužė','Birželis','Liepa','Rugpjūtis','Rugsėjis','Spalis','Lapkritis','Gruodis'][parseInt(filters.month, 10) - 1]}_${filters.year}`
         : 'visi';
       const data: unknown[][] = [
-        ['Klientas', 'Agentūra', 'Užsakymo Nr.', 'Statusas', 'Data nuo', 'Data iki', 'Media gautas', 'Kaina', 'Sąskaita'],
-        ...items.map(o => [
+        ['Klientas', 'Agentūra', 'Užsakymo Nr.', 'Statusas', 'Data nuo', 'Data iki', 'Media gautas', 'Kaina', 'Sąskaita', 'Išsiųsta'],
+        ...invoiceFilteredItems.map(o => [
           o.client,
           o.agency,
           String(o.invoice_id),
@@ -401,7 +447,8 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
           format(new Date(o.to), 'yyyy-MM-dd'),
           o.media_received ? 'Taip' : 'Ne',
           o.final_price ?? 0,
-          o.invoice_sent ? 'Taip' : 'Ne',
+          (statusMap[o.id]?.invoice_issued ?? !!o.invoice_sent) ? 'Taip' : 'Ne',
+          (statusMap[o.id]?.invoice_sent ?? false) ? 'Taip' : 'Ne',
         ]),
       ];
       downloadExcel(data, `Uzsakymai_${monthName}`);
@@ -433,17 +480,59 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
       try {
         setLoading(true);
         const filterString = buildFilterString();
-        
+        const invoiceSort = sortField === 'invoice_issued' || sortField === 'invoice_sent';
+        const invoiceFilterActive = Boolean(filters.invoice_sent);
+        const serverSortField = invoiceSort ? 'updated' : sortField;
+
         const result = await PocketBaseService.getOrders({
-          page: currentPage,
-          perPage: 20,
-          sort: `${sortDirection === 'desc' ? '-' : ''}${sortField}`,
+          page: invoiceFilterActive || invoiceSort ? 1 : currentPage,
+          perPage: invoiceFilterActive || invoiceSort ? 500 : 20,
+          sort: `${sortDirection === 'desc' ? '-' : ''}${serverSortField}`,
           filter: filterString
         });
-        
-        setOrders(result.items);
-        setTotalPages(result.totalPages);
-        setTotalItems(result.totalItems);
+
+        const fetchedOrders = result.items || [];
+        const statusMap = await SupabaseService.getInvoiceStatuses(fetchedOrders.map(item => item.id));
+        setInvoiceStatuses(statusMap);
+
+        let processedOrders = fetchedOrders;
+        if (invoiceFilterActive) {
+          processedOrders = processedOrders.filter(item => {
+            const isIssued = statusMap[item.id]?.invoice_issued ?? !!item.invoice_sent;
+            return filters.invoice_sent === 'true' ? isIssued : !isIssued;
+          });
+        }
+
+        if (invoiceSort) {
+          const invoiceSortField = sortField as 'invoice_issued' | 'invoice_sent';
+          processedOrders = [...processedOrders].sort((a, b) => {
+            const aValue = invoiceSortField === 'invoice_issued'
+              ? ((statusMap[a.id]?.invoice_issued ?? !!a.invoice_sent) ? 1 : 0)
+              : ((statusMap[a.id]?.invoice_sent ?? false) ? 1 : 0);
+            const bValue = invoiceSortField === 'invoice_issued'
+              ? ((statusMap[b.id]?.invoice_issued ?? !!b.invoice_sent) ? 1 : 0)
+              : ((statusMap[b.id]?.invoice_sent ?? false) ? 1 : 0);
+            if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+            if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+            return 0;
+          });
+        }
+
+        if (invoiceFilterActive || invoiceSort) {
+          const perPage = 20;
+          const offset = (currentPage - 1) * perPage;
+          const paginatedOrders = processedOrders.slice(offset, offset + perPage);
+          const computedTotalItems = processedOrders.length;
+          const computedTotalPages = Math.max(1, Math.ceil(computedTotalItems / perPage));
+          setOrders(paginatedOrders);
+          setTotalItems(computedTotalItems);
+          setTotalPages(computedTotalPages);
+          if (currentPage > computedTotalPages) setCurrentPage(1);
+        } else {
+          setOrders(processedOrders);
+          setTotalPages(result.totalPages);
+          setTotalItems(result.totalItems);
+        }
       } catch {
         console.error('❌ Failed to fetch orders');
         // For demo purposes, show filtered and sorted mock data
@@ -451,6 +540,7 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
         const filteredOrders = filterMockOrders(mockOrders);
         const sortedOrders = sortOrders(filteredOrders);
         setOrders(sortedOrders);
+        setInvoiceStatuses({});
         setTotalPages(1);
         setTotalItems(sortedOrders.length);
       } finally {
@@ -608,10 +698,19 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
               </th>
               <th 
                 className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
-                onClick={() => handleSort('invoice_sent')}
+                onClick={() => handleSort('invoice_issued')}
               >
                 <div className="flex items-center space-x-1">
                   <span>Sąskaita</span>
+                  {getSortIcon('invoice_issued')}
+                </div>
+              </th>
+              <th 
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                onClick={() => handleSort('invoice_sent')}
+              >
+                <div className="flex items-center space-x-1">
+                  <span>Išsiųsta</span>
                   {getSortIcon('invoice_sent')}
                 </div>
               </th>
@@ -684,15 +783,32 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleToggleInvoiceSent(order);
+                      handleToggleInvoiceStatus(order.id, 'invoice_issued', !getInvoiceIssued(order));
                     }}
                     className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
-                      order.invoice_sent ? 'bg-green-600' : 'bg-gray-200 dark:bg-gray-600'
+                      getInvoiceIssued(order) ? 'bg-green-600' : 'bg-gray-200 dark:bg-gray-600'
                     }`}
                   >
                     <span
                       className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                        order.invoice_sent ? 'translate-x-6' : 'translate-x-1'
+                        getInvoiceIssued(order) ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleToggleInvoiceStatus(order.id, 'invoice_sent', !getInvoiceSent(order.id));
+                    }}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
+                      getInvoiceSent(order.id) ? 'bg-green-600' : 'bg-gray-200 dark:bg-gray-600'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        getInvoiceSent(order.id) ? 'translate-x-6' : 'translate-x-1'
                       }`}
                     />
                   </button>

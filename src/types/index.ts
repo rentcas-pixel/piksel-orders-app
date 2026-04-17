@@ -86,6 +86,13 @@ export interface OrderApprovalEvent {
   created_at: string;
 }
 
+export interface OrderInvoiceStatus {
+  order_id: string;
+  invoice_issued: boolean;
+  invoice_sent: boolean;
+  updated_at: string;
+}
+
 export interface Collection {
   id: string;
   name: string;

@@ -1,7 +1,49 @@
 import { supabase } from './supabase';
-import { Comment, Reminder, FileAttachment, OrderApprovalEvent } from '@/types';
+import { Comment, Reminder, FileAttachment, OrderApprovalEvent, OrderInvoiceStatus } from '@/types';
 
 export class SupabaseService {
+  // Invoice statuses
+  static async getInvoiceStatuses(orderIds: string[]): Promise<Record<string, OrderInvoiceStatus>> {
+    if (orderIds.length === 0) return {};
+
+    const uniqueOrderIds = [...new Set(orderIds.filter(Boolean))];
+    if (uniqueOrderIds.length === 0) return {};
+
+    const { data, error } = await supabase
+      .from('order_invoice_status')
+      .select('*')
+      .in('order_id', uniqueOrderIds);
+
+    if (error) throw error;
+
+    const statusMap: Record<string, OrderInvoiceStatus> = {};
+    for (const status of data || []) {
+      statusMap[status.order_id] = status;
+    }
+    return statusMap;
+  }
+
+  static async upsertInvoiceStatus(
+    orderId: string,
+    patch: Partial<Pick<OrderInvoiceStatus, 'invoice_issued' | 'invoice_sent'>>
+  ): Promise<OrderInvoiceStatus> {
+    const { data, error } = await supabase
+      .from('order_invoice_status')
+      .upsert(
+        {
+          order_id: orderId,
+          ...patch,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'order_id' }
+      )
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
   // Approval Events
   static async getRecentApprovalEvents(limit = 50): Promise<OrderApprovalEvent[]> {
     const { data, error } = await supabase

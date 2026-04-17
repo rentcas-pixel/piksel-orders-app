@@ -62,8 +62,8 @@ export function SearchAndFilters({
 
   const invoiceSentOptions = [
     { value: '', label: 'Visos sąskaitos' },
-    { value: 'true', label: 'Sąskaita išsiųsta' },
-    { value: 'false', label: 'Sąskaita neišsiųsta' },
+    { value: 'true', label: 'Sąskaita išrašyta' },
+    { value: 'false', label: 'Sąskaita neišrašyta' },
   ];
 
 
@@ -238,7 +238,7 @@ export function SearchAndFilters({
               )}
               {filters.invoice_sent && (
                 <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200">
-                  Sąskaita: {filters.invoice_sent === 'true' ? 'Išsiųsta' : 'Neišsiųsta'}
+                  Sąskaita: {filters.invoice_sent === 'true' ? 'Išrašyta' : 'Neišrašyta'}
                   <button
                     onClick={() => handleFilterChange('invoice_sent', '')}
                     className="ml-1 text-teal-600 hover:text-teal-800"
