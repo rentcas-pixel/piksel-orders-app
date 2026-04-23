@@ -23,6 +23,8 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
   const [printScreens, setPrintScreens] = useState<FileAttachment[]>([]);
   const [loading, setLoading] = useState(false);
   const [newComment, setNewComment] = useState('');
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingCommentText, setEditingCommentText] = useState('');
   const [reminderDate, setReminderDate] = useState('');
   const [reminderMessage, setReminderMessage] = useState('');
   const [pendingPrintscreens, setPendingPrintscreens] = useState<FileAttachment[]>([]);
@@ -231,6 +233,41 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
       if (contentEditableElement) {
         contentEditableElement.textContent = '';
       }
+    }
+  };
+
+  const handleStartEditComment = (comment: Comment) => {
+    setEditingCommentId(comment.id);
+    setEditingCommentText(comment.text || '');
+  };
+
+  const handleCancelEditComment = () => {
+    setEditingCommentId(null);
+    setEditingCommentText('');
+  };
+
+  const handleSaveEditedComment = async (commentId: string) => {
+    const nextText = editingCommentText.trim();
+    if (!nextText) return;
+
+    try {
+      const updated = await SupabaseService.updateComment(commentId, nextText);
+      setComments(prev => prev.map(c => (c.id === commentId ? { ...c, ...updated } : c)));
+      handleCancelEditComment();
+    } catch {
+      console.error('Error updating comment');
+    }
+  };
+
+  const handleDeleteComment = async (commentId: string) => {
+    try {
+      await SupabaseService.deleteComment(commentId);
+      setComments(prev => prev.filter(c => c.id !== commentId));
+      if (editingCommentId === commentId) {
+        handleCancelEditComment();
+      }
+    } catch {
+      console.error('Error deleting comment');
     }
   };
 
@@ -605,10 +642,56 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                 <div className="mt-4 space-y-2">
                   {comments.map((comment) => (
                     <div key={comment.id} className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
-                      <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-                        {new Date(comment.created_at).toLocaleString('lt-LT')}
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <div className="text-sm text-gray-600 dark:text-gray-400">
+                          {new Date(comment.created_at).toLocaleString('lt-LT')}
+                        </div>
+                        <div className="flex items-center gap-3 text-xs">
+                          {editingCommentId === comment.id ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleSaveEditedComment(comment.id)}
+                                className="text-blue-600 hover:text-blue-800"
+                              >
+                                Išsaugoti
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleCancelEditComment}
+                                className="text-gray-600 hover:text-gray-800"
+                              >
+                                Atšaukti
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleStartEditComment(comment)}
+                              className="text-blue-600 hover:text-blue-800"
+                            >
+                              Redaguoti
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteComment(comment.id)}
+                            className="text-red-600 hover:text-red-800"
+                          >
+                            Ištrinti
+                          </button>
+                        </div>
                       </div>
-                      <div className="text-sm text-gray-900 dark:text-white">{comment.text}</div>
+                      {editingCommentId === comment.id ? (
+                        <textarea
+                          value={editingCommentText}
+                          onChange={(e) => setEditingCommentText(e.target.value)}
+                          rows={3}
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white"
+                        />
+                      ) : (
+                        <div className="text-sm text-gray-900 dark:text-white whitespace-pre-wrap">{comment.text}</div>
+                      )}
                     </div>
                   ))}
                 </div>

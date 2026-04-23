@@ -21,16 +21,11 @@ export default function Home() {
   const [showReminders, setShowReminders] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  // Get current date for default filters
-  const now = new Date();
-  const currentMonth = String(now.getMonth() + 1).padStart(2, '0'); // 01-12
-  const currentYear = now.getFullYear();
-  
   const [activeTab, setActiveTab] = useState<'orders' | 'revenue' | 'partners' | 'latest'>('orders');
   const [filters, setFilters] = useState({
-    status: 'taip', // Default: Patvirtinta - rodo tik patvirtintus užsakymus
-    month: currentMonth, // Default: einamasis mėnuo (dabar rugpjūtis)
-    year: currentYear.toString(), // Default: einamieji metai (2025)
+    status: '',
+    month: '',
+    year: '2026',
     client: '',
     agency: '',
     media_received: '',

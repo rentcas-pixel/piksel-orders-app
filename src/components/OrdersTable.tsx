@@ -252,10 +252,22 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
     // Month and year filter
     if (filters.month && filters.year) {
       filtered = filtered.filter(order => {
-        const orderDate = new Date(order.from);
-        const orderMonth = orderDate.getMonth() + 1;
-        const orderYear = orderDate.getFullYear();
-        return orderMonth === parseInt(filters.month) && orderYear === parseInt(filters.year);
+        const filterYear = parseInt(filters.year, 10);
+        const filterMonth = parseInt(filters.month, 10);
+        const orderFrom = new Date(order.from);
+        const orderTo = new Date(order.to);
+        const monthStart = new Date(filterYear, filterMonth - 1, 1);
+        const monthEnd = new Date(filterYear, filterMonth, 0);
+        return orderFrom <= monthEnd && orderTo >= monthStart;
+      });
+    } else if (filters.year) {
+      filtered = filtered.filter(order => {
+        const filterYear = parseInt(filters.year, 10);
+        const orderFrom = new Date(order.from);
+        const orderTo = new Date(order.to);
+        const yearStart = new Date(filterYear, 0, 1);
+        const yearEnd = new Date(filterYear, 11, 31);
+        return orderFrom <= yearEnd && orderTo >= yearStart;
       });
     }
     
@@ -344,7 +356,7 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
       }
     }
 
-    // Date filters - show orders that overlap with the selected month
+    // Date filters - show orders that overlap with selected period
     if (filters.month && filters.year) {
       const y = parseInt(filters.year, 10);
       const m = parseInt(filters.month, 10);
@@ -353,6 +365,11 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
       const endDate = `${filters.year}-${filters.month.padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
       // Show orders that overlap with the selected month:
       // - order starts before month ends AND order ends after month starts
+      filtersArray.push(`(from<="${endDate}" && to>="${startDate}")`);
+    } else if (filters.year) {
+      const startDate = `${filters.year}-01-01`;
+      const endDate = `${filters.year}-12-31`;
+      // Show orders that overlap with the selected year.
       filtersArray.push(`(from<="${endDate}" && to>="${startDate}")`);
     }
     
