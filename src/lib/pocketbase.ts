@@ -272,6 +272,40 @@ export class PocketBaseService {
     }
   }
 
+  /** Gauti visus ekranus (cache 60 min) */
+  static async getAllScreens(): Promise<Screen[]> {
+    const cacheKey = 'screens_all';
+    const cached = screenNamesCache.get(cacheKey);
+    if (cached && cached.expires > Date.now()) return Object.values(cached.data);
+
+    try {
+      const url = `${POCKETBASE_URL}/api/collections/${SCREENS_COLLECTION}/records?perPage=1000`;
+      const response = await fetch(url, {
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!response.ok) return [];
+
+      const data = await response.json();
+      const items = data.items || [];
+      const byId: Record<string, Screen> = {};
+      for (const item of items) {
+        byId[item.id] = {
+          id: item.id,
+          name: item.name || 'Nezinomas',
+          city: item.city,
+          type: item.type,
+          viaduct: item.viaduct,
+          partner: item.partner,
+        };
+      }
+      screenNamesCache.set(cacheKey, { data: byId, expires: Date.now() + SCREEN_CACHE_TTL });
+      return Object.values(byId);
+    } catch {
+      return [];
+    }
+  }
+
   /** Gauti ekranų pavadinimus pagal ID masyvą – VIENA batch užklausa (ne N atskirų) */
   static async getScreenNames(screenIds: string[]): Promise<Record<string, Screen>> {
     const uniqueIds = [...new Set(screenIds)].filter(Boolean);

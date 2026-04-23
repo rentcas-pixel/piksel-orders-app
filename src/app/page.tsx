@@ -6,6 +6,7 @@ import { OrdersTable } from '@/components/OrdersTable';
 import { ScreenRevenueAnalysis } from '@/components/ScreenRevenueAnalysis';
 import { PartnerRevenueAnalysis } from '@/components/PartnerRevenueAnalysis';
 import { RecentApprovedOrders } from '@/components/RecentApprovedOrders';
+import { OrderAnalyticsDashboard } from '@/components/OrderAnalyticsDashboard';
 import { Header } from '@/components/Header';
 import { SearchAndFilters } from '@/components/SearchAndFilters';
 import { EditOrderModal } from '@/components/EditOrderModal';
@@ -21,7 +22,7 @@ export default function Home() {
   const [showReminders, setShowReminders] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  const [activeTab, setActiveTab] = useState<'orders' | 'revenue' | 'partners' | 'latest'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'revenue' | 'partners' | 'analytics' | 'latest'>('orders');
   const [filters, setFilters] = useState({
     status: '',
     month: '',
@@ -120,6 +121,16 @@ export default function Home() {
             >
               Naujausi
             </button>
+            <button
+              onClick={() => setActiveTab('analytics')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === 'analytics'
+                  ? 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+              }`}
+            >
+              Analizė
+            </button>
           </nav>
         </div>
 
@@ -150,6 +161,14 @@ export default function Home() {
 
         {activeTab === 'latest' && (
           <RecentApprovedOrders
+            onEditOrder={handleEditOrder}
+            refreshKey={refreshKey}
+          />
+        )}
+
+        {activeTab === 'analytics' && (
+          <OrderAnalyticsDashboard
+            filters={debouncedFilters}
             onEditOrder={handleEditOrder}
             refreshKey={refreshKey}
           />
