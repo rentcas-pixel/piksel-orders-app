@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import { Order } from '@/types';
 import { PocketBaseService } from '@/lib/pocketbase';
@@ -24,19 +24,28 @@ export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: Scre
   const [revenues, setRevenues] = useState<ReturnType<typeof calculateScreenRevenues>>([]);
   const [expandedScreen, setExpandedScreen] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [selectedOwner, setSelectedOwner] = useState('');
+  const [ownerByScreenId, setOwnerByScreenId] = useState<Record<string, string>>({});
+  const [ownerOptions, setOwnerOptions] = useState<Array<{ id: string; name: string }>>([]);
   const abortRef = useRef<AbortController | null>(null);
+
+  const filteredRevenues = useMemo(() => {
+    if (!selectedOwner) return revenues;
+    return revenues.filter((r) => ownerByScreenId[r.screenId] === selectedOwner);
+  }, [revenues, ownerByScreenId, selectedOwner]);
 
   const handleExportExcel = useCallback(() => {
     setExporting(true);
     try {
       const monthName = `${MONTH_NAMES[parseInt(filters.month, 10) - 1]}_${filters.year}`;
       const data: unknown[][] = [
-        ['Nr.', 'Ekranas', 'Miestas', 'Pajamos', 'Užsakymai'],
-        ...revenues.map((r, i) => [
+        ['Nr.', 'Ekranas', 'Owner', 'Miestas', 'Pajamos', 'Užsakymai'],
+        ...filteredRevenues.map((r, i) => [
           i + 1,
           r.screenName,
+          ownerByScreenId[r.screenId] || 'Nepriskirtas',
           r.screenCity || '',
-          r.totalRevenue.toFixed(2),
+          Number(r.totalRevenue.toFixed(2)),
           r.orderCount,
         ]),
       ];
@@ -44,7 +53,7 @@ export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: Scre
     } finally {
       setExporting(false);
     }
-  }, [revenues, filters.month, filters.year]);
+  }, [filteredRevenues, ownerByScreenId, filters.month, filters.year]);
 
   const fetchData = useCallback(async () => {
     if (!filters.month || !filters.year) return;
@@ -78,17 +87,42 @@ export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: Scre
 
       const items = result.items || [];
       const screenIds = [...new Set(items.flatMap(o => o.screens || []).filter(Boolean))];
-      const screenNames = await PocketBaseService.getScreenNames(screenIds);
+      const [screenNames, partners] = await Promise.all([
+        PocketBaseService.getScreensWithPartner(screenIds),
+        PocketBaseService.getPartners(),
+      ]);
       const calculated = calculateScreenRevenues(items, screenNames, y, m);
+      const partnerNameById = new Map(partners.map((p) => [p.id, p.name]));
+      const nextOwnerByScreenId: Record<string, string> = {};
+
+      for (const revenue of calculated) {
+        const partnerId = screenNames[revenue.screenId]?.partner;
+        nextOwnerByScreenId[revenue.screenId] = partnerId
+          ? partnerNameById.get(partnerId) || 'Nežinomas owner'
+          : 'Nepriskirtas';
+      }
+      const nextOwnerOptions = Array.from(new Set(Object.values(nextOwnerByScreenId)))
+        .sort((a, b) => a.localeCompare(b, 'lt-LT'))
+        .map((name) => ({ id: name, name }));
 
       setRevenues(calculated);
+      setOwnerByScreenId(nextOwnerByScreenId);
+      setOwnerOptions(nextOwnerOptions);
       revenueCache.set(cacheKey, { revenues: calculated, expires: Date.now() + REVENUE_CACHE_TTL });
     } catch {
       setRevenues([]);
+      setOwnerByScreenId({});
+      setOwnerOptions([]);
     } finally {
       setLoading(false);
     }
   }, [filters.month, filters.year]);
+
+  useEffect(() => {
+    if (selectedOwner && !ownerOptions.some((o) => o.id === selectedOwner)) {
+      setSelectedOwner('');
+    }
+  }, [selectedOwner, ownerOptions]);
 
   useEffect(() => {
     if (refreshKey !== undefined) revenueCache.clear();
@@ -126,7 +160,7 @@ export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: Scre
     );
   }
 
-  const totalRevenue = revenues.reduce((sum, r) => sum + r.totalRevenue, 0);
+  const totalRevenue = filteredRevenues.reduce((sum, r) => sum + r.totalRevenue, 0);
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
@@ -139,14 +173,28 @@ export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: Scre
             Bendros pajamos: €{totalRevenue.toLocaleString('lt-LT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>
         </div>
-        <button
-          onClick={handleExportExcel}
-          disabled={exporting}
-          className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50"
-        >
-          <ArrowDownTrayIcon className="w-4 h-4 mr-2" />
-          {exporting ? 'Eksportuojama...' : 'Excel'}
-        </button>
+        <div className="flex items-center gap-2">
+          <select
+            value={selectedOwner}
+            onChange={(e) => setSelectedOwner(e.target.value)}
+            className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300"
+          >
+            <option value="">Visi owneriai</option>
+            {ownerOptions.map((owner) => (
+              <option key={owner.id} value={owner.id}>
+                {owner.name}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={handleExportExcel}
+            disabled={exporting}
+            className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50"
+          >
+            <ArrowDownTrayIcon className="w-4 h-4 mr-2" />
+            {exporting ? 'Eksportuojama...' : 'Excel'}
+          </button>
+        </div>
       </div>
 
       <div className="overflow-x-auto">
@@ -160,6 +208,9 @@ export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: Scre
                 Ekranas (name)
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
+                Owner
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
                 Pajamos
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
@@ -169,7 +220,7 @@ export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: Scre
             </tr>
           </thead>
           <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-            {revenues.map((r, index) => (
+            {filteredRevenues.map((r, index) => (
               <React.Fragment key={r.screenId}>
                 <tr
                   key={r.screenId}
@@ -187,6 +238,9 @@ export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: Scre
                       </span>
                     )}
                   </td>
+                  <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">
+                    {ownerByScreenId[r.screenId] || 'Nepriskirtas'}
+                  </td>
                   <td className="px-6 py-4 text-sm font-medium text-gray-900 dark:text-white">
                     €{r.totalRevenue.toLocaleString('lt-LT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </td>
@@ -203,7 +257,7 @@ export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: Scre
                 </tr>
                 {expandedScreen === r.screenId && r.byMonth[0]?.orders && (
                   <tr key={`${r.screenId}-details`} className="bg-gray-50 dark:bg-gray-700/50">
-                    <td colSpan={5} className="px-6 py-4">
+                    <td colSpan={6} className="px-6 py-4">
                       <div className="text-sm space-y-2">
                         <p className="font-medium text-gray-700 dark:text-gray-300 mb-2">
                           Užsakymai, prisidėję prie „{r.screenName}“:
@@ -240,6 +294,13 @@ export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: Scre
                 )}
               </React.Fragment>
             ))}
+            {filteredRevenues.length === 0 && (
+              <tr>
+                <td colSpan={6} className="px-6 py-6 text-sm text-center text-gray-500 dark:text-gray-400">
+                  Pasirinktam owneriui šiame mėnesyje nėra duomenų.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

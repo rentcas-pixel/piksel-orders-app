@@ -35,7 +35,7 @@ export function PartnerRevenueAnalysis({ filters, onEditOrder, refreshKey }: Par
         ...revenues.map((r, i) => [
           i + 1,
           r.partnerName,
-          r.totalRevenue.toFixed(2),
+          Number(r.totalRevenue.toFixed(2)),
           r.orderCount,
         ]),
       ];
