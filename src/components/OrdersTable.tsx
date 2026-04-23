@@ -7,6 +7,7 @@ import { PocketBaseService } from '@/lib/pocketbase';
 import { SupabaseService } from '@/lib/supabase-service';
 import { format } from 'date-fns';
 import { downloadExcel } from '@/lib/export-excel';
+import { getDaysInMonth, getDaysInRange } from '@/lib/screen-revenue';
 
 interface OrdersTableProps {
   searchQuery: string;
@@ -414,6 +415,29 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
     }).format(price);
   };
 
+  const getMonthlyAmount = useCallback((order: Order) => {
+    const filterMonth = parseInt(filters.month, 10);
+    const filterYear = parseInt(filters.year, 10);
+
+    if (!filterMonth || !filterYear) {
+      return null;
+    }
+
+    const totalDays = getDaysInRange(order.from, order.to);
+    const daysInSelectedMonth = getDaysInMonth(order.from, order.to, filterYear, filterMonth);
+    if (totalDays <= 0 || daysInSelectedMonth <= 0) {
+      return 0;
+    }
+
+    return (order.final_price / totalDays) * daysInSelectedMonth;
+  }, [filters.month, filters.year]);
+
+  const formatMonthlyAmount = (order: Order) => {
+    const monthlyAmount = getMonthlyAmount(order);
+    if (monthlyAmount === null) return '-';
+    return formatPrice(monthlyAmount);
+  };
+
   const handleExportExcel = useCallback(async () => {
     setExporting(true);
     try {
@@ -437,7 +461,7 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
         ? `${['Sausis','Vasaris','Kovas','Balandis','Gegužė','Birželis','Liepa','Rugpjūtis','Rugsėjis','Spalis','Lapkritis','Gruodis'][parseInt(filters.month, 10) - 1]}_${filters.year}`
         : 'visi';
       const data: unknown[][] = [
-        ['Klientas', 'Agentūra', 'Užsakymo Nr.', 'Statusas', 'Data nuo', 'Data iki', 'Media gautas', 'Kaina', 'Sąskaita', 'Išsiųsta'],
+        ['Klientas', 'Agentūra', 'Užsakymo Nr.', 'Statusas', 'Data nuo', 'Data iki', 'Media gautas', 'Kaina', 'Mėnesio suma', 'Sąskaita', 'Išsiųsta'],
         ...invoiceFilteredItems.map(o => [
           o.client,
           o.agency,
@@ -447,6 +471,7 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
           format(new Date(o.to), 'yyyy-MM-dd'),
           o.media_received ? 'Taip' : 'Ne',
           o.final_price ?? 0,
+          getMonthlyAmount(o) ?? 0,
           (statusMap[o.id]?.invoice_issued ?? !!o.invoice_sent) ? 'Taip' : 'Ne',
           (statusMap[o.id]?.invoice_sent ?? false) ? 'Taip' : 'Ne',
         ]),
@@ -457,7 +482,7 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
     } finally {
       setExporting(false);
     }
-  }, [filters, sortField, sortDirection, buildFilterString]);
+  }, [filters, sortField, sortDirection, buildFilterString, getMonthlyAmount]);
 
   // Reset pagination when search/filters/sort changes to avoid invalid states like "Page 2 of 1"
   useEffect(() => {
@@ -696,6 +721,9 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
                   {getSortIcon('final_price')}
                 </div>
               </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                Mėnesio suma
+              </th>
               <th 
                 className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
                 onClick={() => handleSort('invoice_issued')}
@@ -777,6 +805,11 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="text-sm font-medium text-gray-900 dark:text-white">
                     {formatPrice(order.final_price)}
+                  </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm font-medium text-gray-900 dark:text-white">
+                    {formatMonthlyAmount(order)}
                   </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
