@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
+import { ChatBubbleLeftEllipsisIcon } from '@heroicons/react/24/solid';
 import { Order, OrderInvoiceStatus } from '@/types';
 import { PocketBaseService } from '@/lib/pocketbase';
 import { SupabaseService } from '@/lib/supabase-service';
@@ -33,6 +34,7 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [exporting, setExporting] = useState(false);
   const [invoiceStatuses, setInvoiceStatuses] = useState<Record<string, OrderInvoiceStatus>>({});
+  const [orderActivityMap, setOrderActivityMap] = useState<Record<string, boolean>>({});
 
   // Function to check if media alert should be shown
   const shouldShowMediaAlert = (order: Order): boolean => {
@@ -69,6 +71,11 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
   const getInvoiceSent = useCallback(
     (orderId: string) => getInvoiceStatus(orderId)?.invoice_sent ?? false,
     [getInvoiceStatus]
+  );
+
+  const hasOrderCommentOrScreenshot = useCallback(
+    (orderId: string) => orderActivityMap[orderId] ?? false,
+    [orderActivityMap]
   );
 
   const handleToggleInvoiceStatus = async (
@@ -519,6 +526,8 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
         const fetchedOrders = result.items || [];
         const statusMap = await SupabaseService.getInvoiceStatuses(fetchedOrders.map(item => item.id));
         setInvoiceStatuses(statusMap);
+        const activityMap = await SupabaseService.getOrderCommentOrScreenshotMap(fetchedOrders.map(item => item.id));
+        setOrderActivityMap(activityMap);
 
         let processedOrders = fetchedOrders;
         if (invoiceFilterActive) {
@@ -566,6 +575,7 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
         const sortedOrders = sortOrders(filteredOrders);
         setOrders(sortedOrders);
         setInvoiceStatuses({});
+        setOrderActivityMap({});
         setTotalPages(1);
         setTotalItems(sortedOrders.length);
       } finally {
@@ -763,6 +773,14 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
                       {shouldShowMediaAlert(order) && (
                         <span className="ml-2 text-red-600 animate-pulse">
                           ⚠️
+                        </span>
+                      )}
+                      {hasOrderCommentOrScreenshot(order.id) && (
+                        <span
+                          className="ml-2 inline-flex align-middle text-blue-600 dark:text-blue-400"
+                          title="Yra komentaras arba screenshotas"
+                        >
+                          <ChatBubbleLeftEllipsisIcon className="w-4 h-4" />
                         </span>
                       )}
                     </div>

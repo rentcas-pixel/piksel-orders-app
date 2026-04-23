@@ -2,6 +2,43 @@ import { supabase } from './supabase';
 import { Comment, Reminder, FileAttachment, OrderApprovalEvent, OrderInvoiceStatus } from '@/types';
 
 export class SupabaseService {
+  static async getOrderCommentOrScreenshotMap(orderIds: string[]): Promise<Record<string, boolean>> {
+    const uniqueOrderIds = [...new Set(orderIds.filter(Boolean))];
+    if (uniqueOrderIds.length === 0) return {};
+
+    const [commentsResult, filesResult] = await Promise.all([
+      supabase
+        .from('comments')
+        .select('order_id')
+        .in('order_id', uniqueOrderIds),
+      supabase
+        .from('file_attachments')
+        .select('order_id,file_type')
+        .in('order_id', uniqueOrderIds),
+    ]);
+
+    if (commentsResult.error) throw commentsResult.error;
+    if (filesResult.error) throw filesResult.error;
+
+    const hasActivityMap: Record<string, boolean> = {};
+    for (const orderId of uniqueOrderIds) {
+      hasActivityMap[orderId] = false;
+    }
+
+    for (const row of commentsResult.data || []) {
+      if (row.order_id) hasActivityMap[row.order_id] = true;
+    }
+
+    for (const row of filesResult.data || []) {
+      if (!row.order_id) continue;
+      if ((row.file_type || '').startsWith('image/')) {
+        hasActivityMap[row.order_id] = true;
+      }
+    }
+
+    return hasActivityMap;
+  }
+
   // Invoice statuses
   static async getInvoiceStatuses(orderIds: string[]): Promise<Record<string, OrderInvoiceStatus>> {
     if (orderIds.length === 0) return {};
