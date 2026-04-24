@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { Order } from '@/types';
 import { PocketBaseService } from '@/lib/pocketbase';
+import { SupabaseService } from '@/lib/supabase-service';
 import { getDaysInMonth, getDaysInRange } from '@/lib/screen-revenue';
 
 interface OrderAnalyticsDashboardProps {
@@ -19,6 +20,25 @@ interface OrderAnomaly {
   severity: Severity;
   type: string;
   reason: string;
+}
+
+function getRuleIdByType(type: string): string {
+  switch (type) {
+    case 'Nestandartine paketo nuolaida':
+      return 'R6_PACKAGE_DISCOUNT_CRITICAL';
+    case 'Nuolaida arti paketo ribos':
+      return 'R7_PACKAGE_DISCOUNT_WARNING';
+    case 'Didele nestandartine nuolaida':
+      return 'R8_LARGE_NONSTANDARD_DISCOUNT';
+    case 'Nuolaida virs standarto':
+      return 'R9_ABOVE_STANDARD_DISCOUNT_WARNING';
+    case 'Labai didele nuolaida virs standarto':
+      return 'R10_ABOVE_STANDARD_DISCOUNT_CRITICAL';
+    case 'Neisrasyta saskaita po termino':
+      return 'R11_INVOICE_OVERDUE';
+    default:
+      return 'R0_OTHER';
+  }
 }
 
 interface OwnerMonthComparison {
@@ -37,23 +57,19 @@ interface OwnerContribution {
   delta: number;
 }
 
+
 const ANALYTICS_CACHE_TTL = 10 * 60 * 1000;
 const ANALYTICS_FETCH_LIMIT = 1200;
 const analyticsCache = new Map<string, { orders: Order[]; expires: number }>();
 const STALE_UNAPPROVED_DAYS = 21;
-const LOW_DAY_PRICE_WARNING = 15;
-const LOW_DAY_PRICE_CRITICAL = 8;
 const PACKAGE_DISCOUNT_TARGET = 86;
 const PACKAGE_DISCOUNT_WARNING_DEVIATION = 5;
 const PACKAGE_DISCOUNT_CRITICAL_DEVIATION = 10;
+const STANDARD_DISCOUNT_TARGET = 80;
+const STANDARD_DISCOUNT_WARNING_DEVIATION = 3;
+const STANDARD_DISCOUNT_CRITICAL_DEVIATION = 6;
 const HIDE_UNAPPROVED_AFTER_DAYS = 30;
-
-function median(values: number[]): number {
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
-}
+const INVOICE_ISSUED_GRACE_DAYS = 7;
 
 function getFilterForPeriod(filters: { month: string; year: string }) {
   if (filters.month && filters.year) {
@@ -85,14 +101,17 @@ function getComparisonTarget(filters: { month: string; year: string }) {
   return { month: now.getMonth() + 1, year };
 }
 
+
 export function OrderAnalyticsDashboard({ filters, onEditOrder, refreshKey }: OrderAnalyticsDashboardProps) {
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<Order[]>([]);
   const [ownerComparisons, setOwnerComparisons] = useState<OwnerMonthComparison[]>([]);
   const [ownerContributions, setOwnerContributions] = useState<OwnerContribution[]>([]);
+  const [invoiceStatusMap, setInvoiceStatusMap] = useState<Record<string, { invoice_issued: boolean; invoice_sent: boolean }>>({});
   const [allScreens, setAllScreens] = useState<Array<{ id: string; city?: string }>>([]);
   const [selectedOwnerForDrilldown, setSelectedOwnerForDrilldown] = useState<string | null>(null);
   const [showStaleOrders, setShowStaleOrders] = useState(false);
+  const [dismissedIncidentIds, setDismissedIncidentIds] = useState<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const periodFilter = useMemo(
     () => getFilterForPeriod({ month: filters.month, year: filters.year }),
@@ -108,6 +127,12 @@ export function OrderAnalyticsDashboard({ filters, onEditOrder, refreshKey }: Or
     const cached = analyticsCache.get(cacheKey);
     if (cached && cached.expires > Date.now()) {
       setOrders(cached.orders);
+      try {
+        const statuses = await SupabaseService.getInvoiceStatuses(cached.orders.map((o) => o.id));
+        setInvoiceStatusMap(statuses);
+      } catch {
+        setInvoiceStatusMap({});
+      }
       setLoading(false);
       return;
     }
@@ -137,8 +162,12 @@ export function OrderAnalyticsDashboard({ filters, onEditOrder, refreshKey }: Or
 
       const sliced = allOrders.slice(0, ANALYTICS_FETCH_LIMIT);
       setOrders(sliced);
-      const screens = await PocketBaseService.getAllScreens();
+      const [screens, statuses] = await Promise.all([
+        PocketBaseService.getAllScreens(),
+        SupabaseService.getInvoiceStatuses(sliced.map((o) => o.id)),
+      ]);
       setAllScreens(screens.map((s) => ({ id: s.id, city: s.city })));
+      setInvoiceStatusMap(statuses);
       analyticsCache.set(cacheKey, { orders: sliced, expires: Date.now() + ANALYTICS_CACHE_TTL });
 
       if (comparisonTarget) {
@@ -220,6 +249,7 @@ export function OrderAnalyticsDashboard({ filters, onEditOrder, refreshKey }: Or
         comparisons.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
         setOwnerComparisons(comparisons);
         setOwnerContributions(ownerDetails);
+
       } else {
         setOwnerComparisons([]);
         setOwnerContributions([]);
@@ -229,6 +259,7 @@ export function OrderAnalyticsDashboard({ filters, onEditOrder, refreshKey }: Or
       setOwnerComparisons([]);
       setOwnerContributions([]);
       setAllScreens([]);
+      setInvoiceStatusMap({});
     } finally {
       setLoading(false);
     }
@@ -239,6 +270,31 @@ export function OrderAnalyticsDashboard({ filters, onEditOrder, refreshKey }: Or
     fetchData();
     return () => abortRef.current?.abort();
   }, [fetchData, refreshKey]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = window.localStorage.getItem('analytics:dismissedIncidents');
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setDismissedIncidentIds(parsed.filter((v) => typeof v === 'string'));
+      }
+    } catch {
+      // Ignore malformed localStorage values.
+    }
+  }, []);
+
+  const dismissIncident = useCallback((orderId: string) => {
+    setDismissedIncidentIds((prev) => {
+      if (prev.includes(orderId)) return prev;
+      const next = [...prev, orderId];
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('analytics:dismissedIncidents', JSON.stringify(next));
+      }
+      return next;
+    });
+  }, []);
 
   const analysis = useMemo(() => {
     const now = new Date();
@@ -272,34 +328,6 @@ export function OrderAnalyticsDashboard({ filters, onEditOrder, refreshKey }: Or
       return diffMs > STALE_UNAPPROVED_DAYS * 24 * 60 * 60 * 1000;
     });
 
-    const pricePerDayValues = visibleOrders
-      .map((o) => {
-        const days = getDaysInRange(o.from, o.to);
-        if (days <= 0) return 0;
-        return (Number(o.final_price) || 0) / days;
-      })
-      .filter((v) => v > 0);
-
-    const globalMedian = median(pricePerDayValues);
-    const absDeviations = pricePerDayValues.map((v) => Math.abs(v - globalMedian));
-    const mad = median(absDeviations) || 1;
-
-    const byClient = new Map<string, number[]>();
-    for (const order of visibleOrders) {
-      const days = getDaysInRange(order.from, order.to);
-      const ppd = days > 0 ? (Number(order.final_price) || 0) / days : 0;
-      if (ppd <= 0) continue;
-      const key = (order.client || '').trim().toLowerCase();
-      if (!key) continue;
-      const arr = byClient.get(key) || [];
-      arr.push(ppd);
-      byClient.set(key, arr);
-    }
-    const clientMedians = new Map<string, number>();
-    for (const [clientKey, vals] of byClient.entries()) {
-      if (vals.length >= 4) clientMedians.set(clientKey, median(vals));
-    }
-
     const anomalies: OrderAnomaly[] = [];
     const pushAnomaly = (a: OrderAnomaly) => {
       const exists = anomalies.some((x) => x.order.id === a.order.id && x.type === a.type);
@@ -326,62 +354,25 @@ export function OrderAnalyticsDashboard({ filters, onEditOrder, refreshKey }: Or
       if (!order.approved && total <= 0) {
         continue;
       }
-      const days = Math.max(1, getDaysInRange(order.from, order.to));
-      const ppd = total / days;
-      const clientKey = (order.client || '').trim().toLowerCase();
-      const clientMedian = clientMedians.get(clientKey);
-      const robustZ = (ppd - globalMedian) / (1.4826 * mad);
-
-      if (total < 80) {
-        pushAnomaly({
-          order,
-          severity: 'critical',
-          type: 'Labai maza suma',
-          reason: `Galutine suma tik €${total.toFixed(2)}.`,
-        });
-      } else if (total < 150) {
-        pushAnomaly({
-          order,
-          severity: 'warning',
-          type: 'Maza suma',
-          reason: `Galutine suma €${total.toFixed(2)} gali buti neiprasta.`,
-        });
+      if (order.approved) {
+        const invoiceIssued = invoiceStatusMap[order.id]?.invoice_issued ?? !!order.invoice_sent;
+        if (!invoiceIssued) {
+          const orderEnd = new Date(`${order.to}T00:00:00`);
+          if (!Number.isNaN(orderEnd.getTime())) {
+            const monthEnd = new Date(orderEnd.getFullYear(), orderEnd.getMonth() + 1, 0);
+            const deadline = new Date(monthEnd);
+            deadline.setDate(deadline.getDate() + INVOICE_ISSUED_GRACE_DAYS);
+            if (now.getTime() > deadline.getTime()) {
+              pushAnomaly({
+                order,
+                severity: 'warning',
+                type: 'Neisrasyta saskaita po termino',
+                reason: `Saskaita neišrašyta: praėjo >${INVOICE_ISSUED_GRACE_DAYS} d. po ${format(monthEnd, 'yyyy-MM-dd')} menesio pabaigos.`,
+              });
+            }
+          }
+        }
       }
-
-      if (ppd < LOW_DAY_PRICE_CRITICAL) {
-        pushAnomaly({
-          order,
-          severity: 'critical',
-          type: 'Labai maza dienos kaina',
-          reason: `~€${ppd.toFixed(2)}/d. per ${days} d.`,
-        });
-      } else if (ppd < LOW_DAY_PRICE_WARNING) {
-        pushAnomaly({
-          order,
-          severity: 'warning',
-          type: 'Maza dienos kaina',
-          reason: `~€${ppd.toFixed(2)}/d. per ${days} d.`,
-        });
-      }
-
-      if (robustZ < -3) {
-        pushAnomaly({
-          order,
-          severity: 'critical',
-          type: 'Kainos outlieris',
-          reason: `Dienos kaina yra ryškiai žemiau bendro medianos lygio.`,
-        });
-      }
-
-      if (clientMedian && ppd < clientMedian * 0.55) {
-        pushAnomaly({
-          order,
-          severity: 'warning',
-          type: 'Neiprasta nuolaida (proxy)',
-          reason: `Dienos kaina ~${Math.round((1 - ppd / clientMedian) * 100)}% zemiau kliento iprasto lygio.`,
-        });
-      }
-
       const orderScreenIds = [...new Set(order.screens?.filter(Boolean) || [])];
       const priceMap = order.details?.screenPrices || {};
       const basePrice = orderScreenIds.reduce((sum, screenId) => sum + (Number(priceMap[screenId]) || 0), 0);
@@ -414,34 +405,61 @@ export function OrderAnalyticsDashboard({ filters, onEditOrder, refreshKey }: Or
               reason: `${selectedCity === 'kaunas' ? 'Kauno' : 'Vilniaus'} paketas: ~${(discount * 100).toFixed(1)}%, verta patikrinti.`,
             });
           }
-        } else if (discount > 0.75) {
-          pushAnomaly({
-            order,
-            severity: 'warning',
-            type: 'Didele nestandartine nuolaida',
-            reason: `Apskaiciuota nuolaida ~${(discount * 100).toFixed(1)}% pagal ekranu bazines kainas.`,
-          });
+        } else {
+          const standardDiscount = STANDARD_DISCOUNT_TARGET / 100;
+          const deviation = discount - standardDiscount;
+          if (deviation > STANDARD_DISCOUNT_CRITICAL_DEVIATION / 100) {
+            pushAnomaly({
+              order,
+              severity: 'critical',
+              type: 'Labai didele nuolaida virs standarto',
+              reason: `Nuolaida ~${(discount * 100).toFixed(1)}% yra ${(deviation * 100).toFixed(1)} p.p. virs standartines ~${STANDARD_DISCOUNT_TARGET}%.`,
+            });
+          } else if (deviation > STANDARD_DISCOUNT_WARNING_DEVIATION / 100) {
+            pushAnomaly({
+              order,
+              severity: 'warning',
+              type: 'Nuolaida virs standarto',
+              reason: `Nuolaida ~${(discount * 100).toFixed(1)}% yra auksciau standartines ~${STANDARD_DISCOUNT_TARGET}%.`,
+            });
+          }
         }
       }
     }
 
-    const incidentsByOrder = new Map<string, { order: Order; severity: Severity; reasons: string[]; types: string[]; riskScore: number }>();
+    const incidentsByOrder = new Map<
+      string,
+      {
+        order: Order;
+        severity: Severity;
+        reasons: string[];
+        types: string[];
+        riskScore: number;
+        ruleIds: string[];
+        trigger: string;
+      }
+    >();
     for (const anomaly of anomalies) {
       const existing = incidentsByOrder.get(anomaly.order.id);
       const score = anomaly.severity === 'critical' ? 35 : 20;
       if (!existing) {
+        const ruleId = getRuleIdByType(anomaly.type);
         incidentsByOrder.set(anomaly.order.id, {
           order: anomaly.order,
           severity: anomaly.severity,
           reasons: [anomaly.reason],
           types: [anomaly.type],
           riskScore: score,
+          ruleIds: [ruleId],
+          trigger: anomaly.reason,
         });
       } else {
         existing.reasons.push(anomaly.reason);
         existing.types.push(anomaly.type);
         existing.riskScore += score;
         if (anomaly.severity === 'critical') existing.severity = 'critical';
+        const ruleId = getRuleIdByType(anomaly.type);
+        if (!existing.ruleIds.includes(ruleId)) existing.ruleIds.push(ruleId);
       }
     }
     const incidents = Array.from(incidentsByOrder.values())
@@ -461,7 +479,7 @@ export function OrderAnalyticsDashboard({ filters, onEditOrder, refreshKey }: Or
       anomalies,
       incidents,
     };
-  }, [orders, allScreens, filters.month, filters.year]);
+  }, [orders, allScreens, invoiceStatusMap, filters.month, filters.year]);
 
   const selectedOwnerRows = useMemo(() => {
     if (!selectedOwnerForDrilldown) return [];
@@ -482,6 +500,11 @@ export function OrderAnalyticsDashboard({ filters, onEditOrder, refreshKey }: Or
       .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
       .slice(0, 12);
   }, [ownerContributions, selectedOwnerForDrilldown]);
+
+  const visibleIncidents = useMemo(
+    () => analysis.incidents.filter((i) => !dismissedIncidentIds.includes(i.order.id)),
+    [analysis.incidents, dismissedIncidentIds]
+  );
 
   if (loading) {
     return (
@@ -584,7 +607,7 @@ export function OrderAnalyticsDashboard({ filters, onEditOrder, refreshKey }: Or
           </p>
         </div>
         <div className="divide-y divide-gray-200 dark:divide-gray-700">
-          {analysis.incidents.slice(0, 30).map((item) => (
+          {visibleIncidents.slice(0, 30).map((item) => (
             <div key={item.order.id} className="px-4 py-3 flex items-start justify-between gap-3">
               <div>
                 <div className="text-sm font-medium text-gray-900 dark:text-white">
@@ -593,6 +616,12 @@ export function OrderAnalyticsDashboard({ filters, onEditOrder, refreshKey }: Or
                 <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   {item.reasons[0]}
                   {item.reasons.length > 1 ? ` (+${item.reasons.length - 1} papild.)` : ''}
+                </div>
+                <div className="text-xs text-indigo-600 dark:text-indigo-300 mt-1">
+                  Rule: {item.ruleIds.join(', ')}
+                </div>
+                <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+                  Trigger: {item.trigger}
                 </div>
                 <div className="text-xs text-gray-400 mt-1">
                   {format(new Date(item.order.from), 'yyyy-MM-dd')} - {format(new Date(item.order.to), 'yyyy-MM-dd')}
@@ -631,10 +660,16 @@ export function OrderAnalyticsDashboard({ filters, onEditOrder, refreshKey }: Or
                     Atidaryti
                   </button>
                 )}
+                <button
+                  onClick={() => dismissIncident(item.order.id)}
+                  className="text-xs text-gray-600 hover:text-gray-800"
+                >
+                  Peržiūrėta
+                </button>
               </div>
             </div>
           ))}
-          {analysis.incidents.length === 0 && (
+          {visibleIncidents.length === 0 && (
             <div className="px-4 py-6 text-sm text-gray-500 dark:text-gray-400">Anomaliju pagal dabartinius duomenis nerasta.</div>
           )}
         </div>

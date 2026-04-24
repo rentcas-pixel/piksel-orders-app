@@ -17,6 +17,10 @@ export interface Order {
   /** Ekrano kainos pagal ID (jei yra) */
   details?: {
     screenPrices?: Record<string, number>;
+    views?: number;
+    cpt?: number;
+    discount?: number;
+    finalPrice?: number;
   };
 }
 

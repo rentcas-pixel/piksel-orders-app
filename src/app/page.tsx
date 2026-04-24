@@ -5,6 +5,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { OrdersTable } from '@/components/OrdersTable';
 import { ScreenRevenueAnalysis } from '@/components/ScreenRevenueAnalysis';
 import { PartnerRevenueAnalysis } from '@/components/PartnerRevenueAnalysis';
+import { AgencyAnalysis } from '@/components/AgencyAnalysis';
 import { RecentApprovedOrders } from '@/components/RecentApprovedOrders';
 import { OrderAnalyticsDashboard } from '@/components/OrderAnalyticsDashboard';
 import { Header } from '@/components/Header';
@@ -22,7 +23,7 @@ export default function Home() {
   const [showReminders, setShowReminders] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  const [activeTab, setActiveTab] = useState<'orders' | 'revenue' | 'partners' | 'analytics' | 'latest'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'revenue' | 'partners' | 'agencies' | 'analytics' | 'latest'>('orders');
   const [filters, setFilters] = useState({
     status: '',
     month: '',
@@ -112,6 +113,16 @@ export default function Home() {
               Partneriai
             </button>
             <button
+              onClick={() => setActiveTab('agencies')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === 'agencies'
+                  ? 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+              }`}
+            >
+              Agentūros
+            </button>
+            <button
               onClick={() => setActiveTab('latest')}
               className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
                 activeTab === 'latest'
@@ -163,6 +174,13 @@ export default function Home() {
           <RecentApprovedOrders
             onEditOrder={handleEditOrder}
             refreshKey={refreshKey}
+          />
+        )}
+
+        {activeTab === 'agencies' && (
+          <AgencyAnalysis
+            filters={debouncedFilters}
+            onEditOrder={handleEditOrder}
           />
         )}
 
