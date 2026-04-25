@@ -6,6 +6,7 @@ import { OrdersTable } from '@/components/OrdersTable';
 import { ScreenRevenueAnalysis } from '@/components/ScreenRevenueAnalysis';
 import { PartnerRevenueAnalysis } from '@/components/PartnerRevenueAnalysis';
 import { AgencyAnalysis } from '@/components/AgencyAnalysis';
+import { ChartsAnalysis } from '@/components/ChartsAnalysis';
 import { RecentApprovedOrders } from '@/components/RecentApprovedOrders';
 import { OrderAnalyticsDashboard } from '@/components/OrderAnalyticsDashboard';
 import { Header } from '@/components/Header';
@@ -185,11 +186,14 @@ export default function Home() {
         )}
 
         {activeTab === 'analytics' && (
-          <OrderAnalyticsDashboard
-            filters={debouncedFilters}
-            onEditOrder={handleEditOrder}
-            refreshKey={refreshKey}
-          />
+          <div className="space-y-4">
+            <OrderAnalyticsDashboard
+              filters={debouncedFilters}
+              onEditOrder={handleEditOrder}
+              refreshKey={refreshKey}
+            />
+            <ChartsAnalysis filters={debouncedFilters} />
+          </div>
         )}
       </main>
 

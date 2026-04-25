@@ -33,6 +33,37 @@ type SortField = 'agency' | 'totalOrders' | 'approvedOrders' | 'approvedRate' | 
 type SortDirection = 'asc' | 'desc';
 
 const ANALYSIS_FETCH_LIMIT = 2000;
+const AGENCY_CANONICAL: Record<string, string> = {
+  bpn: 'BPN',
+  omg: 'OMG',
+  omd: 'OMD',
+  mbd: 'MBD',
+  dentsu: 'Dentsu',
+  carat: 'Carat',
+  mediacom: 'Mediacom',
+  mindshare: 'Mindshare',
+  'media house': 'Media House',
+  'arena media': 'Arena Media',
+  'havas media': 'Havas Media',
+  'publicis groupe': 'Publicis Groupe',
+  open: 'Open',
+};
+
+function normalizeAgencyKey(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+function getCanonicalAgencyName(value?: string): { key: string; label: string } {
+  const raw = (value || '').trim();
+  if (!raw || raw === '-') {
+    return { key: 'nepriskirta', label: 'Nepriskirta' };
+  }
+  const key = normalizeAgencyKey(raw);
+  return { key, label: AGENCY_CANONICAL[key] || raw };
+}
 
 function getFilterForPeriod(filters: { month: string; year: string; status: string }) {
   const parts: string[] = [];
@@ -104,10 +135,17 @@ export function AgencyAnalysis({ filters, onEditOrder }: AgencyAnalysisProps) {
 
   const rows = useMemo(() => {
     const normalizedClient = (filters.client || '').trim().toLowerCase();
-    const normalizedAgencyFilter = (filters.agency || '').trim().toLowerCase();
+    const normalizedAgencyFilter = normalizeAgencyKey(filters.agency || '');
     const filtered = orders.filter((o) => {
       if (normalizedClient && !(o.client || '').toLowerCase().includes(normalizedClient)) return false;
-      if (normalizedAgencyFilter && !(o.agency || '').toLowerCase().includes(normalizedAgencyFilter)) return false;
+      const canonical = getCanonicalAgencyName(o.agency);
+      if (
+        normalizedAgencyFilter &&
+        !canonical.key.includes(normalizedAgencyFilter) &&
+        !canonical.label.toLowerCase().includes(normalizedAgencyFilter)
+      ) {
+        return false;
+      }
       if (filters.media_received === 'true' && !o.media_received) return false;
       if (filters.media_received === 'false' && o.media_received) return false;
       return true;
@@ -115,10 +153,10 @@ export function AgencyAnalysis({ filters, onEditOrder }: AgencyAnalysisProps) {
 
     const map = new Map<string, AgencyRow>();
     for (const order of filtered) {
-      const agency = (order.agency || '').trim() || 'Nepriskirta';
+      const canonicalAgency = getCanonicalAgencyName(order.agency);
       const hasScreens = [...new Set(order.screens?.filter(Boolean) || [])].length > 0;
-      const existing = map.get(agency) || {
-        agency,
+      const existing = map.get(canonicalAgency.key) || {
+        agency: canonicalAgency.label,
         totalOrders: 0,
         approvedOrders: 0,
         unapprovedOrders: 0,
@@ -147,7 +185,7 @@ export function AgencyAnalysis({ filters, onEditOrder }: AgencyAnalysisProps) {
         existing.visibleOrders += 1;
       }
       existing.orders.push({ order, monthlyAmount });
-      map.set(agency, existing);
+      map.set(canonicalAgency.key, existing);
     }
 
     const prepared = Array.from(map.values())
@@ -258,6 +296,9 @@ export function AgencyAnalysis({ filters, onEditOrder }: AgencyAnalysisProps) {
                           .filter(({ order }) => showUnapproved || order.approved)
                           .sort((a, b) => b.monthlyAmount - a.monthlyAmount)
                           .map(({ order, monthlyAmount }) => (
+                            (() => {
+                              const screenCount = [...new Set(order.screens?.filter(Boolean) || [])].length;
+                              return (
                             <div
                               key={order.id}
                               className="flex items-center justify-between py-2 px-3 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-600 text-sm"
@@ -271,6 +312,9 @@ export function AgencyAnalysis({ filters, onEditOrder }: AgencyAnalysisProps) {
                                 </span>{' '}
                                 - {order.approved ? 'Patvirtintas' : 'Nepatvirtintas'}
                                 <span className="text-gray-500 dark:text-gray-400 ml-2">
+                                  Ekranai: {screenCount}
+                                </span>
+                                <span className="text-gray-500 dark:text-gray-400 ml-2">
                                   {format(new Date(order.from), 'yyyy-MM-dd')} - {format(new Date(order.to), 'yyyy-MM-dd')}
                                 </span>
                               </div>
@@ -278,6 +322,8 @@ export function AgencyAnalysis({ filters, onEditOrder }: AgencyAnalysisProps) {
                                 €{monthlyAmount.toLocaleString('lt-LT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </div>
                             </div>
+                              );
+                            })()
                           ))}
                         {row.orders.filter(({ order }) => showUnapproved || order.approved).length === 0 && (
                           <div className="text-sm text-gray-500 dark:text-gray-400 px-3 py-2">
