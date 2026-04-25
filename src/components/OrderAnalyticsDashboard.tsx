@@ -483,6 +483,14 @@ export function OrderAnalyticsDashboard({ filters, onEditOrder, refreshKey }: Or
 
   const selectedOwnerRows = useMemo(() => {
     if (!selectedOwnerForDrilldown) return [];
+    const ownerSummary = ownerComparisons.find((x) => x.owner === selectedOwnerForDrilldown);
+    const trendDirection = ownerSummary
+      ? ownerSummary.delta > 0
+        ? 1
+        : ownerSummary.delta < 0
+          ? -1
+          : 0
+      : 0;
     const grouped = new Map<string, OwnerContribution>();
     for (const row of ownerContributions) {
       if (row.owner !== selectedOwnerForDrilldown) continue;
@@ -497,9 +505,14 @@ export function OrderAnalyticsDashboard({ filters, onEditOrder, refreshKey }: Or
     }
 
     return Array.from(grouped.values())
+      .filter((row) => {
+        if (trendDirection > 0) return row.delta > 0;
+        if (trendDirection < 0) return row.delta < 0;
+        return row.delta !== 0;
+      })
       .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
       .slice(0, 12);
-  }, [ownerContributions, selectedOwnerForDrilldown]);
+  }, [ownerContributions, ownerComparisons, selectedOwnerForDrilldown]);
 
   const visibleIncidents = useMemo(
     () => analysis.incidents.filter((i) => !dismissedIncidentIds.includes(i.order.id)),
@@ -728,9 +741,14 @@ export function OrderAnalyticsDashboard({ filters, onEditOrder, refreshKey }: Or
       {selectedOwnerForDrilldown && (
         <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-            <h3 className="font-semibold text-gray-900 dark:text-white">
-              Owner drilldown: {selectedOwnerForDrilldown}
-            </h3>
+            <div>
+              <h3 className="font-semibold text-gray-900 dark:text-white">
+                Owner drilldown: {selectedOwnerForDrilldown}
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Rodomos tik tos eilutes, kurios paaiškina pasirinkto owner pokyčio kryptį.
+              </p>
+            </div>
             <button
               onClick={() => setSelectedOwnerForDrilldown(null)}
               className="text-xs text-gray-500 hover:text-gray-700"
