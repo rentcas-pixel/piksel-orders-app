@@ -33,6 +33,7 @@ type SortField = 'agency' | 'totalOrders' | 'approvedOrders' | 'approvedRate' | 
 type SortDirection = 'asc' | 'desc';
 
 const ANALYSIS_FETCH_LIMIT = 2000;
+const MONTH_NAMES = ['Sau', 'Vas', 'Kov', 'Bal', 'Geg', 'Bir', 'Lie', 'Rgp', 'Rgs', 'Spa', 'Lap', 'Grd'];
 const AGENCY_CANONICAL: Record<string, string> = {
   bpn: 'BPN',
   omg: 'OMG',
@@ -44,6 +45,7 @@ const AGENCY_CANONICAL: Record<string, string> = {
   mindshare: 'Mindshare',
   'media house': 'Media House',
   'arena media': 'Arena Media',
+  havas: 'Havas Media',
   'havas media': 'Havas Media',
   'publicis groupe': 'Publicis Groupe',
   open: 'Open',
@@ -65,26 +67,101 @@ function getCanonicalAgencyName(value?: string): { key: string; label: string } 
   return { key, label: AGENCY_CANONICAL[key] || raw };
 }
 
-function getFilterForPeriod(filters: { month: string; year: string; status: string }) {
-  const parts: string[] = [];
-  if (filters.month && filters.year) {
-    const y = parseInt(filters.year, 10);
-    const m = parseInt(filters.month, 10);
-    const lastDay = new Date(y, m, 0).getDate();
-    const startDate = `${filters.year}-${filters.month.padStart(2, '0')}-01`;
-    const endDate = `${filters.year}-${filters.month.padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-    parts.push(`(from<="${endDate}" && to>="${startDate}")`);
-  } else if (filters.year) {
-    parts.push(`(from<="${filters.year}-12-31" && to>="${filters.year}-01-01")`);
-  }
+function AreaLineChart({
+  data,
+  color = '#0ea5e9',
+  idPrefix,
+}: {
+  data: Array<{ label: string; value: number }>;
+  color?: string;
+  idPrefix: string;
+}) {
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+  const width = 900;
+  const height = 260;
+  const padX = 34;
+  const padY = 18;
+  const chartW = width - padX * 2;
+  const chartH = height - padY * 2;
+  const max = Math.max(...data.map((d) => d.value), 1);
+  const points = data.map((d, i) => {
+    const x = padX + (i / Math.max(data.length - 1, 1)) * chartW;
+    const y = padY + chartH - (d.value / max) * chartH;
+    return { ...d, x, y };
+  });
+  const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(' ');
+  const areaPath = `${linePath} L ${padX + chartW} ${padY + chartH} L ${padX} ${padY + chartH} Z`;
+  const hoveredPoint = hoveredIdx !== null ? points[hoveredIdx] : null;
 
-  return parts.join(' && ');
+  return (
+    <div className="rounded-2xl border border-gray-100 dark:border-gray-700 bg-gradient-to-b from-white to-gray-50/60 dark:from-gray-800 dark:to-gray-800/80 p-4">
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto" role="img" aria-label="Agentūros pajamų grafikas">
+        <defs>
+          <linearGradient id={`${idPrefix}-area`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.35" />
+            <stop offset="100%" stopColor={color} stopOpacity="0.03" />
+          </linearGradient>
+        </defs>
+        {[0, 0.25, 0.5, 0.75, 1].map((t) => {
+          const y = padY + chartH - t * chartH;
+          return <line key={t} x1={padX} y1={y} x2={padX + chartW} y2={y} stroke="currentColor" strokeOpacity="0.12" className="text-gray-500" />;
+        })}
+        <path d={areaPath} fill={`url(#${idPrefix}-area)`} />
+        <path d={linePath} fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" />
+        {points.map((p, idx) => (
+          <g key={p.label}>
+            <circle cx={p.x} cy={p.y} r={hoveredIdx === idx ? 6 : 3.5} fill={color} style={{ transition: 'r 120ms ease' }} />
+            <circle
+              cx={p.x}
+              cy={p.y}
+              r="14"
+              fill="transparent"
+              onMouseEnter={() => setHoveredIdx(idx)}
+              onMouseLeave={() => setHoveredIdx(null)}
+            />
+          </g>
+        ))}
+        {hoveredPoint && (
+          <g pointerEvents="none">
+            <rect
+              x={Math.max(padX, Math.min(hoveredPoint.x - 68, padX + chartW - 136))}
+              y={Math.max(4, hoveredPoint.y - 36)}
+              width="136"
+              height="24"
+              rx="6"
+              fill="#111827"
+              fillOpacity="0.9"
+            />
+            <text
+              x={Math.max(padX, Math.min(hoveredPoint.x, padX + chartW))}
+              y={Math.max(20, hoveredPoint.y - 20)}
+              textAnchor="middle"
+              style={{ fontSize: 11, fill: '#ffffff' }}
+            >
+              {hoveredPoint.label}: €{hoveredPoint.value.toLocaleString('lt-LT', { maximumFractionDigits: 0 })}
+            </text>
+          </g>
+        )}
+        {points.map((p) => (
+          <text key={`${p.label}-x`} x={p.x} y={height - 6} textAnchor="middle" className="fill-gray-500 dark:fill-gray-400" style={{ fontSize: 11 }}>
+            {p.label}
+          </text>
+        ))}
+      </svg>
+    </div>
+  );
+}
+
+function getYearWideFilter(year: string) {
+  if (!year) return '';
+  return `(from<="${year}-12-31" && to>="${year}-01-01")`;
 }
 
 export function AgencyAnalysis({ filters, onEditOrder }: AgencyAnalysisProps) {
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<Order[]>([]);
   const [expandedAgency, setExpandedAgency] = useState<string | null>(null);
+  const [selectedAgency, setSelectedAgency] = useState('');
   const [showUnapproved, setShowUnapproved] = useState(false);
   const [sortField, setSortField] = useState<SortField>('monthlyAmount');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
@@ -104,7 +181,10 @@ export function AgencyAnalysis({ filters, onEditOrder }: AgencyAnalysisProps) {
     abortRef.current = new AbortController();
     setLoading(true);
     try {
-      const filter = getFilterForPeriod({ month: filters.month, year: filters.year, status: filters.status });
+      // Keep a full-year dataset so agency chart stays stable
+      // when month filter changes; month filter is applied later
+      // in local calculations for table amounts.
+      const filter = getYearWideFilter(filters.year);
       const perPage = 250;
       let page = 1;
       let totalPages = 1;
@@ -126,7 +206,7 @@ export function AgencyAnalysis({ filters, onEditOrder }: AgencyAnalysisProps) {
     } finally {
       setLoading(false);
     }
-  }, [filters.month, filters.year, filters.status]);
+  }, [filters.year]);
 
   useEffect(() => {
     fetchData();
@@ -155,7 +235,9 @@ export function AgencyAnalysis({ filters, onEditOrder }: AgencyAnalysisProps) {
     for (const order of filtered) {
       const canonicalAgency = getCanonicalAgencyName(order.agency);
       const hasScreens = [...new Set(order.screens?.filter(Boolean) || [])].length > 0;
-      const existing = map.get(canonicalAgency.key) || {
+      const year = parseInt(filters.year, 10);
+      const month = parseInt(filters.month, 10);
+      const existing = map.get(canonicalAgency.label) || {
         agency: canonicalAgency.label,
         totalOrders: 0,
         approvedOrders: 0,
@@ -165,27 +247,36 @@ export function AgencyAnalysis({ filters, onEditOrder }: AgencyAnalysisProps) {
         monthlyAmount: 0,
         orders: [],
       };
-      existing.totalOrders += 1;
-      if (order.approved) existing.approvedOrders += 1;
-      else existing.unapprovedOrders += 1;
-
       const total = Number(order.final_price) || 0;
       let monthlyAmount = total;
+      let inSelectedMonth = true;
       if (filters.month && filters.year) {
-        const year = parseInt(filters.year, 10);
-        const month = parseInt(filters.month, 10);
         const totalDays = getDaysInRange(order.from, order.to);
         const daysInMonth = getDaysInMonth(order.from, order.to, year, month);
+        inSelectedMonth = daysInMonth > 0;
         if (totalDays > 0 && daysInMonth > 0) {
           monthlyAmount = (total / totalDays) * daysInMonth;
+        } else {
+          monthlyAmount = 0;
         }
       }
-      if ((order.approved || showUnapproved) && hasScreens) {
+
+      const isCountableForTable = inSelectedMonth && hasScreens;
+      if (isCountableForTable) {
+        existing.totalOrders += 1;
+        if (order.approved) existing.approvedOrders += 1;
+        else existing.unapprovedOrders += 1;
+      }
+
+      if (isCountableForTable && (order.approved || showUnapproved)) {
         existing.monthlyAmount += monthlyAmount;
         existing.visibleOrders += 1;
       }
-      existing.orders.push({ order, monthlyAmount });
-      map.set(canonicalAgency.key, existing);
+
+      if (isCountableForTable) {
+        existing.orders.push({ order, monthlyAmount });
+      }
+      map.set(canonicalAgency.label, existing);
     }
 
     const prepared = Array.from(map.values())
@@ -219,6 +310,37 @@ export function AgencyAnalysis({ filters, onEditOrder }: AgencyAnalysisProps) {
       .reduce((s, x) => s + x.monthlyAmount, 0);
   }, 0);
   const totalMonthlyAmount = showUnapproved ? totalApprovedAmount + totalUnapprovedAmount : totalApprovedAmount;
+  const selectedYear = parseInt(filters.year, 10) || new Date().getFullYear();
+
+  const { agencyChartTotals, agencyChartSeries } = useMemo(() => {
+    const totals = rows.map((r) => {
+      const monthly = Array.from({ length: 12 }, () => 0);
+      for (const { order } of r.orders) {
+        const hasScreens = [...new Set(order.screens?.filter(Boolean) || [])].length > 0;
+        if (!hasScreens) continue;
+        if (!showUnapproved && !order.approved) continue;
+        const total = Number(order.final_price) || 0;
+        const totalDays = getDaysInRange(order.from, order.to);
+        if (total <= 0 || totalDays <= 0) continue;
+        for (let m = 1; m <= 12; m++) {
+          const daysInMonth = getDaysInMonth(order.from, order.to, selectedYear, m);
+          if (daysInMonth <= 0) continue;
+          monthly[m - 1] += (total / totalDays) * daysInMonth;
+        }
+      }
+      return { agency: r.agency, total: monthly.reduce((s, v) => s + v, 0), monthly };
+    }).filter((x) => x.total > 0)
+      .sort((a, b) => b.total - a.total);
+
+    const selected = totals.find((x) => x.agency === selectedAgency) || totals[0];
+    const series = (selected?.monthly || Array.from({ length: 12 }, () => 0))
+      .map((value, idx) => ({ label: MONTH_NAMES[idx], value }));
+    return { agencyChartTotals: totals, agencyChartSeries: series };
+  }, [rows, selectedAgency, selectedYear, showUnapproved]);
+
+  useEffect(() => {
+    if (!selectedAgency && agencyChartTotals.length > 0) setSelectedAgency(agencyChartTotals[0].agency);
+  }, [selectedAgency, agencyChartTotals]);
 
   if (loading) {
     return (
@@ -346,6 +468,25 @@ export function AgencyAnalysis({ filters, onEditOrder }: AgencyAnalysisProps) {
           </tbody>
         </table>
       </div>
+      {agencyChartTotals.length > 0 && (
+        <div className="border-t border-gray-200 dark:border-gray-700 p-6">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Agentūros pajamos pagal mėnesius</h3>
+            <select
+              value={selectedAgency}
+              onChange={(e) => setSelectedAgency(e.target.value)}
+              className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            >
+              {agencyChartTotals.map((a) => (
+                <option key={a.agency} value={a.agency}>
+                  {a.agency} - €{a.total.toLocaleString('lt-LT', { maximumFractionDigits: 0 })}
+                </option>
+              ))}
+            </select>
+          </div>
+          <AreaLineChart data={agencyChartSeries} color="#0ea5e9" idPrefix="agency-tab-revenue" />
+        </div>
+      )}
     </div>
   );
 }

@@ -209,7 +209,6 @@ export function ChartsAnalysis({ filters }: ChartsAnalysisProps) {
   useEffect(() => {
     if (!selectedScreenId && screenTotals.length > 0) setSelectedScreenId(screenTotals[0].screenId);
   }, [selectedScreenId, screenTotals]);
-
   const selectedScreenSeries = useMemo(() => {
     const arr = screenSeriesMap.get(selectedScreenId) || Array.from({ length: 12 }, () => 0);
     return arr.map((value, idx) => ({ label: MONTH_NAMES[idx], value }));
