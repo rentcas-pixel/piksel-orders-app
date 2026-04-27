@@ -111,6 +111,7 @@ export function OrderAnalyticsDashboard({ filters, onEditOrder, refreshKey }: Or
   const [allScreens, setAllScreens] = useState<Array<{ id: string; city?: string }>>([]);
   const [selectedOwnerForDrilldown, setSelectedOwnerForDrilldown] = useState<string | null>(null);
   const [showStaleOrders, setShowStaleOrders] = useState(false);
+  const [showBundleOrders, setShowBundleOrders] = useState(false);
   const [dismissedIncidentIds, setDismissedIncidentIds] = useState<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const periodFilter = useMemo(
@@ -307,6 +308,23 @@ export function OrderAnalyticsDashboard({ filters, onEditOrder, refreshKey }: Or
 
     const approved = visibleOrders.filter((o) => o.approved);
     const unapproved = visibleOrders.filter((o) => !o.approved);
+    const monthlyOrderAmounts = visibleOrders
+      .map((o) => {
+        const total = Number(o.final_price) || 0;
+        if (filters.month && filters.year) {
+          const year = parseInt(filters.year, 10);
+          const month = parseInt(filters.month, 10);
+          const totalDays = getDaysInRange(o.from, o.to);
+          const daysInMonth = getDaysInMonth(o.from, o.to, year, month);
+          if (totalDays <= 0 || daysInMonth <= 0) return 0;
+          return (total / totalDays) * daysInMonth;
+        }
+        return total;
+      })
+      .filter((v) => v > 0);
+    const averageOrderAmount = monthlyOrderAmounts.length
+      ? monthlyOrderAmounts.reduce((sum, v) => sum + v, 0) / monthlyOrderAmounts.length
+      : 0;
     const approvedAmount = approved.reduce((sum, o) => {
       const uniqueScreens = [...new Set(o.screens?.filter(Boolean) || [])];
       if (uniqueScreens.length === 0) return sum;
@@ -327,6 +345,8 @@ export function OrderAnalyticsDashboard({ filters, onEditOrder, refreshKey }: Or
       const diffMs = now.getTime() - updated.getTime();
       return diffMs > STALE_UNAPPROVED_DAYS * 24 * 60 * 60 * 1000;
     });
+    let approvedBundleCount = 0;
+    const approvedBundleOrders: Array<{ order: Order; packageType: 'Kauno' | 'Vilniaus' | 'Nenurodytas' }> = [];
 
     const anomalies: OrderAnomaly[] = [];
     const pushAnomaly = (a: OrderAnomaly) => {
@@ -374,6 +394,17 @@ export function OrderAnalyticsDashboard({ filters, onEditOrder, refreshKey }: Or
         }
       }
       const orderScreenIds = [...new Set(order.screens?.filter(Boolean) || [])];
+      const rawDetailsDiscount = Number(order.details?.discount);
+      const detailsDiscountPct = Number.isFinite(rawDetailsDiscount)
+        ? (rawDetailsDiscount <= 1 ? rawDetailsDiscount * 100 : rawDetailsDiscount)
+        : null;
+      const looksLikePackageByDiscount =
+        detailsDiscountPct !== null &&
+        detailsDiscountPct >= PACKAGE_DISCOUNT_TARGET - 2 &&
+        detailsDiscountPct <= PACKAGE_DISCOUNT_TARGET + 2;
+      let isBundleOrder = looksLikePackageByDiscount && orderScreenIds.length > 1;
+      let bundleCounted = false;
+      let packageType: 'Kauno' | 'Vilniaus' | 'Nenurodytas' = 'Nenurodytas';
       const priceMap = order.details?.screenPrices || {};
       const basePrice = orderScreenIds.reduce((sum, screenId) => sum + (Number(priceMap[screenId]) || 0), 0);
       if (orderScreenIds.length > 0 && basePrice > 0) {
@@ -383,9 +414,20 @@ export function OrderAnalyticsDashboard({ filters, onEditOrder, refreshKey }: Or
           return orderScreenIds.every((id) => cityIds.has(id));
         });
         const selectedCity = cityCandidates[0] || '';
+        if (selectedCity === 'kaunas') packageType = 'Kauno';
+        if (selectedCity === 'vilnius') packageType = 'Vilniaus';
         const cityIds = selectedCity ? cityScreenIds.get(selectedCity) : undefined;
         const isFullCityPackage = !!cityIds && cityIds.size === orderScreenIds.length;
         const discount = 1 - total / basePrice;
+
+        if (isFullCityPackage) {
+          isBundleOrder = true;
+        }
+        if (order.approved && isBundleOrder) {
+          approvedBundleCount += 1;
+          approvedBundleOrders.push({ order, packageType });
+          bundleCounted = true;
+        }
 
         if (isFullCityPackage) {
           const expectedDiscount = PACKAGE_DISCOUNT_TARGET / 100;
@@ -424,6 +466,10 @@ export function OrderAnalyticsDashboard({ filters, onEditOrder, refreshKey }: Or
             });
           }
         }
+      }
+      if (order.approved && isBundleOrder && !bundleCounted) {
+        approvedBundleCount += 1;
+        approvedBundleOrders.push({ order, packageType });
       }
     }
 
@@ -469,7 +515,13 @@ export function OrderAnalyticsDashboard({ filters, onEditOrder, refreshKey }: Or
     return {
       total: visibleOrders.length,
       approved: approved.length,
+      approvedBundleCount,
+      approvedBundleOrders: approvedBundleOrders
+        .sort((a, b) => new Date(b.order.updated).getTime() - new Date(a.order.updated).getTime())
+        .slice(0, 100),
       approvedAmount,
+      averageOrderAmount,
+      averageOrderAmountCount: monthlyOrderAmounts.length,
       unapproved: unapproved.length,
       staleUnapproved: staleUnapproved.length,
       staleUnapprovedOrders: staleUnapproved
@@ -529,7 +581,7 @@ export function OrderAnalyticsDashboard({ filters, onEditOrder, refreshKey }: Or
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-8 gap-3">
         <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
           <div className="text-xs text-gray-500">Viso uzsakymu</div>
           <div className="text-2xl font-semibold text-gray-900 dark:text-white">{analysis.total}</div>
@@ -573,7 +625,68 @@ export function OrderAnalyticsDashboard({ filters, onEditOrder, refreshKey }: Or
             €{analysis.approvedAmount.toLocaleString('lt-LT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
         </div>
+        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+          <div className="text-xs text-gray-500">Vidutinė užsakymo suma</div>
+          <div className="text-2xl font-semibold text-gray-900 dark:text-white">
+            €{analysis.averageOrderAmount.toLocaleString('lt-LT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+          <div className="text-[11px] text-gray-500 mt-1">
+            Iš {analysis.averageOrderAmountCount} užsakymų
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowBundleOrders((v) => !v)}
+          className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 text-left hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors"
+        >
+          <div className="text-xs text-gray-500">Bundle tarp patvirtintų</div>
+          <div className="text-2xl font-semibold text-gray-900 dark:text-white">{analysis.approvedBundleCount}</div>
+          <div className="text-[11px] text-gray-500 mt-1">
+            {analysis.approved ? ((analysis.approvedBundleCount / analysis.approved) * 100).toFixed(1) : '0.0'}% nuo patvirtintų
+          </div>
+          <div className="text-[11px] text-gray-500 mt-1">{showBundleOrders ? 'Paslėpti sąrašą' : 'Rodyti sąrašą'}</div>
+        </button>
       </div>
+
+      {showBundleOrders && (
+        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+            <h3 className="font-semibold text-gray-900 dark:text-white">
+              Patvirtinti bundle užsakymai ({analysis.approvedBundleOrders.length})
+            </h3>
+          </div>
+          <div className="divide-y divide-gray-200 dark:divide-gray-700">
+            {analysis.approvedBundleOrders.map((entry) => (
+              <div key={entry.order.id} className="px-4 py-3 flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-medium text-gray-900 dark:text-white">
+                    {entry.order.client} / {entry.order.agency} ({entry.order.invoice_id})
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                    {format(new Date(entry.order.from), 'yyyy-MM-dd')} - {format(new Date(entry.order.to), 'yyyy-MM-dd')}
+                    <span className="ml-2 inline-flex items-center rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 px-2 py-0.5">
+                      {entry.packageType} paketas
+                    </span>
+                  </div>
+                </div>
+                {onEditOrder && (
+                  <button
+                    onClick={() => onEditOrder(entry.order)}
+                    className="text-xs text-blue-600 hover:text-blue-800"
+                  >
+                    Atidaryti
+                  </button>
+                )}
+              </div>
+            ))}
+            {analysis.approvedBundleOrders.length === 0 && (
+              <div className="px-4 py-4 text-sm text-gray-500 dark:text-gray-400">
+                Nėra patvirtintų bundle užsakymų pagal dabartinius filtrus.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {showStaleOrders && (
         <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
