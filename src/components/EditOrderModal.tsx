@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { XMarkIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, ClipboardDocumentIcon } from '@heroicons/react/24/outline';
 import Image from 'next/image';
 import { Order, Comment, Reminder, FileAttachment } from '@/types';
 import { PocketBaseService } from '@/lib/pocketbase';
@@ -440,6 +440,15 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
   const endWeek = formData.to ? calculateWeek(formData.to) : '';
   const weeksDisplay = startWeek && endWeek ? `${startWeek} → ${endWeek}` : startWeek || endWeek || '';
 
+  const handleCopyPocketBaseId = async () => {
+    if (!order) return;
+    try {
+      await navigator.clipboard.writeText(order.id);
+    } catch {
+      // ignore — naršyklė gali blokuoti clipboard be HTTPS / leidimo
+    }
+  };
+
   if (!isOpen || !order) return null;
 
   return (
@@ -460,6 +469,22 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
           <div>
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{order.client}</h2>
             <p className="text-gray-600 dark:text-gray-400">{order.agency} | {order.invoice_id}</p>
+            {formData.approved && (
+              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                <span className="text-xs text-gray-500 dark:text-gray-400 font-mono tracking-tight select-all">
+                  {order.id}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleCopyPocketBaseId}
+                  className="inline-flex shrink-0 rounded p-0.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                  title="Kopijuoti PocketBase ID"
+                  aria-label="Kopijuoti PocketBase užsakymo ID"
+                >
+                  <ClipboardDocumentIcon className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
           </div>
           
           <div className="flex items-center space-x-4">
