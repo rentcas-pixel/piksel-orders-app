@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { XMarkIcon, ClipboardDocumentIcon } from '@heroicons/react/24/outline';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { XMarkIcon, ClipboardDocumentIcon, TableCellsIcon } from '@heroicons/react/24/outline';
 import Image from 'next/image';
 import { Order, Comment, Reminder, FileAttachment } from '@/types';
 import { PocketBaseService } from '@/lib/pocketbase';
@@ -29,6 +29,8 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
   const [reminderMessage, setReminderMessage] = useState('');
   const [pendingPrintscreens, setPendingPrintscreens] = useState<FileAttachment[]>([]);
   const [quote, setQuote] = useState<{ link: string; viaduct_link: string } | null>(null);
+  const [attachmentUploading, setAttachmentUploading] = useState(false);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
 
   const loadQuote = useCallback(async () => {
     if (!order) return;
@@ -309,8 +311,72 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
     }
   };
 
-  const handlePrintscreenView = (printscreen: FileAttachment) => {
+  const isSpreadsheetAttachment = (f: FileAttachment) => {
+    const ft = (f.file_type || '').toLowerCase();
+    const name = (f.filename || '').toLowerCase();
+    if (name.endsWith('.xls') || name.endsWith('.xlsx')) return true;
+    return (
+      ft === 'application/vnd.ms-excel' ||
+      ft === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+      ft.includes('spreadsheetml')
+    );
+  };
+
+  const handlePrintscreenView = async (printscreen: FileAttachment) => {
+    if (isSpreadsheetAttachment(printscreen)) {
+      try {
+        const res = await fetch(printscreen.file_url);
+        if (!res.ok) throw new Error(String(res.status));
+        const blob = await res.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objectUrl;
+        a.download = printscreen.filename || 'ataskaita.xlsx';
+        a.rel = 'noopener';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(objectUrl);
+      } catch {
+        window.open(printscreen.file_url, '_blank');
+      }
+      return;
+    }
     window.open(printscreen.file_url, '_blank');
+  };
+
+  const handleAttachmentFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.currentTarget;
+    const files = Array.from(input.files ?? []);
+    if (!files.length || !order) return;
+
+    const acceptFile = (file: File) => {
+      const t = (file.type ?? '').toLowerCase();
+      const n = file.name.toLowerCase();
+      if (t.startsWith('image/')) return true;
+      if (/\.xlsx?$/i.test(file.name)) return true;
+      if (t === 'application/vnd.ms-excel') return true;
+      if (t.includes('spreadsheetml') || t.includes('ms-excel')) return true;
+      if (t === 'application/octet-stream' && /\.xlsx?$/i.test(file.name)) return true;
+      if (t === 'application/zip' && n.endsWith('.xlsx')) return true;
+      return false;
+    };
+
+    setAttachmentUploading(true);
+    try {
+      for (const file of files) {
+        if (!acceptFile(file)) continue;
+        try {
+          const uploadedFile = await SupabaseService.uploadPrintscreen(order.id, file);
+          setPendingPrintscreens((prev) => [...prev, uploadedFile]);
+        } catch (err) {
+          console.error('Error uploading attachment', file.name, err);
+        }
+      }
+    } finally {
+      setAttachmentUploading(false);
+      input.value = '';
+    }
   };
 
   const handlePaste = async (e: React.ClipboardEvent) => {
@@ -658,7 +724,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                   }
                 }}
                 onPaste={handlePaste}
-                data-placeholder="Įveskite komentarą... (Enter - išsaugoti, Cmd+V - printscreen)"
+                data-placeholder="Įveskite komentarą... (Enter - išsaugoti, Cmd+V - paveikslėlis)"
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white h-24 resize-none min-h-[6rem] overflow-y-auto"
                 style={{ whiteSpace: 'pre-wrap' }}
               />
@@ -725,20 +791,56 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Printscreens
-                </label>
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Printscreens ir Excel
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={attachmentInputRef}
+                      type="file"
+                      className="hidden"
+                      accept="image/*,.xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                      multiple
+                      onChange={handleAttachmentFileChange}
+                    />
+                    <button
+                      type="button"
+                      disabled={attachmentUploading}
+                      onClick={() => attachmentInputRef.current?.click()}
+                      className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50"
+                    >
+                      {attachmentUploading ? 'Įkeliama…' : 'Prisegti failą'}
+                    </button>
+                  </div>
+                </div>
                 <div className="flex flex-wrap gap-2">
                   {pendingPrintscreens.map((printscreen) => (
                     <div key={printscreen.id} className="relative">
-                      <Image
-                        src={printscreen.file_url}
-                        alt="Printscreen"
-                        width={64}
-                        height={64}
-                        className="w-16 h-16 object-cover rounded border cursor-pointer hover:opacity-80"
-                        onClick={() => handlePrintscreenView(printscreen)}
-                      />
+                      {printscreen.file_type?.startsWith('image/') ? (
+                        <Image
+                          src={printscreen.file_url}
+                          alt="Printscreen"
+                          width={64}
+                          height={64}
+                          className="w-16 h-16 object-cover rounded border cursor-pointer hover:opacity-80"
+                          onClick={() => handlePrintscreenView(printscreen)}
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handlePrintscreenView(printscreen)}
+                          title={printscreen.filename}
+                          className="w-16 h-16 flex flex-col items-center justify-center gap-0.5 rounded border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/30 text-green-800 dark:text-green-200 hover:opacity-90"
+                        >
+                          <TableCellsIcon className="w-6 h-6 shrink-0" aria-hidden />
+                          <span className="text-[9px] leading-tight px-0.5 max-w-[4rem] truncate">
+                            {isSpreadsheetAttachment(printscreen)
+                              ? printscreen.filename.replace(/\.[^.]+$/, '')
+                              : printscreen.filename}
+                          </span>
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={async () => {
@@ -759,14 +861,30 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                   
                   {printScreens.map((printscreen) => (
                     <div key={printscreen.id} className="relative">
-                      <Image
-                        src={printscreen.file_url}
-                        alt="Printscreen"
-                        width={64}
-                        height={64}
-                        className="w-16 h-16 object-cover rounded border cursor-pointer hover:opacity-80"
-                        onClick={() => handlePrintscreenView(printscreen)}
-                      />
+                      {printscreen.file_type?.startsWith('image/') ? (
+                        <Image
+                          src={printscreen.file_url}
+                          alt="Printscreen"
+                          width={64}
+                          height={64}
+                          className="w-16 h-16 object-cover rounded border cursor-pointer hover:opacity-80"
+                          onClick={() => handlePrintscreenView(printscreen)}
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handlePrintscreenView(printscreen)}
+                          title={printscreen.filename}
+                          className="w-16 h-16 flex flex-col items-center justify-center gap-0.5 rounded border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/30 text-green-800 dark:text-green-200 hover:opacity-90"
+                        >
+                          <TableCellsIcon className="w-6 h-6 shrink-0" aria-hidden />
+                          <span className="text-[9px] leading-tight px-0.5 max-w-[4rem] truncate">
+                            {isSpreadsheetAttachment(printscreen)
+                              ? printscreen.filename.replace(/\.[^.]+$/, '')
+                              : printscreen.filename}
+                          </span>
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={async () => {
@@ -786,7 +904,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                   
                   {pendingPrintscreens.length === 0 && printScreens.length === 0 && (
                     <div className="text-sm text-gray-400 italic">
-                      Cmd+V į komentaro lauką pridėti printscreen
+                      Prisegti failą arba Cmd+V į komentaro lauką įklijuoti paveikslėlį
                     </div>
                   )}
                 </div>

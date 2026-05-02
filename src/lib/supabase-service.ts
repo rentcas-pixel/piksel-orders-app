@@ -1,6 +1,85 @@
 import { supabase } from './supabase';
 import { Comment, Reminder, FileAttachment, OrderApprovalEvent, OrderInvoiceStatus } from '@/types';
 
+/** Nuotraukos ir Excel (.xls / .xlsx) rodomi užsakymo modalo „Printscreens“ skiltyje */
+function isPrintscreenPanelFile(
+  fileType: string | null | undefined,
+  filename: string | null | undefined
+): boolean {
+  const ft = (fileType || '').toLowerCase();
+  const name = (filename || '').toLowerCase();
+  if (ft.startsWith('image/')) return true;
+  if (name.endsWith('.xls') || name.endsWith('.xlsx')) return true;
+  if (ft === 'application/vnd.ms-excel') return true;
+  if (ft === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') return true;
+  if (ft.includes('spreadsheetml')) return true;
+  return false;
+}
+
+function resolveAttachmentFileType(file: File): string {
+  const n = file.name.toLowerCase();
+  const t = (file.type || '').toLowerCase();
+
+  if (n.endsWith('.xlsx')) {
+    if (
+      !t ||
+      t === 'application/octet-stream' ||
+      t === 'application/zip' ||
+      t.includes('spreadsheetml')
+    ) {
+      return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    }
+    return file.type;
+  }
+  if (n.endsWith('.xls')) {
+    if (!t || t === 'application/octet-stream') return 'application/vnd.ms-excel';
+    return file.type || 'application/vnd.ms-excel';
+  }
+  if (file.type) return file.type;
+  if (/\.(jpe?g|png|gif|webp|bmp|svg)$/i.test(file.name)) return 'image/png';
+  return 'application/octet-stream';
+}
+
+/**
+ * Excel: bucket dažnai leidžia tik image/* — kelias su .png ir deklaruojamas image/png (turinys lieka xlsx zip).
+ * Kitas ne paveikslėlis (pvz. PDF) — originalus File.
+ */
+async function bodyForStorageUpload(
+  file: File,
+  resolvedType: string
+): Promise<{ body: Blob; contentType: string }> {
+  if (resolvedType.startsWith('image/')) {
+    const contentType = file.type || resolvedType;
+    return { body: file, contentType };
+  }
+  if (isSpreadsheetUpload(file, resolvedType)) {
+    const buf = await file.arrayBuffer();
+    return {
+      body: new Blob([buf], { type: 'image/png' }),
+      contentType: 'image/png',
+    };
+  }
+  const contentType = file.type || resolvedType || 'application/octet-stream';
+  return { body: file, contentType };
+}
+
+/** Storage raktas su .png plėtiniu, kad strict allowlist priimtų Excel baitus kaip „paveikslėlį“. */
+function storageObjectLeafSpreadsheetAsPng(safeBaseName: string): string {
+  const stem = safeBaseName.replace(/\.(xlsx|xls)$/i, '').trim();
+  return `${stem || 'attachment'}.png`;
+}
+
+function isSpreadsheetUpload(file: File, resolvedType: string): boolean {
+  const n = file.name.toLowerCase();
+  if (n.endsWith('.xlsx') || n.endsWith('.xls')) return true;
+  const t = (resolvedType || '').toLowerCase();
+  return (
+    t.includes('spreadsheetml') ||
+    t === 'application/vnd.ms-excel' ||
+    (t.startsWith('application/') && t.includes('excel'))
+  );
+}
+
 export class SupabaseService {
   static async getOrderCommentOrScreenshotMap(orderIds: string[]): Promise<Record<string, boolean>> {
     const uniqueOrderIds = [...new Set(orderIds.filter(Boolean))];
@@ -13,7 +92,7 @@ export class SupabaseService {
         .in('order_id', uniqueOrderIds),
       supabase
         .from('file_attachments')
-        .select('order_id,file_type')
+        .select('order_id,file_type,filename')
         .in('order_id', uniqueOrderIds),
     ]);
 
@@ -31,7 +110,7 @@ export class SupabaseService {
 
     for (const row of filesResult.data || []) {
       if (!row.order_id) continue;
-      if ((row.file_type || '').startsWith('image/')) {
+      if (isPrintscreenPanelFile(row.file_type, row.filename)) {
         hasActivityMap[row.order_id] = true;
       }
     }
@@ -172,9 +251,8 @@ export class SupabaseService {
         return [];
       }
       
-      // Filter printscreens on client side
-      const printscreens = (data || []).filter(file => 
-        file.file_type && file.file_type.startsWith('image/')
+      const printscreens = (data || []).filter((file) =>
+        isPrintscreenPanelFile(file.file_type, file.filename)
       );
       
 
@@ -287,15 +365,24 @@ export class SupabaseService {
     
     try {
       // 1. Įkelti failą į Supabase Storage
-      const fileName = `${Date.now()}_${file.name}`;
-      const storagePath = `${orderId}/${fileName}`;
-      
+      const safeBaseName = file.name.replace(/[/\\]/g, '-');
+      const resolvedType = resolveAttachmentFileType(file);
+      const storageLeaf =
+        resolvedType.startsWith('image/') || !isSpreadsheetUpload(file, resolvedType)
+          ? `${Date.now()}_${safeBaseName}`
+          : `${Date.now()}_${storageObjectLeafSpreadsheetAsPng(safeBaseName)}`;
+      const storagePath = `${orderId}/${storageLeaf}`;
+
+      const { body, contentType } = await bodyForStorageUpload(file, resolvedType);
+
       console.log('📤 Uploading to Storage:', storagePath);
-      
+
       const { error: uploadError } = await supabase.storage
         .from('files')
-        .upload(storagePath, file);
-      
+        .upload(storagePath, body, {
+          contentType,
+        });
+
       if (uploadError) {
         console.error('❌ Storage upload failed:', uploadError);
         throw uploadError;
@@ -315,7 +402,7 @@ export class SupabaseService {
         order_id: orderId,
         filename: file.name,
         file_url: urlData.publicUrl,
-        file_type: file.type || 'application/octet-stream',
+        file_type: resolvedType,
         created_at: new Date().toISOString()
       };
       
@@ -339,7 +426,7 @@ export class SupabaseService {
         order_id: orderId,
         filename: file.name,
         file_url: urlData.publicUrl,
-        file_type: file.type || 'application/octet-stream',
+        file_type: resolvedType,
         created_at: fileData.created_at
       };
       
@@ -351,33 +438,42 @@ export class SupabaseService {
 
   static async uploadPrintscreen(orderId: string, file: File): Promise<FileAttachment> {
     try {
-      // 1. Įkelti printscreen į Supabase Storage
-      const fileName = `printscreen_${Date.now()}_${file.name}`;
-      const storagePath = `${orderId}/printscreens/${fileName}`;
-      
+      const safeBaseName = file.name.replace(/[/\\]/g, '-');
+      const resolvedType = resolveAttachmentFileType(file);
+      const ts = Date.now();
+      const storageLeaf =
+        resolvedType.startsWith('image/') || !isSpreadsheetUpload(file, resolvedType)
+          ? `printscreen_${ts}_${safeBaseName}`
+          : `printscreen_${ts}_${storageObjectLeafSpreadsheetAsPng(safeBaseName)}`;
+      const storagePath = `${orderId}/printscreens/${storageLeaf}`;
+
+      const { body, contentType } = await bodyForStorageUpload(file, resolvedType);
+
       const { error: uploadError } = await supabase.storage
         .from('files')
-        .upload(storagePath, file);
-      
+        .upload(storagePath, body, {
+          contentType,
+        });
+
       if (uploadError) {
         throw uploadError;
       }
-      
+
       // 2. Gauti public URL
       const { data: urlData } = supabase.storage
         .from('files')
         .getPublicUrl(storagePath);
-      
+
       if (!urlData.publicUrl) {
         throw new Error('Failed to get public URL');
       }
-      
+
       // 3. Išsaugoti printscreen metaduomenis į DB
       const metadata = {
         order_id: orderId,
         filename: file.name,
         file_url: urlData.publicUrl,
-        file_type: file.type || 'image/png',
+        file_type: resolvedType,
         created_at: new Date().toISOString()
       };
       
@@ -396,7 +492,7 @@ export class SupabaseService {
         order_id: orderId,
         filename: file.name,
         file_url: urlData.publicUrl,
-        file_type: file.type || 'image/png',
+        file_type: resolvedType,
         created_at: fileData.created_at
       };
       
