@@ -650,12 +650,12 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
       <div className="overflow-x-auto">
         <table className="min-w-full table-fixed divide-y divide-gray-200 dark:divide-gray-700">
           <colgroup>
-            <col className="w-[9.5rem]" />
+            <col className="w-[14rem]" />
           </colgroup>
           <thead className="bg-gray-50 dark:bg-gray-700">
             <tr>
               <th 
-                className="w-[9.5rem] max-w-[9.5rem] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                className="w-[14rem] max-w-[14rem] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
                 onClick={() => handleSort('client')}
               >
                 <div className="flex items-center space-x-1">
@@ -753,7 +753,7 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
                 className="hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer transition-colors"
                 onClick={() => onEditOrder(order)}
               >
-                <td className="w-[9.5rem] max-w-[9.5rem] px-4 py-4">
+                <td className="w-[14rem] max-w-[14rem] px-4 py-4">
                   <div className="min-w-0" title={order.client}>
                     {order.viaduct && (
                       <div className="text-xs text-gray-500 dark:text-gray-400 mb-0.5 truncate">Viadukai</div>
