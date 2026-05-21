@@ -8,6 +8,8 @@ import { PocketBaseService } from '@/lib/pocketbase';
 import { SupabaseService } from '@/lib/supabase-service';
 import { format } from 'date-fns';
 import { downloadExcel } from '@/lib/export-excel';
+import type { TableTheme } from '@/lib/order-design-variants';
+import { getTableTheme } from '@/lib/table-theme';
 
 interface OrdersTableProps {
   searchQuery: string;
@@ -21,9 +23,11 @@ interface OrdersTableProps {
     invoice_sent: string;
   };
   onEditOrder: (order: Order) => void;
+  variant?: TableTheme;
 }
 
-export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTableProps) {
+export function OrdersTable({ searchQuery, filters, onEditOrder, variant = 'default' }: OrdersTableProps) {
+  const t = getTableTheme(variant);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
@@ -78,41 +82,45 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
   );
 
   const handleToggleInvoiceStatus = async (
-    orderId: string,
+    order: Order,
     field: 'invoice_issued' | 'invoice_sent',
     value: boolean
   ) => {
-    const previousStatus = invoiceStatuses[orderId];
+    const previousStatus = invoiceStatuses[order.id];
+    // Use the same fallbacks as getInvoiceIssued/getInvoiceSent so toggling one field
+    // does not reset the other when no Supabase row exists yet.
+    const currentIssued = previousStatus?.invoice_issued ?? !!order.invoice_sent;
+    const currentSent = previousStatus?.invoice_sent ?? false;
     const optimisticStatus: OrderInvoiceStatus = {
-      order_id: orderId,
-      invoice_issued: previousStatus?.invoice_issued ?? false,
-      invoice_sent: previousStatus?.invoice_sent ?? false,
+      order_id: order.id,
+      invoice_issued: currentIssued,
+      invoice_sent: currentSent,
       updated_at: new Date().toISOString(),
       [field]: value,
     };
 
     setInvoiceStatuses(prev => ({
       ...prev,
-      [orderId]: optimisticStatus,
+      [order.id]: optimisticStatus,
     }));
 
     try {
-      const savedStatus = await SupabaseService.upsertInvoiceStatus(orderId, {
+      const savedStatus = await SupabaseService.upsertInvoiceStatus(order.id, {
         invoice_issued: optimisticStatus.invoice_issued,
         invoice_sent: optimisticStatus.invoice_sent,
       });
       setInvoiceStatuses(prev => ({
         ...prev,
-        [orderId]: savedStatus,
+        [order.id]: savedStatus,
       }));
     } catch (error) {
       console.error('Error updating invoice status:', error);
       setInvoiceStatuses(prev => {
         const next = { ...prev };
         if (previousStatus) {
-          next[orderId] = previousStatus;
+          next[order.id] = previousStatus;
         } else {
-          delete next[orderId];
+          delete next[order.id];
         }
         return next;
       });
@@ -423,6 +431,52 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
     return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
   };
 
+  const StatusPill = ({ approved }: { approved: boolean }) => {
+    if (t.compact) {
+      const dot = approved ? 'bg-emerald-500' : 'bg-rose-500';
+      const bg = approved
+        ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/10 dark:bg-emerald-950/40 dark:text-emerald-300'
+        : 'bg-rose-50 text-rose-700 ring-rose-600/10 dark:bg-rose-950/40 dark:text-rose-300';
+      return (
+        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${bg}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
+          {getStatusText(approved)}
+        </span>
+      );
+    }
+    return (
+      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(approved)}`}>
+        {getStatusText(approved)}
+      </span>
+    );
+  };
+
+  const BoolPill = ({ value, yesLabel = 'Taip', noLabel = 'Ne' }: { value: boolean; yesLabel?: string; noLabel?: string }) => {
+    if (t.compact) {
+      const dot = value ? 'bg-emerald-500' : 'bg-gray-400';
+      const bg = value
+        ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/10 dark:bg-emerald-950/40 dark:text-emerald-300'
+        : 'bg-gray-50 text-gray-600 ring-gray-500/10 dark:bg-gray-800 dark:text-gray-400';
+      return (
+        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${bg}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
+          {value ? yesLabel : noLabel}
+        </span>
+      );
+    }
+    return (
+      <span
+        className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+          value
+            ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+            : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+        }`}
+      >
+        {value ? yesLabel : noLabel}
+      </span>
+    );
+  };
+
   const formatDate = (dateString: string) => {
     try {
       return format(new Date(dateString), 'yyyy-MM-dd');
@@ -605,9 +659,9 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
 
   if (loading) {
     return (
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-8">
+      <div className={`${t.cardClass} p-8`}>
         <div className="flex items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <div className={`animate-spin rounded-full h-8 w-8 border-b-2 ${t.spinBorder}`} />
           <span className="ml-2 text-gray-600 dark:text-gray-400">Kraunama...</span>
         </div>
       </div>
@@ -615,32 +669,29 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
   }
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+    <div className={t.cardClass}>
       {/* Table Header */}
-      <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+      <div className={`${t.toolbarPad} border-b ${t.toolbarBorder}`}>
         <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Užsakymai
-            </h2>
-            {sortField && (
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                Rūšiuojama pagal: <span className="font-medium">{sortField} </span>
-                ({sortDirection === 'asc' ? 'didėjimo' : 'mažėjimo'} tvarka)
-              </p>
-            )}
-          </div>
-          <div className="flex items-center gap-4">
-            <button
-              onClick={handleExportExcel}
-              disabled={exporting}
-              className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50"
-            >
-              <ArrowDownTrayIcon className="w-4 h-4 mr-2" />
+          {t.showTitle && (
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Užsakymai</h2>
+              {sortField && (
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  Rūšiuojama pagal: <span className="font-medium">{sortField} </span>
+                  ({sortDirection === 'asc' ? 'didėjimo' : 'mažėjimo'} tvarka)
+                </p>
+              )}
+            </div>
+          )}
+          {t.showCount && <p className="text-xs text-gray-500 dark:text-gray-400">{totalItems} užsakymų</p>}
+          <div className={`flex items-center gap-2 ${t.compact ? 'ml-auto' : 'gap-4'}`}>
+            <button onClick={handleExportExcel} disabled={exporting} className={t.exportBtn}>
+              <ArrowDownTrayIcon className="w-3.5 h-3.5" />
               {exporting ? 'Eksportuojama...' : 'Excel'}
             </button>
-            <span className="text-sm text-gray-500 dark:text-gray-400">
-              Puslapis {currentPage} iš {totalPages}
+            <span className={`${t.compact ? 'text-xs' : 'text-sm'} text-gray-500 dark:text-gray-400`}>
+              {t.paginationModern ? `${currentPage} / ${totalPages}` : `Puslapis ${currentPage} iš ${totalPages}`}
             </span>
           </div>
         </div>
@@ -652,10 +703,10 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
           <colgroup>
             <col className="w-[14rem]" />
           </colgroup>
-          <thead className="bg-gray-50 dark:bg-gray-700">
+          <thead className={t.theadClass}>
             <tr>
               <th 
-                className="w-[14rem] max-w-[14rem] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                className={`w-[14rem] max-w-[14rem] ${t.thClass}`}
                 onClick={() => handleSort('client')}
               >
                 <div className="flex items-center space-x-1">
@@ -664,7 +715,7 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
                 </div>
               </th>
               <th 
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                className={`${t.thClass} ${t.hideAgency ? 'hidden' : ''}`}
                 onClick={() => handleSort('agency')}
               >
                 <div className="flex items-center space-x-1">
@@ -673,7 +724,7 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
                 </div>
               </th>
               <th 
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                className={t.thClass}
                 onClick={() => handleSort('invoice_id')}
               >
                 <div className="flex items-center space-x-1">
@@ -682,7 +733,7 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
                 </div>
               </th>
               <th 
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                className={t.thClass}
                 onClick={() => handleSort('approved')}
               >
                 <div className="flex items-center space-x-1">
@@ -691,7 +742,7 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
                 </div>
               </th>
               <th 
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                className={t.thClass}
                 onClick={() => handleSort('from')}
               >
                 <div className="flex items-center space-x-1">
@@ -700,7 +751,7 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
                 </div>
               </th>
               <th 
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                className={t.thClass}
                 onClick={() => handleSort('to')}
               >
                 <div className="flex items-center space-x-1">
@@ -709,7 +760,7 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
                 </div>
               </th>
               <th 
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                className={t.thClass}
                 onClick={() => handleSort('media_received')}
               >
                 <div className="flex items-center space-x-1">
@@ -718,7 +769,7 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
                 </div>
               </th>
               <th 
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                className={t.thClass}
                 onClick={() => handleSort('final_price')}
               >
                 <div className="flex items-center space-x-1">
@@ -727,7 +778,7 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
                 </div>
               </th>
               <th 
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                className={t.thClass}
                 onClick={() => handleSort('invoice_issued')}
               >
                 <div className="flex items-center space-x-1">
@@ -736,7 +787,7 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
                 </div>
               </th>
               <th 
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                className={t.thClass}
                 onClick={() => handleSort('invoice_sent')}
               >
                 <div className="flex items-center space-x-1">
@@ -746,20 +797,18 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
               </th>
             </tr>
           </thead>
-          <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+          <tbody className={t.tbodyClass}>
             {orders.map((order) => (
-              <tr 
-                key={order.id} 
-                className="hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer transition-colors"
+              <tr key={order.id} className={`${t.rowHover} transition-colors`}
                 onClick={() => onEditOrder(order)}
               >
-                <td className="w-[14rem] max-w-[14rem] px-4 py-4">
+                <td className={`w-[14rem] max-w-[14rem] ${t.clientCellPad}`}>
                   <div className="min-w-0" title={order.client}>
                     {order.viaduct && (
                       <div className="text-xs text-gray-500 dark:text-gray-400 mb-0.5 truncate">Viadukai</div>
                     )}
                     <div className="flex items-center min-w-0 gap-1">
-                      <span className="text-sm font-medium text-gray-900 dark:text-white truncate min-w-0 flex-1">
+                      <span className={`truncate min-w-0 flex-1 ${t.clientFont} text-gray-900 dark:text-white`}>
                         {order.client}
                       </span>
                       {shouldShowMediaAlert(order) && (
@@ -772,82 +821,59 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
                           className="shrink-0 inline-flex text-blue-600 dark:text-blue-400"
                           title="Yra komentaras arba screenshotas"
                         >
-                          <ChatBubbleLeftEllipsisIcon className="w-4 h-4" />
+                          <ChatBubbleLeftEllipsisIcon className={t.compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} />
                         </span>
                       )}
                     </div>
+                    {t.hideAgency && order.agency && (
+                      <p className="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">{order.agency}</p>
+                    )}
                   </div>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm text-gray-500 dark:text-gray-400">
-                    {order.agency || '-'}
-                  </div>
+                <td className={`${t.tdPad} whitespace-nowrap ${t.hideAgency ? 'hidden' : ''}`}>
+                  <div className={`${t.cellText} text-gray-500 dark:text-gray-400`}>{order.agency || '-'}</div>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm text-gray-900 dark:text-white">
-                    {order.invoice_id}
-                  </div>
+                <td className={`${t.tdPad} whitespace-nowrap`}>
+                  <div className={`${t.cellText} text-gray-900 dark:text-white tabular-nums`}>{order.invoice_id}</div>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(order.approved)}`}>
-                    {getStatusText(order.approved)}
-                  </span>
+                <td className={`${t.tdPad} whitespace-nowrap`}>
+                  <StatusPill approved={order.approved} />
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm text-gray-900 dark:text-white">
-                    {formatDate(order.from)}
-                  </div>
+                <td className={`${t.tdPad} whitespace-nowrap`}>
+                  <div className={`${t.cellText} text-gray-900 dark:text-white tabular-nums`}>{formatDate(order.from)}</div>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm text-gray-900 dark:text-white">
-                    {formatDate(order.to)}
-                  </div>
+                <td className={`${t.tdPad} whitespace-nowrap`}>
+                  <div className={`${t.cellText} text-gray-900 dark:text-white tabular-nums`}>{formatDate(order.to)}</div>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                    order.media_received 
-                      ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
-                      : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-                  }`}>
-                    {order.media_received ? 'Taip' : 'Ne'}
-                  </span>
+                <td className={`${t.tdPad} whitespace-nowrap`}>
+                  <BoolPill value={order.media_received} />
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm font-medium text-gray-900 dark:text-white">
-                    {formatPrice(order.final_price)}
-                  </div>
+                <td className={`${t.tdPad} whitespace-nowrap`}>
+                  <div className={`${t.cellText} font-medium text-gray-900 dark:text-white tabular-nums`}>{formatPrice(order.final_price)}</div>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap">
+                <td className={`${t.tdPad} whitespace-nowrap`}>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleToggleInvoiceStatus(order.id, 'invoice_issued', !getInvoiceIssued(order));
+                      handleToggleInvoiceStatus(order, 'invoice_issued', !getInvoiceIssued(order));
                     }}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
-                      getInvoiceIssued(order) ? 'bg-green-600' : 'bg-gray-200 dark:bg-gray-600'
-                    }`}
+                    className={`relative inline-flex items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 ${t.toggleIssuedFocus} ${t.toggleSize} ${getInvoiceIssued(order) ? t.toggleIssuedOn : t.toggleOff}`}
                   >
                     <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                        getInvoiceIssued(order) ? 'translate-x-6' : 'translate-x-1'
-                      }`}
+                      className={`inline-block rounded-full bg-white transition-transform ${t.toggleKnob} ${getInvoiceIssued(order) ? t.toggleOnX : 'translate-x-1'}`}
                     />
                   </button>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap">
+                <td className={`${t.tdPad} whitespace-nowrap`}>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleToggleInvoiceStatus(order.id, 'invoice_sent', !getInvoiceSent(order.id));
+                      handleToggleInvoiceStatus(order, 'invoice_sent', !getInvoiceSent(order.id));
                     }}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
-                      getInvoiceSent(order.id) ? 'bg-green-600' : 'bg-gray-200 dark:bg-gray-600'
-                    }`}
+                    className={`relative inline-flex items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 ${t.toggleSentFocus} ${t.toggleSize} ${getInvoiceSent(order.id) ? t.toggleSentOn : t.toggleOff}`}
                   >
                     <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                        getInvoiceSent(order.id) ? 'translate-x-6' : 'translate-x-1'
-                      }`}
+                      className={`inline-block rounded-full bg-white transition-transform ${t.toggleKnob} ${getInvoiceSent(order.id) ? t.toggleOnX : 'translate-x-1'}`}
                     />
                   </button>
                 </td>
@@ -859,25 +885,33 @@ export function OrdersTable({ searchQuery, filters, onEditOrder }: OrdersTablePr
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700">
+        <div className={`${t.toolbarPad} border-t border-gray-200 dark:border-gray-700`}>
           <div className="flex items-center justify-between">
-            <div className="text-sm text-gray-700 dark:text-gray-300">
-              Rodoma {((currentPage - 1) * 20) + 1} - {Math.min(currentPage * 20, totalItems)} iš {totalItems} rezultatų
+            <div className={`${t.compact ? 'text-xs' : 'text-sm'} text-gray-700 dark:text-gray-300`}>
+              {((currentPage - 1) * 20) + 1}–{Math.min(currentPage * 20, totalItems)} / {totalItems}
             </div>
-            <div className="flex space-x-2">
+            <div className="flex gap-1.5">
               <button
                 onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
                 disabled={currentPage === 1}
-                className="px-3 py-2 text-sm font-medium text-white bg-gray-700 dark:bg-gray-600 border border-gray-600 dark:border-gray-500 rounded-md hover:bg-gray-800 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className={
+                  t.paginationModern
+                    ? 'px-2.5 py-1 text-xs font-medium text-gray-700 border border-gray-200 rounded-md hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800'
+                    : 'px-3 py-2 text-sm font-medium text-white bg-gray-700 dark:bg-gray-600 border border-gray-600 dark:border-gray-500 rounded-md hover:bg-gray-800 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed'
+                }
               >
-                Ankstesnis
+                ←
               </button>
               <button
                 onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
                 disabled={currentPage === totalPages}
-                className="px-3 py-2 text-sm font-medium text-white bg-gray-700 dark:bg-gray-600 border border-gray-600 dark:border-gray-500 rounded-md hover:bg-gray-800 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className={
+                  t.paginationModern
+                    ? 'px-2.5 py-1 text-xs font-medium text-gray-700 border border-gray-200 rounded-md hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800'
+                    : 'px-3 py-2 text-sm font-medium text-white bg-gray-700 dark:bg-gray-600 border border-gray-600 dark:border-gray-500 rounded-md hover:bg-gray-800 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed'
+                }
               >
-                Sekantis
+                →
               </button>
             </div>
           </div>

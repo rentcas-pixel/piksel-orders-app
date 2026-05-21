@@ -576,7 +576,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
               <button
                 type="button"
                 onClick={() => setInvoiceStatus(prev => ({ ...prev, invoice_issued: !prev.invoice_issued }))}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
                   invoiceStatus.invoice_issued ? 'bg-green-600' : 'bg-gray-200 dark:bg-gray-600'
                 }`}
               >
@@ -593,8 +593,8 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
               <button
                 type="button"
                 onClick={() => setInvoiceStatus(prev => ({ ...prev, invoice_sent: !prev.invoice_sent }))}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                  invoiceStatus.invoice_sent ? 'bg-green-600' : 'bg-gray-200 dark:bg-gray-600'
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 ${
+                  invoiceStatus.invoice_sent ? 'bg-violet-600' : 'bg-gray-200 dark:bg-gray-600'
                 }`}
               >
                 <span
