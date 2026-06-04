@@ -750,6 +750,7 @@ function writeTotals(
   screenPairCount: number
 ) {
   const totals = calc.totals();
+  const isPartnerExport = calc.partnerId != null;
   const firstData = DATA_START_ROW;
   const lastData = firstData + screenPairCount * 2 - 1;
   const totalsRow = lastData + 1;
@@ -802,7 +803,10 @@ function writeTotals(
     f: avg(COL.AA),
     z: '#0%',
   });
-  if (typeof order.details_final_price === 'number') {
+  if (
+    !isPartnerExport &&
+    typeof order.details_final_price === 'number'
+  ) {
     writeCell(
       sheet,
       totalsRow,
@@ -811,6 +815,13 @@ function writeTotals(
         t: 'n',
         z: '## ###.#0',
       })
+    );
+  } else if (isPartnerExport) {
+    writeCell(
+      sheet,
+      totalsRow,
+      COL.AB,
+      styledCell(totals.finalPrice, footerStyle, { t: 'n', z: '## ###.#0' })
     );
   } else {
     writeCell(sheet, totalsRow, COL.AB, {
@@ -868,7 +879,7 @@ function writeTotals(
   const abAmount = `${colLetter(COL.AB)}${amountRow}`;
   const abPeriod = `${colLetter(COL.AB)}${periodRow}`;
   writeFooterLabelRow(sheet, finalRow, 'Galutinė Kaina', footerDiscountStyle);
-  if (typeof order.details_total === 'number') {
+  if (!isPartnerExport && typeof order.details_total === 'number') {
     writeCell(
       sheet,
       finalRow,
@@ -877,6 +888,13 @@ function writeTotals(
         t: 'n',
         z: '## ###.#0',
       })
+    );
+  } else if (isPartnerExport) {
+    writeCell(
+      sheet,
+      finalRow,
+      COL.AB,
+      styledCell(totals.total, footerDiscountStyle, { t: 'n', z: '## ###.#0' })
     );
   } else {
     writeCell(sheet, finalRow, COL.AB, {

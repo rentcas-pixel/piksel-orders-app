@@ -259,14 +259,18 @@ export function createCampaignCalculator(
       result.clip = result.clip / activeCount;
       result.cpt = result.cpt / activeCount;
     }
-    if (typeof order.details_final_price === 'number') {
+    const useOrderWideSavedTotals = !partnerId;
+    if (
+      useOrderWideSavedTotals &&
+      typeof order.details_final_price === 'number'
+    ) {
       result.finalPrice = order.details_final_price;
     }
     result.total = applyDiscount(
       result.finalPrice,
       result.amountDiscount + result.periodDiscount
     );
-    if (typeof order.details_total === 'number') {
+    if (useOrderWideSavedTotals && typeof order.details_total === 'number') {
       result.total = order.details_total;
     }
     return result;
@@ -280,6 +284,7 @@ export function createCampaignCalculator(
   };
 
   return {
+    partnerId,
     range,
     days,
     screens,
