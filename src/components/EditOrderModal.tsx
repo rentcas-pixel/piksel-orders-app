@@ -1,7 +1,21 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { XMarkIcon, ClipboardDocumentIcon, TableCellsIcon } from '@heroicons/react/24/outline';
+import {
+  XMarkIcon,
+  ClipboardDocumentIcon,
+  TableCellsIcon,
+  ArrowDownTrayIcon,
+} from '@heroicons/react/24/outline';
+import {
+  downloadReklamosPlanas,
+  downloadReklamosPlanasCombined,
+  downloadReklamosPlanasZip,
+} from '@/lib/export-reklamos-planas';
+import {
+  toCampaignOrderInput,
+  toCampaignScreen,
+} from '@/lib/reklamos-planas-data';
 import Image from 'next/image';
 import { Order, Comment, Reminder, FileAttachment } from '@/types';
 import { PocketBaseService } from '@/lib/pocketbase';
@@ -14,6 +28,13 @@ interface EditOrderModalProps {
   onClose: () => void;
   onOrderUpdated: (order: Order) => void;
 }
+
+type OrderExportPartner = {
+  id: string;
+  name: string;
+  slug: string;
+  screenCount: number;
+};
 
 export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditOrderModalProps) {
   const [formData, setFormData] = useState<Partial<Order>>({});
@@ -30,6 +51,12 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
   const [pendingPrintscreens, setPendingPrintscreens] = useState<FileAttachment[]>([]);
   const [quote, setQuote] = useState<{ link: string; viaduct_link: string } | null>(null);
   const [attachmentUploading, setAttachmentUploading] = useState(false);
+  const [exportPartners, setExportPartners] = useState<OrderExportPartner[]>([]);
+  const [exportPartnersLoading, setExportPartnersLoading] = useState(false);
+  const [exportingPartnerId, setExportingPartnerId] = useState<string | null>(null);
+  const [exportingCombined, setExportingCombined] = useState(false);
+  const [exportingAllZip, setExportingAllZip] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
 
   const loadQuote = useCallback(async () => {
@@ -63,6 +90,68 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
       loadQuote();
     }
   }, [order, loadQuote]);
+
+  useEffect(() => {
+    if (!isOpen || !order) {
+      setExportPartners([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadExportPartners = async () => {
+      setExportPartnersLoading(true);
+      try {
+        let screenIds = [...new Set(order.screens?.filter(Boolean) || [])];
+        if (screenIds.length === 0) {
+          const fullOrder = await PocketBaseService.getOrder(order.id);
+          screenIds = [...new Set(fullOrder.screens?.filter(Boolean) || [])];
+        }
+
+        if (screenIds.length === 0) {
+          if (!cancelled) setExportPartners([]);
+          return;
+        }
+
+        const [screensMap, partners] = await Promise.all([
+          PocketBaseService.getScreensWithPartner(screenIds),
+          PocketBaseService.getPartners(),
+        ]);
+        const partnerById = new Map(partners.map((p) => [p.id, p]));
+        const screenCountByPartner = new Map<string, number>();
+
+        for (const screenId of screenIds) {
+          const partnerId = screensMap[screenId]?.partner;
+          if (!partnerId) continue;
+          screenCountByPartner.set(partnerId, (screenCountByPartner.get(partnerId) || 0) + 1);
+        }
+
+        const list: OrderExportPartner[] = [];
+        for (const [partnerId, screenCount] of screenCountByPartner) {
+          const partner = partnerById.get(partnerId);
+          if (!partner) continue;
+          list.push({
+            id: partner.id,
+            name: partner.name,
+            slug: partner.slug || partner.name.toLowerCase(),
+            screenCount,
+          });
+        }
+
+        list.sort((a, b) => a.name.localeCompare(b.name, 'lt'));
+        if (!cancelled) setExportPartners(list);
+      } catch {
+        if (!cancelled) setExportPartners([]);
+      } finally {
+        if (!cancelled) setExportPartnersLoading(false);
+      }
+    };
+
+    loadExportPartners();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, order]);
 
   const loadInvoiceStatus = useCallback(async () => {
     if (!order) return;
@@ -515,6 +604,98 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
     }
   };
 
+  const loadCampaignExportData = async (orderId: string) => {
+    const fullOrder = await PocketBaseService.getOrder(orderId);
+    const [screenRecords, bundles] = await Promise.all([
+      PocketBaseService.getCampaignScreens(!!fullOrder.viaduct),
+      PocketBaseService.getBundles(),
+    ]);
+    const campaignOrder = toCampaignOrderInput(
+      fullOrder as unknown as Record<string, unknown>
+    );
+    const screens = screenRecords.map((r) =>
+      toCampaignScreen(r as Record<string, unknown>)
+    );
+    return { campaignOrder, screens, bundles };
+  };
+
+  const handlePartnerPlanExcelExport = async (partner: OrderExportPartner) => {
+    if (!order) return;
+    setExportError(null);
+    setExportingPartnerId(partner.id);
+    try {
+      const { campaignOrder, screens, bundles } = await loadCampaignExportData(
+        order.id
+      );
+
+      await downloadReklamosPlanas({
+        order: campaignOrder,
+        partnerId: partner.id,
+        partnerName: partner.name,
+        screens,
+        bundles,
+      });
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Nepavyko sugeneruoti Excel failo';
+      setExportError(message);
+    } finally {
+      setExportingPartnerId(null);
+    }
+  };
+
+  const handleCombinedPlanExcelExport = async () => {
+    if (!order) return;
+    setExportError(null);
+    setExportingCombined(true);
+    try {
+      const { campaignOrder, screens, bundles } = await loadCampaignExportData(
+        order.id
+      );
+      await downloadReklamosPlanasCombined({
+        order: campaignOrder,
+        screens,
+        bundles,
+      });
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'Nepavyko sugeneruoti bendro Excel failo';
+      setExportError(message);
+    } finally {
+      setExportingCombined(false);
+    }
+  };
+
+  const handleAllPartnersZipExport = async () => {
+    if (!order || exportPartners.length === 0) return;
+    setExportError(null);
+    setExportingAllZip(true);
+    try {
+      const { campaignOrder, screens, bundles } = await loadCampaignExportData(
+        order.id
+      );
+      await downloadReklamosPlanasZip({
+        order: campaignOrder,
+        screens,
+        bundles,
+        partners: exportPartners.map((p) => ({
+          id: p.id,
+          name: p.name,
+        })),
+      });
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'Nepavyko sugeneruoti ZIP archyvo';
+      setExportError(message);
+    } finally {
+      setExportingAllZip(false);
+    }
+  };
+
   if (!isOpen || !order) return null;
 
   return (
@@ -709,6 +890,111 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                     </div>
                   </div>
                 )}
+
+                <div className="rounded-lg border border-dashed border-emerald-300/70 bg-gray-50 p-4 dark:border-emerald-700/60 dark:bg-gray-700/80">
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
+                        <TableCellsIcon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                        Reklamos planas
+                      </h3>
+                      <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                        Excel parsisiunčiamas iš užsakymo duomenų
+                      </p>
+                    </div>
+                  </div>
+
+                  {exportError && (
+                    <p className="mb-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-800 dark:bg-red-950/50 dark:text-red-200">
+                      {exportError}
+                    </p>
+                  )}
+
+                  {exportPartnersLoading ? (
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Kraunami partneriai…</p>
+                  ) : exportPartners.length === 0 ? (
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      Šiame užsakyme nėra ekranų — partnerių eksportui nerasta.
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {exportPartners.map((partner) => {
+                        const isExporting = exportingPartnerId === partner.id;
+                        return (
+                          <button
+                            key={partner.id}
+                            type="button"
+                            disabled={
+                              !!exportingPartnerId ||
+                              exportingCombined ||
+                              exportingAllZip
+                            }
+                            onClick={() => handlePartnerPlanExcelExport(partner)}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200/90 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 transition-colors hover:bg-sky-50 disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-sky-950/30"
+                            title={`${partner.name}: atsisiųsti Excel (${partner.screenCount} ekr.)`}
+                          >
+                            {isExporting ? (
+                              <span className="h-4 w-4 shrink-0 animate-pulse rounded-full bg-sky-400" />
+                            ) : (
+                              <ArrowDownTrayIcon className="h-4 w-4 shrink-0 text-sky-600 dark:text-sky-400" />
+                            )}
+                            <span>{partner.name}</span>
+                            {isExporting && (
+                              <span className="text-xs text-gray-500">…</span>
+                            )}
+                            <span className="text-xs text-gray-400 dark:text-gray-500">
+                              ({partner.screenCount})
+                            </span>
+                          </button>
+                        );
+                      })}
+                      <button
+                        type="button"
+                        disabled={
+                          !!exportingPartnerId ||
+                          exportingCombined ||
+                          exportingAllZip
+                        }
+                        onClick={handleCombinedPlanExcelExport}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200/90 bg-white px-3 py-1.5 text-sm font-medium text-violet-800 transition-colors hover:bg-violet-50 disabled:opacity-50 dark:border-violet-800 dark:bg-gray-800 dark:text-violet-200 dark:hover:bg-violet-950/30"
+                        title="Visi tiekėjai viename Excel faile"
+                      >
+                        {exportingCombined ? (
+                          <span className="h-4 w-4 shrink-0 animate-pulse rounded-full bg-violet-400" />
+                        ) : (
+                          <ArrowDownTrayIcon className="h-4 w-4 shrink-0 text-violet-600 dark:text-violet-400" />
+                        )}
+                        Bendras
+                        {exportingCombined && (
+                          <span className="text-xs text-gray-500">…</span>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={
+                          !!exportingPartnerId ||
+                          exportingCombined ||
+                          exportingAllZip ||
+                          exportPartners.length === 0
+                        }
+                        onClick={handleAllPartnersZipExport}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200/90 bg-white px-3 py-1.5 text-sm font-medium text-emerald-800 transition-colors hover:bg-emerald-50 disabled:opacity-50 dark:border-emerald-800 dark:bg-gray-800 dark:text-emerald-200 dark:hover:bg-emerald-950/30"
+                        title={`Atsisiųsti visų tiekėjų Excel failus viename ZIP (${exportPartners.length})`}
+                      >
+                        {exportingAllZip ? (
+                          <span className="h-4 w-4 shrink-0 animate-pulse rounded-full bg-emerald-400" />
+                        ) : (
+                          <ArrowDownTrayIcon className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                        )}
+                        ZIP
+                        {exportingAllZip && (
+                          <span className="text-xs text-gray-500">…</span>
+                        )}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">

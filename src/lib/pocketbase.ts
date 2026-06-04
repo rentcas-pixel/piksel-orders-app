@@ -353,6 +353,92 @@ export class PocketBaseService {
     return r;
   }
 
+  private static campaignScreensCache = new Map<
+    string,
+    { data: Record<string, unknown>[]; expires: number }
+  >();
+
+  /** Užsakymo ekranai eksportui — pilni įrašai iš PocketBase (kainos, OTS, partner) */
+  static async getCampaignScreensByIds(
+    screenIds: string[]
+  ): Promise<Record<string, unknown>[]> {
+    const uniqueIds = [...new Set(screenIds)].filter(Boolean);
+    if (uniqueIds.length === 0) return [];
+
+    const batchSize = 40;
+    const items: Record<string, unknown>[] = [];
+
+    for (let i = 0; i < uniqueIds.length; i += batchSize) {
+      const batch = uniqueIds.slice(i, i + batchSize);
+      const filter = batch.map((id) => `id="${id}"`).join(' || ');
+      try {
+        const url = `${POCKETBASE_URL}/api/collections/${SCREENS_COLLECTION}/records?filter=(${filter})&perPage=${batchSize}`;
+        const response = await fetch(url, {
+          headers: { 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout(15000),
+        });
+        if (!response.ok) continue;
+        const data = await response.json();
+        items.push(...((data.items || []) as Record<string, unknown>[]));
+      } catch {
+        // skip batch on failure
+      }
+    }
+
+    return items;
+  }
+
+  /** Visi ekranai skaičiuoklės eksportui (su kainomis, OTS) */
+  static async getCampaignScreens(viaduct: boolean): Promise<Record<string, unknown>[]> {
+    const cacheKey = viaduct ? 'v' : 'u';
+    const cached = this.campaignScreensCache.get(cacheKey);
+    if (cached && cached.expires > Date.now()) return cached.data;
+
+    try {
+      const filter = viaduct ? 'viaduct = true' : 'viaduct = false';
+      const url = `${POCKETBASE_URL}/api/collections/${SCREENS_COLLECTION}/records?filter=${encodeURIComponent(filter)}&perPage=500&sort=name`;
+      const response = await fetch(url, {
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!response.ok) return [];
+
+      const data = await response.json();
+      const items = (data.items || []) as Record<string, unknown>[];
+      this.campaignScreensCache.set(cacheKey, {
+        data: items,
+        expires: Date.now() + SCREEN_CACHE_TTL,
+      });
+      return items;
+    } catch {
+      return [];
+    }
+  }
+
+  static async getBundles(): Promise<
+    Array<{ id: string; name: string; discount: number; screens: string[] }>
+  > {
+    try {
+      const url = `${POCKETBASE_URL}/api/collections/bundles/records?perPage=100`;
+      const response = await fetch(url, {
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!response.ok) return [];
+      const data = await response.json();
+      return (data.items || []).map(
+        (b: { id: string; name: string; discount: number; screens: string[] }) => ({
+          id: b.id,
+          name: b.name,
+          discount: b.discount,
+          screens: b.screens || [],
+        })
+      );
+    } catch {
+      return [];
+    }
+  }
+
   // Health check method
   static async healthCheck(): Promise<boolean> {
     try {
