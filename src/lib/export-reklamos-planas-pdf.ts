@@ -36,6 +36,7 @@ function pdfCell(content: string | number): string {
 }
 
 function buildScreenRows(
+  order: CampaignOrderInput,
   visibleScreens: CampaignScreen[],
   calc: CampaignCalculator
 ): { left: string; right: string } {
@@ -48,8 +49,14 @@ function buildScreenRows(
     const clip = calc.clipPrice(screen);
     const cptVal = calc.cpt(screen);
     const priceBefore = calc.totalPrice(screen);
-    const discountPct = calc.getScreenDiscount(screen);
     const priceAfter = calc.discountPrice(screen);
+    let discountPct = calc.getScreenDiscount(screen);
+    if (
+      order.details_screen_prices?.[screen.id] != null &&
+      priceBefore > 0
+    ) {
+      discountPct = Math.round((1 - priceAfter / priceBefore) * 100);
+    }
     const nameInner = screen.link
       ? `<a class="screen-link" href="${escapeHtml(screen.link)}">${escapeHtml(screen.name)}</a>`
       : escapeHtml(screen.name);
@@ -97,7 +104,7 @@ function buildPlanHtml(
         !!s && !order.hidden_screens?.includes(s.id)
     );
 
-  const { left, right } = buildScreenRows(visibleScreens, calc);
+  const { left, right } = buildScreenRows(order, visibleScreens, calc);
   const layoutGrid = buildLayoutGridHtml(order, calc.getViewsPerHour());
   const period = calc.range ? `${calc.formatFrom} - ${calc.formatTo}` : '';
   const intensityLabel = resolveCampaignIntensityLabel(order);

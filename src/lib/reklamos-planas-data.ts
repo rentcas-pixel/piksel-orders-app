@@ -50,6 +50,9 @@ export function toCampaignOrderInput(
       details?.screenPrices && typeof details.screenPrices === 'object'
         ? (details.screenPrices as Record<string, number>)
         : undefined,
+    details_final_price:
+      typeof details?.finalPrice === 'number' ? details.finalPrice : undefined,
+    details_total: typeof details?.total === 'number' ? details.total : undefined,
   };
 }
 

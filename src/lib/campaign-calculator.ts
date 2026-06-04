@@ -45,6 +45,10 @@ export interface CampaignOrderInput {
   details_amount_discount?: number;
   details_period_discount?: number;
   details_screen_prices?: Record<string, number>;
+  /** Suma po ekranų nuolaidų (details.finalPrice) */
+  details_final_price?: number;
+  /** Galutinė kaina po apimties/laikotarpio nuolaidų (details.total) */
+  details_total?: number;
 }
 
 const GRID_ROW_COUNT = 17;
@@ -255,10 +259,16 @@ export function createCampaignCalculator(
       result.clip = result.clip / activeCount;
       result.cpt = result.cpt / activeCount;
     }
+    if (typeof order.details_final_price === 'number') {
+      result.finalPrice = order.details_final_price;
+    }
     result.total = applyDiscount(
       result.finalPrice,
       result.amountDiscount + result.periodDiscount
     );
+    if (typeof order.details_total === 'number') {
+      result.total = order.details_total;
+    }
     return result;
   };
 

@@ -492,8 +492,25 @@ function writePikselLogoArea(sheet: XLSX.WorkSheet) {
   sheet['!rows'][PIKSEL_ROW - 1] = { hpt: PIKSEL_ROW_HEIGHT };
 }
 
+/** Ekrano nuolaida kaip dalis (0–1) — iš PB screenPrices, jei yra */
+function screenRowDiscountFraction(
+  order: CampaignOrderInput,
+  calc: CampaignCalculator,
+  screen: CampaignScreen
+): number {
+  const saved = order.details_screen_prices?.[screen.id];
+  if (saved != null && !Number.isNaN(saved)) {
+    const before = calc.totalPrice(screen);
+    if (before > 0) {
+      return Math.max(0, Math.min(1, 1 - saved / before));
+    }
+  }
+  return calc.getScreenDiscount(screen) / 100;
+}
+
 function writeScreenPair(
   sheet: XLSX.WorkSheet,
+  order: CampaignOrderInput,
   calc: CampaignCalculator,
   screen: CampaignScreen,
   pairIndex: number
@@ -536,8 +553,10 @@ function writeScreenPair(
       styledCell(calc.days, item, { t: 'n', z: '##0' })
     );
 
-    const zAddr = `${colLetter(COL.Z)}${dataRow}`;
-    const aaAddr = `${colLetter(COL.AA)}${dataRow}`;
+    const savedPrice = order.details_screen_prices?.[screen.id];
+    const useSavedPrice =
+      savedPrice != null && !Number.isNaN(savedPrice);
+    const discountFrac = screenRowDiscountFraction(order, calc, screen);
 
     writeCell(
       sheet,
@@ -576,17 +595,28 @@ function writeScreenPair(
       sheet,
       dataRow,
       COL.AA,
-      styledCell(calc.getScreenDiscount(screen) / 100, item, {
+      styledCell(discountFrac, item, {
         t: 'n',
         z: '#0%',
       })
     );
-    writeCell(sheet, dataRow, COL.AB, {
-      t: 'n',
-      s: clone(item),
-      z: '## ###.#0',
-      f: `${zAddr}*(1-${aaAddr})`,
-    });
+    if (useSavedPrice) {
+      writeCell(
+        sheet,
+        dataRow,
+        COL.AB,
+        styledCell(savedPrice, item, { t: 'n', z: '## ###.#0' })
+      );
+    } else {
+      const zAddr = `${colLetter(COL.Z)}${dataRow}`;
+      const aaAddr = `${colLetter(COL.AA)}${dataRow}`;
+      writeCell(sheet, dataRow, COL.AB, {
+        t: 'n',
+        s: clone(item),
+        z: '## ###.#0',
+        f: `${zAddr}*(1-${aaAddr})`,
+      });
+    }
   }
 
   for (const col of [
@@ -715,6 +745,7 @@ function writeFooterLabelRow(
 
 function writeTotals(
   sheet: XLSX.WorkSheet,
+  order: CampaignOrderInput,
   calc: CampaignCalculator,
   screenPairCount: number
 ) {
@@ -771,12 +802,24 @@ function writeTotals(
     f: avg(COL.AA),
     z: '#0%',
   });
-  writeCell(sheet, totalsRow, COL.AB, {
-    t: 'n',
-    s: clone(footerStyle),
-    f: sum(COL.AB),
-    z: '## ###.#0',
-  });
+  if (typeof order.details_final_price === 'number') {
+    writeCell(
+      sheet,
+      totalsRow,
+      COL.AB,
+      styledCell(order.details_final_price, footerStyle, {
+        t: 'n',
+        z: '## ###.#0',
+      })
+    );
+  } else {
+    writeCell(sheet, totalsRow, COL.AB, {
+      t: 'n',
+      s: clone(footerStyle),
+      f: sum(COL.AB),
+      z: '## ###.#0',
+    });
+  }
 
   const totalsSpacerRow = totalsRow + 1;
   for (const col of TOTALS_MERGE_COLS) {
@@ -825,12 +868,24 @@ function writeTotals(
   const abAmount = `${colLetter(COL.AB)}${amountRow}`;
   const abPeriod = `${colLetter(COL.AB)}${periodRow}`;
   writeFooterLabelRow(sheet, finalRow, 'Galutinė Kaina', footerDiscountStyle);
-  writeCell(sheet, finalRow, COL.AB, {
-    t: 'n',
-    s: clone(footerDiscountStyle),
-    z: '## ###.#0',
-    f: `${abSum}*(1-${abAmount}-${abPeriod})`,
-  });
+  if (typeof order.details_total === 'number') {
+    writeCell(
+      sheet,
+      finalRow,
+      COL.AB,
+      styledCell(order.details_total, footerDiscountStyle, {
+        t: 'n',
+        z: '## ###.#0',
+      })
+    );
+  } else {
+    writeCell(sheet, finalRow, COL.AB, {
+      t: 'n',
+      s: clone(footerDiscountStyle),
+      z: '## ###.#0',
+      f: `${abSum}*(1-${abAmount}-${abPeriod})`,
+    });
+  }
   writeCell(sheet, finalRow + 1, COL.AB, blankCell(footerDiscountStyle));
   sheet['!merges'].push({
     s: { r: finalRow - 1, c: COL.AB },
@@ -853,7 +908,7 @@ function buildWorksheet(
   );
 
   exportScreens.forEach((screen, index) => {
-    writeScreenPair(sheet, calc, screen, index);
+    writeScreenPair(sheet, order, calc, screen, index);
   });
 
   addScreenMerges(sheet, exportScreens.length);
@@ -865,7 +920,7 @@ function buildWorksheet(
   ensureRangeBorders(sheet, HEADER_ROW, lastDataRow, COL.U, COL.V);
   ensureRangeBorders(sheet, HEADER_ROW, lastDataRow, COL.X, COL.AB);
 
-  writeTotals(sheet, calc, exportScreens.length);
+  writeTotals(sheet, order, calc, exportScreens.length);
 
   const contentLastRow = DATA_START_ROW + exportScreens.length * 2 + 8;
   const lastRow = Math.max(contentLastRow, FOOTER_WHITE_LAST_ROW);
