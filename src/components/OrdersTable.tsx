@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
+import { ArrowDownTrayIcon, DocumentTextIcon, PaperAirplaneIcon, PlusCircleIcon } from '@heroicons/react/24/outline';
 import { ChatBubbleLeftEllipsisIcon } from '@heroicons/react/24/solid';
 import { Order, OrderInvoiceStatus } from '@/types';
 import { PocketBaseService } from '@/lib/pocketbase';
@@ -10,23 +10,28 @@ import { format } from 'date-fns';
 import { downloadExcel } from '@/lib/export-excel';
 import type { TableTheme } from '@/lib/order-design-variants';
 import { getTableTheme } from '@/lib/table-theme';
+import { buildOrdersListFilter, resolveListMonthYear, type OrdersListFilters, type OrdersPeriodTab } from '@/lib/orders-filters';
+import { StatusIconButton } from '@/components/StatusIconButton';
 
 interface OrdersTableProps {
   searchQuery: string;
-  filters: {
-    status: string;
-    month: string;
-    year: string;
-    client: string;
-    agency: string;
-    media_received: string;
-    invoice_sent: string;
-  };
+  filters: OrdersListFilters;
   onEditOrder: (order: Order) => void;
+  onGenerateInvoice?: (order: Order) => void;
   variant?: TableTheme;
+  portalStyle?: boolean;
+  periodTab?: OrdersPeriodTab;
 }
 
-export function OrdersTable({ searchQuery, filters, onEditOrder, variant = 'default' }: OrdersTableProps) {
+export function OrdersTable({
+  searchQuery,
+  filters,
+  onEditOrder,
+  onGenerateInvoice,
+  variant = 'default',
+  portalStyle = false,
+  periodTab = 'all',
+}: OrdersTableProps) {
   const t = getTableTheme(variant);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -257,19 +262,23 @@ export function OrdersTable({ searchQuery, filters, onEditOrder, variant = 'defa
     }
     
     // Month and year filter
-    if (filters.month && filters.year) {
+    const { month: resolvedMonth, year: resolvedYear } = resolveListMonthYear(
+      filters.month,
+      filters.year
+    );
+    if (resolvedMonth && resolvedYear) {
       filtered = filtered.filter(order => {
-        const filterYear = parseInt(filters.year, 10);
-        const filterMonth = parseInt(filters.month, 10);
+        const filterYear = parseInt(resolvedYear, 10);
+        const filterMonth = parseInt(resolvedMonth, 10);
         const orderFrom = new Date(order.from);
         const orderTo = new Date(order.to);
         const monthStart = new Date(filterYear, filterMonth - 1, 1);
         const monthEnd = new Date(filterYear, filterMonth, 0);
         return orderFrom <= monthEnd && orderTo >= monthStart;
       });
-    } else if (filters.year) {
+    } else if (resolvedYear) {
       filtered = filtered.filter(order => {
-        const filterYear = parseInt(filters.year, 10);
+        const filterYear = parseInt(resolvedYear, 10);
         const orderFrom = new Date(order.from);
         const orderTo = new Date(order.to);
         const yearStart = new Date(filterYear, 0, 1);
@@ -323,6 +332,14 @@ export function OrdersTable({ searchQuery, filters, onEditOrder, variant = 'defa
   }, [sortField, sortDirection]);
 
   const buildFilterString = useCallback(() => {
+    if (portalStyle) {
+      return buildOrdersListFilter({
+        searchQuery,
+        filters,
+        periodTab,
+      });
+    }
+
     const filtersArray = [];
     
     // Add search query filter
@@ -364,18 +381,22 @@ export function OrdersTable({ searchQuery, filters, onEditOrder, variant = 'defa
     }
 
     // Date filters - show orders that overlap with selected period
-    if (filters.month && filters.year) {
-      const y = parseInt(filters.year, 10);
-      const m = parseInt(filters.month, 10);
+    const { month: resolvedMonth, year: resolvedYear } = resolveListMonthYear(
+      filters.month,
+      filters.year
+    );
+    if (resolvedMonth && resolvedYear) {
+      const y = parseInt(resolvedYear, 10);
+      const m = parseInt(resolvedMonth, 10);
       const lastDay = new Date(y, m, 0).getDate(); // last day of month (Feb=28, etc.)
-      const startDate = `${filters.year}-${filters.month.padStart(2, '0')}-01`;
-      const endDate = `${filters.year}-${filters.month.padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+      const startDate = `${resolvedYear}-${resolvedMonth}-01`;
+      const endDate = `${resolvedYear}-${resolvedMonth}-${String(lastDay).padStart(2, '0')}`;
       // Show orders that overlap with the selected month:
       // - order starts before month ends AND order ends after month starts
       filtersArray.push(`(from<="${endDate}" && to>="${startDate}")`);
-    } else if (filters.year) {
-      const startDate = `${filters.year}-01-01`;
-      const endDate = `${filters.year}-12-31`;
+    } else if (resolvedYear) {
+      const startDate = `${resolvedYear}-01-01`;
+      const endDate = `${resolvedYear}-12-31`;
       // Show orders that overlap with the selected year.
       filtersArray.push(`(from<="${endDate}" && to>="${startDate}")`);
     }
@@ -387,7 +408,7 @@ export function OrdersTable({ searchQuery, filters, onEditOrder, variant = 'defa
     
     const result = filtersArray.join(' && ');
     return result;
-  }, [searchQuery, filters]);
+  }, [searchQuery, filters, portalStyle, periodTab]);
 
   const handleSort = (field: string) => {
     if (sortField === field) {
@@ -511,8 +532,9 @@ export function OrdersTable({ searchQuery, filters, onEditOrder, variant = 'defa
             return filters.invoice_sent === 'true' ? issued : !issued;
           })
         : items;
-      const monthName = filters.month && filters.year
-        ? `${['Sausis','Vasaris','Kovas','Balandis','Gegužė','Birželis','Liepa','Rugpjūtis','Rugsėjis','Spalis','Lapkritis','Gruodis'][parseInt(filters.month, 10) - 1]}_${filters.year}`
+      const { month: exportMonth, year: exportYear } = resolveListMonthYear(filters.month, filters.year);
+      const monthName = exportMonth && exportYear
+        ? `${['Sausis','Vasaris','Kovas','Balandis','Gegužė','Birželis','Liepa','Rugpjūtis','Rugsėjis','Spalis','Lapkritis','Gruodis'][parseInt(exportMonth, 10) - 1]}_${exportYear}`
         : 'visi';
       const data: unknown[][] = [
         ['Klientas', 'Agentūra', 'Užsakymo Nr.', 'Statusas', 'Data nuo', 'Data iki', 'Media', 'Kaina', 'Sąskaita', 'Išsiųsta'],
@@ -551,6 +573,7 @@ export function OrdersTable({ searchQuery, filters, onEditOrder, variant = 'defa
     filters.invoice_sent,
     sortField,
     sortDirection,
+    periodTab,
   ]);
 
   useEffect(() => {
@@ -633,7 +656,7 @@ export function OrdersTable({ searchQuery, filters, onEditOrder, variant = 'defa
     // Only depend on primitives to avoid infinite loops from object/function reference changes.
     // buildFilterString, filterMockOrders, sortOrders, calculateSumAsync are derived from these.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, searchQuery, filters.status, filters.month, filters.year, filters.client, filters.agency, filters.media_received, filters.invoice_sent, sortField, sortDirection]);
+  }, [currentPage, searchQuery, filters.status, filters.month, filters.year, filters.client, filters.agency, filters.media_received, filters.invoice_sent, sortField, sortDirection, portalStyle, periodTab]);
 
 
 
@@ -659,11 +682,215 @@ export function OrdersTable({ searchQuery, filters, onEditOrder, variant = 'defa
 
   if (loading) {
     return (
-      <div className={`${t.cardClass} p-8`}>
+      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-8">
         <div className="flex items-center justify-center">
-          <div className={`animate-spin rounded-full h-8 w-8 border-b-2 ${t.spinBorder}`} />
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
           <span className="ml-2 text-gray-600 dark:text-gray-400">Kraunama...</span>
         </div>
+      </div>
+    );
+  }
+
+  if (portalStyle) {
+    const portalSortIcon = (field: string) => {
+      if (sortField !== field) return <span className="text-gray-300">↕</span>;
+      return sortDirection === 'asc' ? <span>↑</span> : <span>↓</span>;
+    };
+
+    const portalStatusBadge = (approved: boolean) => (
+      <span
+        className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+          approved
+            ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+            : 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
+        }`}
+      >
+        {approved ? 'Patvirtinta' : 'Nepatvirtinta'}
+      </span>
+    );
+
+    const portalMediaBadge = (order: Order) => {
+      if (!order.approved) {
+        return <span className="text-sm text-gray-400 dark:text-gray-500">—</span>;
+      }
+      return (
+        <span
+          className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+            order.media_received
+              ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+              : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+          }`}
+        >
+          {order.media_received ? 'Taip' : 'Ne'}
+        </span>
+      );
+    };
+
+    const portalColumns: [string, string][] = [
+      ['client', 'Klientas'],
+      ['agency', 'Agentūra'],
+      ['invoice_id', 'Užsakymo Nr.'],
+      ['approved', 'Statusas'],
+      ['from', 'Data nuo'],
+      ['to', 'Data iki'],
+      ['media_received', 'Media'],
+      ['final_price', 'Kaina'],
+      ['invoice_issued', 'Sąskaita'],
+      ['invoice_sent', 'Išsiųsta'],
+    ];
+
+    const portalInvoiceIcon = (
+      order: Order,
+      field: 'invoice_issued' | 'invoice_sent',
+      on: boolean
+    ) => {
+      const isIssued = field === 'invoice_issued';
+      const Icon = isIssued ? DocumentTextIcon : PaperAirplaneIcon;
+      const label = isIssued
+        ? on
+          ? 'Sąskaita išrašyta'
+          : 'Sąskaita neišrašyta'
+        : on
+          ? 'Sąskaita išsiųsta'
+          : 'Sąskaita neišsiųsta';
+
+      return (
+        <StatusIconButton
+          active={on}
+          label={label}
+          icon={Icon}
+          onClick={(e) => {
+            e.stopPropagation();
+            handleToggleInvoiceStatus(order, field, !on);
+          }}
+        />
+      );
+    };
+
+    return (
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Kampanijos</h2>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleExportExcel}
+              disabled={exporting || totalItems === 0}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40"
+            >
+              <ArrowDownTrayIcon className="w-4 h-4" />
+              {exporting ? 'Eksportuojama...' : 'Excel'}
+            </button>
+            <span className="text-sm text-gray-500 dark:text-gray-400">{totalItems} užsakymų</span>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+            <thead className="bg-gray-50 dark:bg-gray-900">
+              <tr>
+                {portalColumns.map(([field, label]) => (
+                  <th
+                    key={field}
+                    className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"
+                    onClick={() => handleSort(field)}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      {label}
+                      {portalSortIcon(field)}
+                    </span>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+              {orders.length === 0 ? (
+                <tr>
+                  <td colSpan={portalColumns.length} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
+                    Kampanijų nerasta.
+                  </td>
+                </tr>
+              ) : (
+                orders.map((order) => (
+                  <tr
+                    key={order.id}
+                    onClick={() => onEditOrder(order)}
+                    className="hover:bg-blue-50 dark:hover:bg-blue-950/30 cursor-pointer transition-colors"
+                  >
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">
+                      <div className="flex items-center gap-2">
+                        {order.client}
+                        {hasOrderCommentOrScreenshot(order.id) && (
+                          <span
+                            className="shrink-0 inline-flex text-blue-600 dark:text-blue-400"
+                            title="Yra komentaras arba screenshotas"
+                          >
+                            <ChatBubbleLeftEllipsisIcon className="w-4 h-4" />
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{order.agency || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{order.invoice_id}</td>
+                    <td className="px-4 py-3">{portalStatusBadge(order.approved)}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{formatDate(order.from)}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{formatDate(order.to)}</td>
+                    <td className="px-4 py-3">{portalMediaBadge(order)}</td>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white tabular-nums">
+                      {formatPrice(order.final_price)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1">
+                        {portalInvoiceIcon(order, 'invoice_issued', getInvoiceIssued(order))}
+                        {onGenerateInvoice && order.approved && (
+                          <button
+                            type="button"
+                            title="Išrašyti sąskaitą"
+                            aria-label="Išrašyti sąskaitą"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onGenerateInvoice(order);
+                            }}
+                            className="inline-flex rounded-md p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-700 dark:hover:text-white"
+                          >
+                            <PlusCircleIcon className="h-5 w-5" strokeWidth={1.5} />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      {portalInvoiceIcon(order, 'invoice_sent', getInvoiceSent(order.id))}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {totalPages > 1 && (
+          <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
+            <button
+              type="button"
+              disabled={currentPage <= 1}
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              className="px-3 py-1 text-sm rounded border border-gray-300 dark:border-gray-600 disabled:opacity-40"
+            >
+              Ankstesnis
+            </button>
+            <span className="text-sm text-gray-500">
+              {currentPage} / {totalPages}
+            </span>
+            <button
+              type="button"
+              disabled={currentPage >= totalPages}
+              onClick={() => setCurrentPage((p) => p + 1)}
+              className="px-3 py-1 text-sm rounded border border-gray-300 dark:border-gray-600 disabled:opacity-40"
+            >
+              Kitas
+            </button>
+          </div>
+        )}
       </div>
     );
   }
@@ -852,30 +1079,34 @@ export function OrdersTable({ searchQuery, filters, onEditOrder, variant = 'defa
                   <div className={`${t.cellText} font-medium text-gray-900 dark:text-white tabular-nums`}>{formatPrice(order.final_price)}</div>
                 </td>
                 <td className={`${t.tdPad} whitespace-nowrap`}>
-                  <button
+                  <StatusIconButton
+                    active={getInvoiceIssued(order)}
+                    label={
+                      getInvoiceIssued(order)
+                        ? 'Sąskaita išrašyta'
+                        : 'Sąskaita neišrašyta'
+                    }
+                    icon={DocumentTextIcon}
                     onClick={(e) => {
                       e.stopPropagation();
                       handleToggleInvoiceStatus(order, 'invoice_issued', !getInvoiceIssued(order));
                     }}
-                    className={`relative inline-flex items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 ${t.toggleIssuedFocus} ${t.toggleSize} ${getInvoiceIssued(order) ? t.toggleIssuedOn : t.toggleOff}`}
-                  >
-                    <span
-                      className={`inline-block rounded-full bg-white transition-transform ${t.toggleKnob} ${getInvoiceIssued(order) ? t.toggleOnX : 'translate-x-1'}`}
-                    />
-                  </button>
+                  />
                 </td>
                 <td className={`${t.tdPad} whitespace-nowrap`}>
-                  <button
+                  <StatusIconButton
+                    active={getInvoiceSent(order.id)}
+                    label={
+                      getInvoiceSent(order.id)
+                        ? 'Sąskaita išsiųsta'
+                        : 'Sąskaita neišsiųsta'
+                    }
+                    icon={PaperAirplaneIcon}
                     onClick={(e) => {
                       e.stopPropagation();
                       handleToggleInvoiceStatus(order, 'invoice_sent', !getInvoiceSent(order.id));
                     }}
-                    className={`relative inline-flex items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 ${t.toggleSentFocus} ${t.toggleSize} ${getInvoiceSent(order.id) ? t.toggleSentOn : t.toggleOff}`}
-                  >
-                    <span
-                      className={`inline-block rounded-full bg-white transition-transform ${t.toggleKnob} ${getInvoiceSent(order.id) ? t.toggleOnX : 'translate-x-1'}`}
-                    />
-                  </button>
+                  />
                 </td>
               </tr>
             ))}

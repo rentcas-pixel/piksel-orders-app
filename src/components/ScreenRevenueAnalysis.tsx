@@ -7,6 +7,16 @@ import { PocketBaseService } from '@/lib/pocketbase';
 import { calculateScreenRevenues, getDaysInRange } from '@/lib/screen-revenue';
 import { format } from 'date-fns';
 import { downloadExcel } from '@/lib/export-excel';
+import { resolveListMonthYear } from '@/lib/orders-filters';
+import { FilterDropdown } from '@/components/FilterDropdown';
+import {
+  portalCardClass,
+  portalExportBtnClass,
+  portalRowHoverClass,
+  portalTheadClass,
+  portalThClass,
+  portalToolbarClass,
+} from '@/lib/portal-ui';
 
 const MONTH_NAMES = ['Sausis', 'Vasaris', 'Kovas', 'Balandis', 'Gegužė', 'Birželis', 'Liepa', 'Rugpjūtis', 'Rugsėjis', 'Spalis', 'Lapkritis', 'Gruodis'];
 
@@ -27,7 +37,18 @@ export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: Scre
   const [selectedOwner, setSelectedOwner] = useState('');
   const [ownerByScreenId, setOwnerByScreenId] = useState<Record<string, string>>({});
   const [ownerOptions, setOwnerOptions] = useState<Array<{ id: string; name: string }>>([]);
+  const ownerFilterOptions = useMemo(
+    () => [
+      { value: '', label: 'Visi owneriai' },
+      ...ownerOptions.map((owner) => ({ value: owner.id, label: owner.name })),
+    ],
+    [ownerOptions]
+  );
   const abortRef = useRef<AbortController | null>(null);
+  const resolvedPeriod = useMemo(
+    () => resolveListMonthYear(filters.month, filters.year),
+    [filters.month, filters.year]
+  );
 
   const filteredRevenues = useMemo(() => {
     if (!selectedOwner) return revenues;
@@ -37,7 +58,7 @@ export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: Scre
   const handleExportExcel = useCallback(() => {
     setExporting(true);
     try {
-      const monthName = `${MONTH_NAMES[parseInt(filters.month, 10) - 1]}_${filters.year}`;
+      const monthName = `${MONTH_NAMES[parseInt(resolvedPeriod.month, 10) - 1]}_${resolvedPeriod.year}`;
       const data: unknown[][] = [
         ['Nr.', 'Ekranas', 'Owner', 'Miestas', 'Pajamos', 'Užsakymai'],
         ...filteredRevenues.map((r, i) => [
@@ -53,11 +74,10 @@ export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: Scre
     } finally {
       setExporting(false);
     }
-  }, [filteredRevenues, ownerByScreenId, filters.month, filters.year]);
+  }, [filteredRevenues, ownerByScreenId, resolvedPeriod.month, resolvedPeriod.year]);
 
   const fetchData = useCallback(async () => {
-    if (!filters.month || !filters.year) return;
-    const cacheKey = `${filters.month}-${filters.year}`;
+    const cacheKey = `${resolvedPeriod.month}-${resolvedPeriod.year}`;
     const cached = revenueCache.get(cacheKey);
     if (cached && cached.expires > Date.now()) {
       setRevenues(cached.revenues);
@@ -69,11 +89,11 @@ export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: Scre
     abortRef.current = new AbortController();
     setLoading(true);
     try {
-      const y = parseInt(filters.year, 10);
-      const m = parseInt(filters.month, 10);
+      const y = parseInt(resolvedPeriod.year, 10);
+      const m = parseInt(resolvedPeriod.month, 10);
       const lastDay = new Date(y, m, 0).getDate();
-      const startDate = `${filters.year}-${filters.month.padStart(2, '0')}-01`;
-      const endDate = `${filters.year}-${filters.month.padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+      const startDate = `${resolvedPeriod.year}-${resolvedPeriod.month}-01`;
+      const endDate = `${resolvedPeriod.year}-${resolvedPeriod.month}-${String(lastDay).padStart(2, '0')}`;
 
       const filterParts = ['approved=true', `(from<="${endDate}" && to>="${startDate}")`];
       const filterString = filterParts.join(' && ');
@@ -116,7 +136,7 @@ export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: Scre
     } finally {
       setLoading(false);
     }
-  }, [filters.month, filters.year]);
+  }, [resolvedPeriod.month, resolvedPeriod.year]);
 
   useEffect(() => {
     if (selectedOwner && !ownerOptions.some((o) => o.id === selectedOwner)) {
@@ -132,7 +152,7 @@ export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: Scre
 
   if (loading) {
     return (
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+      <div className={`${portalCardClass} p-6`}>
         <div className="animate-pulse flex space-x-4">
           <div className="flex-1 space-y-4 py-1">
             <div className="h-4 bg-gray-200 dark:bg-gray-600 rounded w-3/4"></div>
@@ -149,9 +169,9 @@ export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: Scre
 
   if (revenues.length === 0) {
     return (
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+      <div className={`${portalCardClass} p-6`}>
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-          Ekranų pajamos – {MONTH_NAMES[parseInt(filters.month, 10) - 1]} {filters.year}
+          Ekranų pajamos – {MONTH_NAMES[parseInt(resolvedPeriod.month, 10) - 1]} {resolvedPeriod.year}
         </h3>
         <p className="text-gray-500 dark:text-gray-400">
           Šiame mėnesyje nėra patvirtintų užsakymų su ekranais arba užsakymai neturi ekranų ID.
@@ -163,33 +183,28 @@ export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: Scre
   const totalRevenue = filteredRevenues.reduce((sum, r) => sum + r.totalRevenue, 0);
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-      <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+    <div className={portalCardClass}>
+      <div className={portalToolbarClass}>
         <div>
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-            Ekranų pajamos – {MONTH_NAMES[parseInt(filters.month, 10) - 1]} {filters.year}
+            Ekranų pajamos – {MONTH_NAMES[parseInt(resolvedPeriod.month, 10) - 1]} {resolvedPeriod.year}
           </h3>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             Bendros pajamos: €{totalRevenue.toLocaleString('lt-LT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <select
+          <FilterDropdown
             value={selectedOwner}
-            onChange={(e) => setSelectedOwner(e.target.value)}
-            className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300"
-          >
-            <option value="">Visi owneriai</option>
-            {ownerOptions.map((owner) => (
-              <option key={owner.id} value={owner.id}>
-                {owner.name}
-              </option>
-            ))}
-          </select>
+            options={ownerFilterOptions}
+            placeholder="Owneris"
+            onChange={setSelectedOwner}
+            className="w-44"
+          />
           <button
             onClick={handleExportExcel}
             disabled={exporting}
-            className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50"
+            className={portalExportBtnClass}
           >
             <ArrowDownTrayIcon className="w-4 h-4 mr-2" />
             {exporting ? 'Eksportuojama...' : 'Excel'}
@@ -199,24 +214,24 @@ export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: Scre
 
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-          <thead className="bg-gray-50 dark:bg-gray-700">
+          <thead className={portalTheadClass}>
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase w-12">
+              <th className={`${portalThClass} w-12`}>
                 Nr.
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
+              <th className={portalThClass}>
                 Ekranas (name)
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
+              <th className={portalThClass}>
                 Owner
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
+              <th className={portalThClass}>
                 Pajamos
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
+              <th className={portalThClass}>
                 Užsakymai
               </th>
-              <th className="px-6 py-3 w-10"></th>
+              <th className="px-4 py-3 w-10"></th>
             </tr>
           </thead>
           <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -224,7 +239,7 @@ export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: Scre
               <React.Fragment key={r.screenId}>
                 <tr
                   key={r.screenId}
-                  className="hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                  className={portalRowHoverClass}
                   onClick={() => setExpandedScreen(expandedScreen === r.screenId ? null : r.screenId)}
                 >
                   <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">

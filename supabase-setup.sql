@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS comments (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   order_id TEXT NOT NULL,
   text TEXT NOT NULL,
+  visibility TEXT NOT NULL DEFAULT 'internal' CHECK (visibility IN ('internal', 'agency')),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -16,6 +17,7 @@ CREATE TABLE IF NOT EXISTS reminders (
   title TEXT NOT NULL,
   due_date DATE NOT NULL,
   is_completed BOOLEAN DEFAULT FALSE,
+  visibility TEXT NOT NULL DEFAULT 'internal' CHECK (visibility IN ('internal', 'agency')),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -26,6 +28,7 @@ CREATE TABLE IF NOT EXISTS file_attachments (
   filename TEXT NOT NULL,
   file_url TEXT NOT NULL,
   file_type TEXT NOT NULL,
+  visibility TEXT NOT NULL DEFAULT 'internal' CHECK (visibility IN ('internal', 'agency')),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

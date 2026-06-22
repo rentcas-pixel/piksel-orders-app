@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Comment, Reminder, FileAttachment, OrderApprovalEvent, OrderInvoiceStatus } from '@/types';
+import { Comment, Reminder, FileAttachment, OrderApprovalEvent, OrderInvoiceStatus, CommentVisibility } from '@/types';
 
 /** Nuotraukos ir Excel (.xls / .xlsx) rodomi užsakymo modalo „Printscreens“ skiltyje */
 function isPrintscreenPanelFile(
@@ -78,6 +78,52 @@ function isSpreadsheetUpload(file: File, resolvedType: string): boolean {
     t === 'application/vnd.ms-excel' ||
     (t.startsWith('application/') && t.includes('excel'))
   );
+}
+
+function matchesVisibility(
+  rowVisibility: string | null | undefined,
+  scope: CommentVisibility
+): boolean {
+  const value = rowVisibility ?? 'internal';
+  if (scope === 'agency') return value === 'agency';
+  return value === 'internal';
+}
+
+function filterByVisibility<T extends { visibility?: string | null }>(
+  rows: T[],
+  scope: CommentVisibility
+): T[] {
+  return rows.filter((row) => matchesVisibility(row.visibility, scope));
+}
+
+async function insertFileAttachmentRow(
+  metadata: Record<string, unknown>
+): Promise<{ data: FileAttachment; error: null } | { data: null; error: Error }> {
+  const withVisibility = {
+    ...metadata,
+    visibility: (metadata.visibility as string | undefined) ?? 'internal',
+  };
+
+  let result = await supabase
+    .from('file_attachments')
+    .insert([withVisibility])
+    .select()
+    .single();
+
+  if (result.error?.code === '42703') {
+    const { visibility: _visibility, ...legacyMetadata } = withVisibility;
+    result = await supabase
+      .from('file_attachments')
+      .insert([legacyMetadata])
+      .select()
+      .single();
+  }
+
+  if (result.error) {
+    return { data: null, error: result.error };
+  }
+
+  return { data: result.data as FileAttachment, error: null };
 }
 
 export class SupabaseService {
@@ -217,7 +263,10 @@ export class SupabaseService {
   }
 
   // Comments
-  static async getComments(orderId: string): Promise<Comment[]> {
+  static async getComments(
+    orderId: string,
+    options?: { visibility?: 'agency' | 'internal' }
+  ): Promise<Comment[]> {
     const { data, error } = await supabase
       .from('comments')
       .select('*')
@@ -225,20 +274,29 @@ export class SupabaseService {
       .order('created_at', { ascending: false });
 
     if (error) throw error;
-    
-    // Load printscreens for this order
-    const printscreens = await this.getPrintscreensForOrder(orderId);
-    
-    // Add printscreens to all comments (simple approach)
-    const commentsWithPrintscreens = (data || []).map(comment => ({
+
+    let rows = (data || []) as Comment[];
+
+    if (options?.visibility === 'agency') {
+      rows = rows.filter((c) => c.visibility === 'agency');
+    } else {
+      rows = rows.filter((c) => (c.visibility ?? 'internal') === 'internal');
+    }
+
+    const scope = options?.visibility ?? 'internal';
+    const printscreens = await this.getPrintscreensForOrder(orderId, scope);
+
+    return rows.map((comment) => ({
       ...comment,
-      printscreens: printscreens
+      visibility: comment.visibility ?? 'internal',
+      printscreens,
     }));
-    
-    return commentsWithPrintscreens;
   }
 
-  static async getPrintscreensForOrder(orderId: string): Promise<FileAttachment[]> {
+  static async getPrintscreensForOrder(
+    orderId: string,
+    visibility: CommentVisibility = 'internal'
+  ): Promise<FileAttachment[]> {
     try {
       const { data, error } = await supabase
         .from('file_attachments')
@@ -250,14 +308,15 @@ export class SupabaseService {
         console.error('❌ Failed to load printscreens:', error);
         return [];
       }
-      
-      const printscreens = (data || []).filter((file) =>
+
+      const printscreens = filterByVisibility(data || [], visibility).filter((file) =>
         isPrintscreenPanelFile(file.file_type, file.filename)
       );
-      
 
-      return printscreens;
-      
+      return printscreens.map((file) => ({
+        ...file,
+        visibility: file.visibility ?? 'internal',
+      }));
     } catch (error) {
       console.error('❌ Error loading printscreens:', error);
       return [];
@@ -301,7 +360,11 @@ export class SupabaseService {
   }
 
   // Reminders
-  static async getReminders(orderId: string): Promise<Reminder[]> {
+  static async getReminders(
+    orderId: string,
+    options?: { visibility?: CommentVisibility }
+  ): Promise<Reminder[]> {
+    const visibility = options?.visibility ?? 'internal';
     const { data, error } = await supabase
       .from('reminders')
       .select('*')
@@ -309,15 +372,23 @@ export class SupabaseService {
       .order('due_date', { ascending: true });
 
     if (error) throw error;
-    return data || [];
+    return filterByVisibility(data || [], visibility).map((reminder) => ({
+      ...reminder,
+      visibility: reminder.visibility ?? 'internal',
+    }));
   }
 
-  static async addReminder(orderId: string, reminder: Omit<Reminder, 'id' | 'order_id' | 'created_at'>): Promise<Reminder> {
+  static async addReminder(
+    orderId: string,
+    reminder: Omit<Reminder, 'id' | 'order_id' | 'created_at' | 'visibility'>,
+    visibility: CommentVisibility = 'internal'
+  ): Promise<Reminder> {
     const { data, error } = await supabase
       .from('reminders')
       .insert([{ 
         order_id: orderId, 
         ...reminder,
+        visibility,
         created_at: new Date().toISOString()
       }])
       .select()
@@ -349,7 +420,10 @@ export class SupabaseService {
   }
 
   // File Attachments
-  static async getFiles(orderId: string): Promise<FileAttachment[]> {
+  static async getFiles(
+    orderId: string,
+    visibility: CommentVisibility = 'internal'
+  ): Promise<FileAttachment[]> {
     const { data, error } = await supabase
       .from('file_attachments')
       .select('*')
@@ -357,7 +431,10 @@ export class SupabaseService {
       .order('created_at', { ascending: false });
 
     if (error) throw error;
-    return data || [];
+    return filterByVisibility(data || [], visibility).map((file) => ({
+      ...file,
+      visibility: file.visibility ?? 'internal',
+    }));
   }
 
   static async uploadFileToStorage(orderId: string, file: File): Promise<FileAttachment> {
@@ -436,7 +513,11 @@ export class SupabaseService {
     }
   }
 
-  static async uploadPrintscreen(orderId: string, file: File): Promise<FileAttachment> {
+  static async uploadPrintscreen(
+    orderId: string,
+    file: File,
+    visibility: CommentVisibility = 'internal'
+  ): Promise<FileAttachment> {
     try {
       const safeBaseName = file.name.replace(/[/\\]/g, '-');
       const resolvedType = resolveAttachmentFileType(file);
@@ -474,28 +555,26 @@ export class SupabaseService {
         filename: file.name,
         file_url: urlData.publicUrl,
         file_type: resolvedType,
+        visibility,
         created_at: new Date().toISOString()
       };
-      
-      const { data: fileData, error: insertError } = await supabase
-        .from('file_attachments')
-        .insert([metadata])
-        .select()
-        .single();
-      
+
+      const { data: fileData, error: insertError } = await insertFileAttachmentRow(metadata);
+
       if (insertError) {
         throw insertError;
       }
-      
+
       return {
         id: fileData.id,
         order_id: orderId,
         filename: file.name,
         file_url: urlData.publicUrl,
         file_type: resolvedType,
+        visibility: fileData.visibility ?? visibility,
         created_at: fileData.created_at
       };
-      
+
     } catch (error) {
       console.error('Printscreen upload failed:', error);
       throw error;

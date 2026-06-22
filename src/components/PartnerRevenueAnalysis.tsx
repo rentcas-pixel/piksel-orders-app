@@ -1,12 +1,21 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import { Order } from '@/types';
 import { PocketBaseService } from '@/lib/pocketbase';
 import { calculatePartnerRevenues } from '@/lib/partner-revenue';
 import { format } from 'date-fns';
 import { downloadExcel } from '@/lib/export-excel';
+import { resolveListMonthYear } from '@/lib/orders-filters';
+import {
+  portalCardClass,
+  portalExportBtnClass,
+  portalRowHoverClass,
+  portalTheadClass,
+  portalThClass,
+  portalToolbarClass,
+} from '@/lib/portal-ui';
 
 const MONTH_NAMES = ['Sausis', 'Vasaris', 'Kovas', 'Balandis', 'Gegužė', 'Birželis', 'Liepa', 'Rugpjūtis', 'Rugsėjis', 'Spalis', 'Lapkritis', 'Gruodis'];
 
@@ -25,11 +34,15 @@ export function PartnerRevenueAnalysis({ filters, onEditOrder, refreshKey }: Par
   const [expandedPartner, setExpandedPartner] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const resolvedPeriod = useMemo(
+    () => resolveListMonthYear(filters.month, filters.year),
+    [filters.month, filters.year]
+  );
 
   const handleExportExcel = useCallback(() => {
     setExporting(true);
     try {
-      const monthName = `${MONTH_NAMES[parseInt(filters.month, 10) - 1]}_${filters.year}`;
+      const monthName = `${MONTH_NAMES[parseInt(resolvedPeriod.month, 10) - 1]}_${resolvedPeriod.year}`;
       const data: unknown[][] = [
         ['Nr.', 'Partneris', 'Pajamos', 'Užsakymai'],
         ...revenues.map((r, i) => [
@@ -43,11 +56,10 @@ export function PartnerRevenueAnalysis({ filters, onEditOrder, refreshKey }: Par
     } finally {
       setExporting(false);
     }
-  }, [revenues, filters.month, filters.year]);
+  }, [revenues, resolvedPeriod.month, resolvedPeriod.year]);
 
   const fetchData = useCallback(async () => {
-    if (!filters.month || !filters.year) return;
-    const cacheKey = `partner_${filters.month}-${filters.year}`;
+    const cacheKey = `partner_${resolvedPeriod.month}-${resolvedPeriod.year}`;
     const cached = partnerRevenueCache.get(cacheKey);
     if (cached && cached.expires > Date.now()) {
       setRevenues(cached.revenues);
@@ -59,11 +71,11 @@ export function PartnerRevenueAnalysis({ filters, onEditOrder, refreshKey }: Par
     abortRef.current = new AbortController();
     setLoading(true);
     try {
-      const y = parseInt(filters.year, 10);
-      const m = parseInt(filters.month, 10);
+      const y = parseInt(resolvedPeriod.year, 10);
+      const m = parseInt(resolvedPeriod.month, 10);
       const lastDay = new Date(y, m, 0).getDate();
-      const startDate = `${filters.year}-${filters.month.padStart(2, '0')}-01`;
-      const endDate = `${filters.year}-${filters.month.padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+      const startDate = `${resolvedPeriod.year}-${resolvedPeriod.month}-01`;
+      const endDate = `${resolvedPeriod.year}-${resolvedPeriod.month}-${String(lastDay).padStart(2, '0')}`;
 
       const filterParts = ['approved=true', `(from<="${endDate}" && to>="${startDate}")`];
       const filterString = filterParts.join(' && ');
@@ -90,7 +102,7 @@ export function PartnerRevenueAnalysis({ filters, onEditOrder, refreshKey }: Par
     } finally {
       setLoading(false);
     }
-  }, [filters.month, filters.year]);
+  }, [resolvedPeriod.month, resolvedPeriod.year]);
 
   useEffect(() => {
     if (refreshKey !== undefined) partnerRevenueCache.clear();
@@ -100,7 +112,7 @@ export function PartnerRevenueAnalysis({ filters, onEditOrder, refreshKey }: Par
 
   if (loading) {
     return (
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+      <div className={`${portalCardClass} p-6`}>
         <div className="animate-pulse flex space-x-4">
           <div className="flex-1 space-y-4 py-1">
             <div className="h-4 bg-gray-200 dark:bg-gray-600 rounded w-3/4"></div>
@@ -117,9 +129,9 @@ export function PartnerRevenueAnalysis({ filters, onEditOrder, refreshKey }: Par
 
   if (revenues.length === 0) {
     return (
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+      <div className={`${portalCardClass} p-6`}>
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-          Partnerių pajamos – {MONTH_NAMES[parseInt(filters.month, 10) - 1]} {filters.year}
+          Partnerių pajamos – {MONTH_NAMES[parseInt(resolvedPeriod.month, 10) - 1]} {resolvedPeriod.year}
         </h3>
         <p className="text-gray-500 dark:text-gray-400">
           Šiame mėnesyje nėra patvirtintų užsakymų su ekranais, kurie turi priskirtą partnerį.
@@ -131,11 +143,11 @@ export function PartnerRevenueAnalysis({ filters, onEditOrder, refreshKey }: Par
   const totalRevenue = revenues.reduce((sum, r) => sum + r.totalRevenue, 0);
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-      <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+    <div className={portalCardClass}>
+      <div className={portalToolbarClass}>
         <div>
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-            Partnerių pajamos – {MONTH_NAMES[parseInt(filters.month, 10) - 1]} {filters.year}
+            Partnerių pajamos – {MONTH_NAMES[parseInt(resolvedPeriod.month, 10) - 1]} {resolvedPeriod.year}
           </h3>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             Bendros pajamos: €{totalRevenue.toLocaleString('lt-LT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -144,7 +156,7 @@ export function PartnerRevenueAnalysis({ filters, onEditOrder, refreshKey }: Par
         <button
           onClick={handleExportExcel}
           disabled={exporting}
-          className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50"
+          className={portalExportBtnClass}
         >
           <ArrowDownTrayIcon className="w-4 h-4 mr-2" />
           {exporting ? 'Eksportuojama...' : 'Excel'}
@@ -153,28 +165,20 @@ export function PartnerRevenueAnalysis({ filters, onEditOrder, refreshKey }: Par
 
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-          <thead className="bg-gray-50 dark:bg-gray-700">
+          <thead className={portalTheadClass}>
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
-                Partneris
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
-                Dienų
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
-                Pajamos
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
-                Užsakymai
-              </th>
-              <th className="px-6 py-3 w-10"></th>
+              <th className={portalThClass}>Partneris</th>
+              <th className={portalThClass}>Dienų</th>
+              <th className={portalThClass}>Pajamos</th>
+              <th className={portalThClass}>Užsakymai</th>
+              <th className="px-4 py-3 w-10"></th>
             </tr>
           </thead>
           <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
             {revenues.map((r) => (
               <React.Fragment key={r.partnerId}>
                 <tr
-                  className="hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                  className={portalRowHoverClass}
                   onClick={() => setExpandedPartner(expandedPartner === r.partnerId ? null : r.partnerId)}
                 >
                   <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">

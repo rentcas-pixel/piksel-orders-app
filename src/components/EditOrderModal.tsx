@@ -6,6 +6,11 @@ import {
   ClipboardDocumentIcon,
   TableCellsIcon,
   ArrowDownTrayIcon,
+  CheckCircleIcon,
+  DocumentTextIcon,
+  PaperAirplaneIcon,
+  PhotoIcon,
+  PlusCircleIcon,
 } from '@heroicons/react/24/outline';
 import {
   downloadReklamosPlanas,
@@ -21,12 +26,27 @@ import { Order, Comment, Reminder, FileAttachment } from '@/types';
 import { PocketBaseService } from '@/lib/pocketbase';
 import { SupabaseService } from '@/lib/supabase-service';
 import { formatDateInputValue, parseDateOnlyLocal } from '@/lib/date-utils';
+import {
+  computeCityOtsBreakdown,
+  formatOts,
+  loadCampaignExportData,
+  type CityOtsRow,
+} from '@/lib/agency-orders';
+import {
+  modalBtnDanger,
+  modalBtnInline,
+  modalBtnPrimary,
+  modalBtnSecondary,
+} from '@/lib/portal-ui';
+import { StatusIconButton } from '@/components/StatusIconButton';
 
 interface EditOrderModalProps {
   order: Order | null;
   isOpen: boolean;
   onClose: () => void;
-  onOrderUpdated: (order: Order) => void;
+  onOrderUpdated?: (order: Order) => void;
+  onGenerateInvoice?: (order: Order) => void;
+  variant?: 'internal' | 'agency';
 }
 
 type OrderExportPartner = {
@@ -36,7 +56,19 @@ type OrderExportPartner = {
   screenCount: number;
 };
 
-export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditOrderModalProps) {
+export function EditOrderModal({
+  order,
+  isOpen,
+  onClose,
+  onOrderUpdated,
+  onGenerateInvoice,
+  variant = 'internal',
+}: EditOrderModalProps) {
+  const isAgency = variant === 'agency';
+  const collaborationScope = isAgency ? 'agency' : 'internal';
+  const readOnlyFieldClass = isAgency
+    ? 'read-only:opacity-100 read-only:cursor-default disabled:opacity-100'
+    : '';
   const [formData, setFormData] = useState<Partial<Order>>({});
   const [invoiceStatus, setInvoiceStatus] = useState({ invoice_issued: false, invoice_sent: false });
   const [comments, setComments] = useState<Comment[]>([]);
@@ -57,6 +89,8 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
   const [exportingCombined, setExportingCombined] = useState(false);
   const [exportingAllZip, setExportingAllZip] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [cityOtsRows, setCityOtsRows] = useState<CityOtsRow[]>([]);
+  const [otsLoading, setOtsLoading] = useState(false);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
 
   const loadQuote = useCallback(async () => {
@@ -92,7 +126,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
   }, [order, loadQuote]);
 
   useEffect(() => {
-    if (!isOpen || !order) {
+    if (!isOpen || !order || isAgency) {
       setExportPartners([]);
       return;
     }
@@ -151,7 +185,31 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
     return () => {
       cancelled = true;
     };
-  }, [isOpen, order]);
+  }, [isOpen, order, isAgency]);
+
+  useEffect(() => {
+    if (!isOpen || !order || !isAgency) {
+      setCityOtsRows([]);
+      return;
+    }
+
+    let cancelled = false;
+    const loadOts = async () => {
+      setOtsLoading(true);
+      try {
+        const { campaignOrder, screens, bundles } = await loadCampaignExportData(order.id);
+        if (!cancelled) setCityOtsRows(computeCityOtsBreakdown(campaignOrder, screens, bundles));
+      } catch {
+        if (!cancelled) setCityOtsRows([]);
+      } finally {
+        if (!cancelled) setOtsLoading(false);
+      }
+    };
+    loadOts();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, order, isAgency]);
 
   const loadInvoiceStatus = useCallback(async () => {
     if (!order) return;
@@ -181,50 +239,66 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
   const loadComments = useCallback(async () => {
     if (!order) return;
     try {
-      const commentsData = await SupabaseService.getComments(order.id);
-      const sortedComments = commentsData.sort((a, b) => 
+      const commentsData = await SupabaseService.getComments(order.id, {
+        visibility: isAgency ? 'agency' : undefined,
+      });
+      const sortedComments = commentsData.sort((a, b) =>
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
       setComments(sortedComments);
     } catch {
       console.error('Error loading comments');
     }
-  }, [order]);
+  }, [order, isAgency]);
 
   const loadReminders = useCallback(async () => {
     if (!order) return;
     try {
-      const remindersData = await SupabaseService.getReminders(order.id);
+      const remindersData = await SupabaseService.getReminders(order.id, {
+        visibility: collaborationScope,
+      });
       setReminders(remindersData);
     } catch {
       console.error('Error loading reminders');
     }
-  }, [order]);
+  }, [order, collaborationScope]);
 
   const loadPrintScreens = useCallback(async () => {
     if (!order) return;
     try {
-      const printScreensData = await SupabaseService.getPrintscreensForOrder(order.id);
+      const printScreensData = await SupabaseService.getPrintscreensForOrder(
+        order.id,
+        collaborationScope
+      );
       setPrintScreens(printScreensData);
       setPendingPrintscreens([]);
     } catch {
       console.error('Error loading print screens');
     }
-  }, [order]);
+  }, [order, collaborationScope]);
 
   useEffect(() => {
     if (order && isOpen) {
       loadComments();
       loadInvoiceStatus();
-      
+
       const timer = setTimeout(() => {
         loadReminders();
         loadPrintScreens();
       }, 500);
-      
+
       return () => clearTimeout(timer);
     }
-  }, [order, isOpen, loadComments, loadReminders, loadPrintScreens, loadInvoiceStatus]);
+  }, [order, isOpen, isAgency, loadComments, loadReminders, loadPrintScreens, loadInvoiceStatus]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [isOpen, onClose]);
 
   const handleInputChange = (field: keyof Order, value: string | number | boolean) => {
     setFormData(prev => ({
@@ -269,7 +343,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
         }
       }
 
-      onOrderUpdated(updatedOrder);
+      onOrderUpdated?.(updatedOrder);
       onClose();
     } catch {
       console.error('Error updating order');
@@ -284,7 +358,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
     if (confirm('Ar tikrai norite ištrinti šį užsakymą?')) {
       try {
         await PocketBaseService.deleteOrder(order.id);
-        onOrderUpdated(order);
+        onOrderUpdated?.(order);
         onClose();
       } catch {
         console.error('Error deleting order');
@@ -298,7 +372,8 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
     try {
       const comment = await SupabaseService.addComment({
         order_id: order.id,
-        text: newComment.trim()
+        text: newComment.trim(),
+        visibility: isAgency ? 'agency' : 'internal',
       });
       setComments(prev => [comment, ...prev]);
       setNewComment('');
@@ -366,11 +441,15 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
     if (!order || !reminderDate || !reminderMessage.trim()) return;
     
     try {
-      const reminder = await SupabaseService.addReminder(order.id, {
-        due_date: reminderDate,
-        title: reminderMessage.trim(),
-        is_completed: false
-      });
+      const reminder = await SupabaseService.addReminder(
+        order.id,
+        {
+          due_date: reminderDate,
+          title: reminderMessage.trim(),
+          is_completed: false,
+        },
+        collaborationScope
+      );
       setReminders(prev => [...prev, reminder]);
       setReminderDate('');
       setReminderMessage('');
@@ -456,7 +535,11 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
       for (const file of files) {
         if (!acceptFile(file)) continue;
         try {
-          const uploadedFile = await SupabaseService.uploadPrintscreen(order.id, file);
+          const uploadedFile = await SupabaseService.uploadPrintscreen(
+            order.id,
+            file,
+            collaborationScope
+          );
           setPendingPrintscreens((prev) => [...prev, uploadedFile]);
         } catch (err) {
           console.error('Error uploading attachment', file.name, err);
@@ -481,7 +564,11 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
         if (!file) continue;
 
         try {
-          const uploadedFile = await SupabaseService.uploadPrintscreen(order.id, file);
+          const uploadedFile = await SupabaseService.uploadPrintscreen(
+            order.id,
+            file,
+            collaborationScope
+          );
           
           setPendingPrintscreens(prev => [...prev, uploadedFile]);
           
@@ -703,20 +790,18 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
       role="dialog"
       aria-modal="true"
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') {
-          onClose();
-        }
-      }}
-      tabIndex={0}
     >
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+      <div
+        className={`bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-h-[90vh] overflow-y-auto ${
+          isAgency ? 'max-w-[45rem]' : 'max-w-4xl'
+        }`}
+      >
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
           <div>
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{order.client}</h2>
             <p className="text-gray-600 dark:text-gray-400">{order.agency} | {order.invoice_id}</p>
-            {formData.approved && (
+            {formData.approved && !isAgency && (
               <div className="mt-1 flex flex-wrap items-center gap-1.5">
                 <span className="text-xs text-gray-500 dark:text-gray-400 font-mono tracking-tight select-all">
                   {order.id}
@@ -734,57 +819,66 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
             )}
           </div>
           
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1.5">
               <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Media</span>
-              <button
-                type="button"
+              <StatusIconButton
+                active={!!formData.media_received}
+                label={formData.media_received ? 'Media gauta' : 'Media negauta'}
+                icon={PhotoIcon}
+                activeTone="green"
+                disabled={isAgency}
                 onClick={() => handleInputChange('media_received', !formData.media_received)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                  formData.media_received ? 'bg-green-600' : 'bg-gray-200 dark:bg-gray-600'
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    formData.media_received ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
-            </div>
-            
-            <div className="flex items-center space-x-2">
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Sąskaita</span>
-              <button
-                type="button"
-                onClick={() => setInvoiceStatus(prev => ({ ...prev, invoice_issued: !prev.invoice_issued }))}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
-                  invoiceStatus.invoice_issued ? 'bg-green-600' : 'bg-gray-200 dark:bg-gray-600'
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    invoiceStatus.invoice_issued ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
+              />
             </div>
 
-            <div className="flex items-center space-x-2">
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Išsiųsta</span>
-              <button
-                type="button"
-                onClick={() => setInvoiceStatus(prev => ({ ...prev, invoice_sent: !prev.invoice_sent }))}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 ${
-                  invoiceStatus.invoice_sent ? 'bg-violet-600' : 'bg-gray-200 dark:bg-gray-600'
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    invoiceStatus.invoice_sent ? 'translate-x-6' : 'translate-x-1'
-                  }`}
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Sąskaita</span>
+              <div className="flex items-center gap-0.5">
+                <StatusIconButton
+                  active={invoiceStatus.invoice_issued}
+                  label={
+                    invoiceStatus.invoice_issued
+                      ? 'Sąskaita išrašyta'
+                      : 'Sąskaita neišrašyta'
+                  }
+                  icon={DocumentTextIcon}
+                  disabled={isAgency}
+                  onClick={() =>
+                    setInvoiceStatus((prev) => ({ ...prev, invoice_issued: !prev.invoice_issued }))
+                  }
                 />
-              </button>
+                {onGenerateInvoice && formData.approved && !isAgency && order && (
+                  <button
+                    type="button"
+                    title="Išrašyti sąskaitą"
+                    aria-label="Išrašyti sąskaitą"
+                    onClick={() => onGenerateInvoice(order)}
+                    className="inline-flex rounded-md p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-700 dark:hover:text-white"
+                  >
+                    <PlusCircleIcon className="h-5 w-5" strokeWidth={1.5} />
+                  </button>
+                )}
+              </div>
             </div>
+
+            {!isAgency && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Išsiųsta</span>
+              <StatusIconButton
+                active={invoiceStatus.invoice_sent}
+                label={
+                  invoiceStatus.invoice_sent
+                    ? 'Sąskaita išsiųsta'
+                    : 'Sąskaita neišsiųsta'
+                }
+                icon={PaperAirplaneIcon}
+                onClick={() =>
+                  setInvoiceStatus((prev) => ({ ...prev, invoice_sent: !prev.invoice_sent }))
+                }
+              />
+            </div>
+            )}
             
           <button
               type="button"
@@ -806,7 +900,8 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                       type="text"
                       value={formData.client || ''}
                       onChange={(e) => handleInputChange('client', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      readOnly={isAgency}
+                      className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white ${readOnlyFieldClass}`}
                     />
                   </div>
 
@@ -814,14 +909,35 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Statusas
                     </label>
-                    <select
-                      value={formData.approved ? 'taip' : 'ne'}
-                      onChange={(e) => handleInputChange('approved', e.target.value === 'taip')}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                    >
-                <option value="ne">Nepatvirtinta</option>
-                      <option value="taip">Patvirtinta</option>
-                    </select>
+                    {isAgency ? (
+                      <div
+                        className={`flex items-center gap-2 w-full px-3 py-2 border rounded-lg ${
+                          formData.approved
+                            ? 'border-green-300 bg-green-50 text-green-800 dark:bg-green-900/30 dark:border-green-700 dark:text-green-200'
+                            : 'border-amber-300 bg-amber-50 text-amber-800 dark:bg-amber-900/30 dark:border-amber-700 dark:text-amber-200'
+                        }`}
+                      >
+                        {formData.approved && (
+                          <CheckCircleIcon className="w-5 h-5 text-green-600 dark:text-green-400 shrink-0" />
+                        )}
+                        <span className="text-sm font-medium">
+                          {formData.approved ? 'Patvirtinta' : 'Nepatvirtinta'}
+                        </span>
+                      </div>
+                    ) : (
+                      <select
+                        value={formData.approved ? 'taip' : 'ne'}
+                        onChange={(e) => handleInputChange('approved', e.target.value === 'taip')}
+                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 dark:text-white ${readOnlyFieldClass} ${
+                          formData.approved
+                            ? 'border-emerald-200 bg-emerald-50/70 dark:border-emerald-900/50 dark:bg-emerald-950/25'
+                            : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700'
+                        }`}
+                      >
+                        <option value="ne">Nepatvirtinta</option>
+                        <option value="taip">Patvirtinta</option>
+                      </select>
+                    )}
                   </div>
                   </div>
 
@@ -837,7 +953,8 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                   onChange={(e) => handleInputChange('from', e.target.value)}
                   pattern="\d{4}-\d{2}-\d{2}"
                   placeholder="yyyy-mm-dd"
-                  className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  readOnly={isAgency}
+                  className={`flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white ${readOnlyFieldClass}`}
                 />
                 <span className="text-gray-500">→</span>
                     <input
@@ -846,7 +963,8 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                       onChange={(e) => handleInputChange('to', e.target.value)}
                       pattern="\d{4}-\d{2}-\d{2}"
                       placeholder="yyyy-mm-dd"
-                  className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  readOnly={isAgency}
+                  className={`flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white ${readOnlyFieldClass}`}
                     />
                   </div>
                   </div>
@@ -861,6 +979,9 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
 
                 {formData.from && formData.to && formData.final_price && (
             <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                    <p className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-[5px]">
+                      Sumų pasiskirstymas:
+                    </p>
                     <div className="space-y-2">
                       {(() => {
                         const distribution = calculateMonthlyDistribution(formData.from, formData.to, formData.final_price);
@@ -891,6 +1012,49 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                   </div>
                 )}
 
+                {isAgency && (
+                  <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      OTS pagal miestą
+                    </p>
+                    {otsLoading ? (
+                      <p className="text-sm text-gray-500 dark:text-gray-400">Skaičiuojama...</p>
+                    ) : cityOtsRows.length > 0 ? (
+                      <div className="space-y-1">
+                        {cityOtsRows.map((row) => (
+                          <div
+                            key={row.label}
+                            className="text-sm text-gray-900 dark:text-white"
+                          >
+                            <span className="inline-flex items-baseline gap-2 flex-wrap">
+                              <span>
+                                {row.label}
+                                <span className="text-gray-500 dark:text-gray-400 font-normal">
+                                  {' '}
+                                  ({row.screenCount} ekr.)
+                                </span>
+                              </span>
+                              <span className="tabular-nums">
+                                {formatOts(row.ots)}
+                              </span>
+                            </span>
+                          </div>
+                        ))}
+                        <div className="pt-3 mt-2 border-t border-gray-200 dark:border-gray-600">
+                          <span className="inline-flex items-baseline gap-2 text-sm text-gray-900 dark:text-white">
+                            <span className="font-bold">Bendra OTS:</span>
+                            <span className="font-bold tabular-nums">
+                              {formatOts(cityOtsRows.reduce((sum, row) => sum + row.ots, 0))}
+                            </span>
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-500 dark:text-gray-400">OTS duomenų nėra</p>
+                    )}
+                  </div>
+                )}
+
                 <div className="rounded-lg border border-dashed border-emerald-300/70 bg-gray-50 p-4 dark:border-emerald-700/60 dark:bg-gray-700/80">
                   <div className="mb-3 flex items-start justify-between gap-3">
                     <div>
@@ -910,15 +1074,16 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                     </p>
                   )}
 
-                  {exportPartnersLoading ? (
+                  {exportPartnersLoading && !isAgency ? (
                     <p className="text-sm text-gray-500 dark:text-gray-400">Kraunami partneriai…</p>
-                  ) : exportPartners.length === 0 ? (
+                  ) : !isAgency && exportPartners.length === 0 ? (
                     <p className="text-sm text-gray-500 dark:text-gray-400">
                       Šiame užsakyme nėra ekranų — partnerių eksportui nerasta.
                     </p>
                   ) : (
                     <div className="flex flex-wrap gap-2">
-                      {exportPartners.map((partner) => {
+                      {!isAgency &&
+                      exportPartners.map((partner) => {
                         const isExporting = exportingPartnerId === partner.id;
                         return (
                           <button
@@ -957,18 +1122,19 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                         }
                         onClick={handleCombinedPlanExcelExport}
                         className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200/90 bg-white px-3 py-1.5 text-sm font-medium text-violet-800 transition-colors hover:bg-violet-50 disabled:opacity-50 dark:border-violet-800 dark:bg-gray-800 dark:text-violet-200 dark:hover:bg-violet-950/30"
-                        title="Visi tiekėjai viename Excel faile"
+                        title={isAgency ? 'Atsisiųsti Excel' : 'Visi tiekėjai viename Excel faile'}
                       >
                         {exportingCombined ? (
                           <span className="h-4 w-4 shrink-0 animate-pulse rounded-full bg-violet-400" />
                         ) : (
                           <ArrowDownTrayIcon className="h-4 w-4 shrink-0 text-violet-600 dark:text-violet-400" />
                         )}
-                        Bendras
+                        {isAgency ? '.xls' : 'Bendras'}
                         {exportingCombined && (
                           <span className="text-xs text-gray-500">…</span>
                         )}
                       </button>
+                      {!isAgency && (
                       <button
                         type="button"
                         disabled={
@@ -991,6 +1157,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                           <span className="text-xs text-gray-500">…</span>
                         )}
                       </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1010,11 +1177,15 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                   }
                 }}
                 onPaste={handlePaste}
-                data-placeholder="Įveskite komentarą... (Enter - išsaugoti, Cmd+V - paveikslėlis)"
+                data-placeholder={
+                  isAgency
+                    ? 'Rašykite komentarą... (Enter - išsaugoti, Cmd+V - paveikslėlis)'
+                    : 'Įveskite komentarą... (Enter - išsaugoti, Cmd+V - paveikslėlis)'
+                }
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white h-24 resize-none min-h-[6rem] overflow-y-auto"
                 style={{ whiteSpace: 'pre-wrap' }}
               />
-              
+
               {comments.length > 0 && (
                 <div className="mt-4 space-y-2">
                   {comments.map((comment) => (
@@ -1067,7 +1238,9 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                           className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white"
                         />
                       ) : (
-                        <div className="text-sm text-gray-900 dark:text-white whitespace-pre-wrap">{comment.text}</div>
+                        <div className="text-sm text-gray-900 dark:text-white whitespace-pre-wrap">
+                          {comment.text}
+                        </div>
                       )}
                     </div>
                   ))}
@@ -1132,8 +1305,10 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                         onClick={async () => {
                           try {
                             await SupabaseService.deleteFile(printscreen.id);
-                            setPendingPrintscreens(prev => prev.filter(p => p.id !== printscreen.id));
-                            setPrintScreens(prev => prev.filter(p => p.id !== printscreen.id));
+                            setPendingPrintscreens((prev) =>
+                              prev.filter((p) => p.id !== printscreen.id)
+                            );
+                            setPrintScreens((prev) => prev.filter((p) => p.id !== printscreen.id));
                           } catch {
                             console.error('Error deleting printscreen');
                           }
@@ -1144,7 +1319,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                       </button>
                     </div>
                   ))}
-                  
+
                   {printScreens.map((printscreen) => (
                     <div key={printscreen.id} className="relative">
                       {printscreen.file_type?.startsWith('image/') ? (
@@ -1176,7 +1351,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                         onClick={async () => {
                           try {
                             await SupabaseService.deleteFile(printscreen.id);
-                            setPrintScreens(prev => prev.filter(p => p.id !== printscreen.id));
+                            setPrintScreens((prev) => prev.filter((p) => p.id !== printscreen.id));
                           } catch {
                             console.error('Error deleting printscreen');
                           }
@@ -1187,7 +1362,7 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                       </button>
                     </div>
                   ))}
-                  
+
                   {pendingPrintscreens.length === 0 && printScreens.length === 0 && (
                     <div className="text-sm text-gray-400 italic">
                       Prisegti failą arba Cmd+V į komentaro lauką įklijuoti paveikslėlį
@@ -1210,23 +1385,23 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               />
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Priminimo žinutė
               </label>
-              <div className="flex space-x-2">
+              <div className="flex gap-2">
                 <input
                   type="text"
                   value={reminderMessage}
                   onChange={(e) => setReminderMessage(e.target.value)}
                   placeholder="Įveskite priminimo žinutę..."
-                  className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  className="flex-1 min-w-0 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 />
                 <button
                   type="button"
                   onClick={handleAddReminder}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  className={modalBtnInline}
                 >
                   Pridėti
                 </button>
@@ -1239,7 +1414,10 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
               <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Priminimai</h3>
               <div className="space-y-2">
                 {reminders.map((reminder) => (
-                  <div key={reminder.id} className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg flex items-center justify-between">
+                  <div
+                    key={reminder.id}
+                    className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg flex items-center justify-between"
+                  >
                     <div>
                       <div className="text-sm font-medium text-gray-900 dark:text-white">
                         {new Date(reminder.due_date).toLocaleDateString('lt-LT')}
@@ -1260,31 +1438,35 @@ export function EditOrderModal({ order, isOpen, onClose, onOrderUpdated }: EditO
           )}
         </div>
 
-        <div className="flex items-center justify-between p-6 border-t border-gray-200 dark:border-gray-700">
+        <div className={`flex items-center gap-3 p-6 border-t border-gray-200 dark:border-gray-700 ${isAgency ? 'justify-end' : 'justify-between'}`}>
+          {!isAgency && (
           <button
             type="button"
             onClick={handleDelete}
-            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+            className={modalBtnDanger}
           >
             Ištrinti
           </button>
+          )}
           
-          <div className="flex space-x-3">
+          <div className="flex gap-2 sm:gap-3 ml-auto">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
+              className={modalBtnSecondary}
             >
               Uždaryti
             </button>
+            {!isAgency && (
             <button
               type="button"
               onClick={handleSave}
               disabled={loading}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+              className={modalBtnPrimary}
             >
               {loading ? 'Išsaugoma...' : 'Išsaugoti'}
             </button>
+            )}
           </div>
         </div>
       </div>

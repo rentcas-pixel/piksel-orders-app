@@ -5,6 +5,15 @@ import { format } from 'date-fns';
 import { Order } from '@/types';
 import { PocketBaseService } from '@/lib/pocketbase';
 import { getDaysInMonth, getDaysInRange } from '@/lib/screen-revenue';
+import { resolveListMonthYear } from '@/lib/orders-filters';
+import { FilterDropdown } from '@/components/FilterDropdown';
+import {
+  portalCardClass,
+  portalRowHoverClass,
+  portalTheadClass,
+  portalThClass,
+  portalToolbarClass,
+} from '@/lib/portal-ui';
 
 interface AgencyAnalysisProps {
   filters: {
@@ -94,7 +103,7 @@ function AreaLineChart({
   const hoveredPoint = hoveredIdx !== null ? points[hoveredIdx] : null;
 
   return (
-    <div className="rounded-2xl border border-gray-100 dark:border-gray-700 bg-gradient-to-b from-white to-gray-50/60 dark:from-gray-800 dark:to-gray-800/80 p-4">
+    <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
       <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto" role="img" aria-label="Agentūros pajamų grafikas">
         <defs>
           <linearGradient id={`${idPrefix}-area`} x1="0" y1="0" x2="0" y2="1">
@@ -214,6 +223,10 @@ export function AgencyAnalysis({ filters, onEditOrder }: AgencyAnalysisProps) {
   }, [fetchData]);
 
   const rows = useMemo(() => {
+    const { month: resolvedMonth, year: resolvedYear } = resolveListMonthYear(
+      filters.month,
+      filters.year
+    );
     const normalizedClient = (filters.client || '').trim().toLowerCase();
     const normalizedAgencyFilter = normalizeAgencyKey(filters.agency || '');
     const filtered = orders.filter((o) => {
@@ -235,8 +248,8 @@ export function AgencyAnalysis({ filters, onEditOrder }: AgencyAnalysisProps) {
     for (const order of filtered) {
       const canonicalAgency = getCanonicalAgencyName(order.agency);
       const hasScreens = [...new Set(order.screens?.filter(Boolean) || [])].length > 0;
-      const year = parseInt(filters.year, 10);
-      const month = parseInt(filters.month, 10);
+      const year = parseInt(resolvedYear, 10);
+      const month = parseInt(resolvedMonth, 10);
       const existing = map.get(canonicalAgency.label) || {
         agency: canonicalAgency.label,
         totalOrders: 0,
@@ -250,7 +263,7 @@ export function AgencyAnalysis({ filters, onEditOrder }: AgencyAnalysisProps) {
       const total = Number(order.final_price) || 0;
       let monthlyAmount = total;
       let inSelectedMonth = true;
-      if (filters.month && filters.year) {
+      if (resolvedMonth && resolvedYear) {
         const totalDays = getDaysInRange(order.from, order.to);
         const daysInMonth = getDaysInMonth(order.from, order.to, year, month);
         inSelectedMonth = daysInMonth > 0;
@@ -344,15 +357,15 @@ export function AgencyAnalysis({ filters, onEditOrder }: AgencyAnalysisProps) {
 
   if (loading) {
     return (
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+      <div className={`${portalCardClass} p-6`}>
         <div className="text-sm text-gray-500 dark:text-gray-400">Agentūrų analizė kraunama...</div>
       </div>
     );
   }
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-      <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+    <div className={portalCardClass}>
+      <div className={portalToolbarClass}>
         <div className="flex items-start justify-between gap-4">
           <div>
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Agentūrų analizė</h3>
@@ -379,7 +392,7 @@ export function AgencyAnalysis({ filters, onEditOrder }: AgencyAnalysisProps) {
       </div>
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-          <thead className="bg-gray-50 dark:bg-gray-700">
+          <thead className={portalTheadClass}>
             <tr>
               <th onClick={() => handleSort('agency')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase cursor-pointer select-none">Agentūra</th>
               <th onClick={() => handleSort('totalOrders')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase cursor-pointer select-none">Užsakymų sk.</th>
@@ -394,7 +407,7 @@ export function AgencyAnalysis({ filters, onEditOrder }: AgencyAnalysisProps) {
             {rows.map((row) => (
               <Fragment key={row.agency}>
                 <tr
-                  className="hover:bg-gray-50 dark:hover:bg-gray-700/40 cursor-pointer"
+                  className={portalRowHoverClass}
                   onClick={() => setExpandedAgency(expandedAgency === row.agency ? null : row.agency)}
                 >
                   <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{row.agency}</td>
@@ -469,20 +482,19 @@ export function AgencyAnalysis({ filters, onEditOrder }: AgencyAnalysisProps) {
         </table>
       </div>
       {agencyChartTotals.length > 0 && (
-        <div className="border-t border-gray-200 dark:border-gray-700 p-6">
+        <div className="border-t border-gray-200 dark:border-gray-700 p-4">
           <div className="flex items-center justify-between gap-3 mb-3">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Agentūros pajamos pagal mėnesius</h3>
-            <select
+            <FilterDropdown
               value={selectedAgency}
-              onChange={(e) => setSelectedAgency(e.target.value)}
-              className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-            >
-              {agencyChartTotals.map((a) => (
-                <option key={a.agency} value={a.agency}>
-                  {a.agency} - €{a.total.toLocaleString('lt-LT', { maximumFractionDigits: 0 })}
-                </option>
-              ))}
-            </select>
+              options={agencyChartTotals.map((a) => ({
+                value: a.agency,
+                label: `${a.agency} - €${a.total.toLocaleString('lt-LT', { maximumFractionDigits: 0 })}`,
+              }))}
+              placeholder="Agentūra"
+              onChange={setSelectedAgency}
+              className="max-w-xs"
+            />
           </div>
           <AreaLineChart data={agencyChartSeries} color="#0ea5e9" idPrefix="agency-tab-revenue" />
         </div>

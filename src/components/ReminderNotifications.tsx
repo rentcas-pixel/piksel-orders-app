@@ -33,6 +33,7 @@ export function ReminderNotifications({ onClose, onOpenEditModal }: ReminderNoti
         .from('reminders')
         .select('*')
         .eq('is_completed', false)
+        .eq('visibility', 'internal')
         .lte('due_date', toYmdLocal(nextWeek)) // Due today or earlier
         .order('due_date', { ascending: true });
 

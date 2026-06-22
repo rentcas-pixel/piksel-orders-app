@@ -53,12 +53,16 @@ export interface OrderFormData {
   intensity?: string;
 }
 
+export type CommentVisibility = 'internal' | 'agency';
+
 export interface Comment {
   id: string;
   order_id: string;
   text: string;
   created_at: string;
   updated_at: string;
+  /** internal — tik Piksel komanda; agency — matoma agentūroms */
+  visibility?: CommentVisibility;
   printscreens?: FileAttachment[];
 }
 
@@ -69,6 +73,8 @@ export interface Reminder {
   due_date: string;
   is_completed: boolean;
   created_at: string;
+  /** internal — tik Piksel; agency — tik agentūros portalas */
+  visibility?: CommentVisibility;
 }
 
 export interface FileAttachment {
@@ -78,6 +84,8 @@ export interface FileAttachment {
   file_url: string;
   file_type: string;
   created_at: string;
+  /** internal — tik Piksel; agency — tik agentūros portalas */
+  visibility?: CommentVisibility;
 }
 
 export interface OrderApprovalEvent {
@@ -96,6 +104,49 @@ export interface OrderInvoiceStatus {
   invoice_sent: boolean;
   updated_at: string;
 }
+
+export interface BillingCompany {
+  id: string;
+  name: string;
+  full_name: string;
+  company_code?: string | null;
+  vat_code?: string | null;
+  address?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Invoice {
+  id: string;
+  order_id: string;
+  invoice_number: string;
+  amount: number;
+  vat_amount: number;
+  total_amount: number;
+  invoice_date: string;
+  due_date: string;
+  payment_date?: string | null;
+  buyer_name: string;
+  buyer_company_code?: string | null;
+  buyer_vat_code?: string | null;
+  buyer_address?: string | null;
+  line_description?: string | null;
+  period_from?: string | null;
+  period_to?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type InvoiceSaveInput = Omit<Invoice, 'id' | 'created_at' | 'updated_at' | 'payment_date'>;
+
+export interface BuyerFields {
+  name: string;
+  company_code: string;
+  vat_code: string;
+  address: string;
+}
+
+export type BuyerSource = 'agency' | 'client' | 'saved' | 'manual';
 
 export interface Collection {
   id: string;

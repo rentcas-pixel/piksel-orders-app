@@ -1,3 +1,26 @@
+import { format, startOfDay, subDays } from 'date-fns';
+
+export type OrdersPeriodTab = 'all' | 'current' | 'future' | 'past';
+export type OrdersViewMode = 'list' | 'calendar';
+
+function todayIso(): string {
+  return format(startOfDay(new Date()), 'yyyy-MM-dd');
+}
+
+function getPeriodFilter(tab: OrdersPeriodTab): string {
+  const today = todayIso();
+  switch (tab) {
+    case 'current':
+      return `(from<="${today}" && to>="${today}")`;
+    case 'future':
+      return `from>"${today}"`;
+    case 'past':
+      return `to<"${today}"`;
+    default:
+      return '';
+  }
+}
+
 export interface OrdersListFilters {
   status: string;
   month: string;
@@ -8,14 +31,50 @@ export interface OrdersListFilters {
   invoice_sent: string;
 }
 
+/** Konvertuoja tab reikšmes (past/current/future) į konkretų MM ir metus */
+export function resolveListMonthYear(
+  month: string,
+  year: string
+): { month: string; year: string } {
+  const yearNum = parseInt(year, 10) || new Date().getFullYear();
+
+  if (/^\d{1,2}$/.test(month)) {
+    return { month: month.padStart(2, '0'), year: String(yearNum) };
+  }
+
+  const tab = month || 'current';
+  let monthNum = new Date().getMonth() + 1;
+
+  if (tab === 'past') {
+    monthNum -= 1;
+    if (monthNum < 1) monthNum = 12;
+  } else if (tab === 'future') {
+    monthNum += 1;
+    if (monthNum > 12) monthNum = 1;
+  }
+
+  return { month: String(monthNum).padStart(2, '0'), year: String(yearNum) };
+}
+
+/** Senos reikšmės (current/past/future) arba skaičius → MM */
+export function normalizeFilterMonth(month: string): string {
+  if (/^\d{1,2}$/.test(month)) return month.padStart(2, '0');
+  return resolveListMonthYear(month, String(new Date().getFullYear())).month;
+}
+
 export function buildOrdersListFilter(params: {
   searchQuery: string;
   filters: OrdersListFilters;
+  periodTab?: OrdersPeriodTab;
   calendarYear?: number;
   calendarMonth?: number;
 }): string {
   const parts: string[] = [];
-  const { searchQuery, filters, calendarYear, calendarMonth } = params;
+  const { searchQuery, filters, periodTab, calendarYear, calendarMonth } = params;
+  const { month: resolvedMonth, year: resolvedYear } = resolveListMonthYear(
+    filters.month,
+    filters.year
+  );
 
   if (searchQuery.trim()) {
     if (searchQuery.toLowerCase().startsWith('viad')) {
@@ -57,15 +116,33 @@ export function buildOrdersListFilter(params: {
     const startDate = `${y}-${monthStr}-01`;
     const endDate = `${y}-${monthStr}-${String(lastDay).padStart(2, '0')}`;
     parts.push(`(from<="${endDate}" && to>="${startDate}")`);
-  } else if (filters.month && filters.year) {
-    const y = parseInt(filters.year, 10);
-    const m = parseInt(filters.month, 10);
+  } else if (resolvedMonth && resolvedYear) {
+    const y = parseInt(resolvedYear, 10);
+    const m = parseInt(resolvedMonth, 10);
     const lastDay = new Date(y, m, 0).getDate();
-    const startDate = `${filters.year}-${filters.month.padStart(2, '0')}-01`;
-    const endDate = `${filters.year}-${filters.month.padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    const startDate = `${resolvedYear}-${resolvedMonth}-01`;
+    const endDate = `${resolvedYear}-${resolvedMonth}-${String(lastDay).padStart(2, '0')}`;
     parts.push(`(from<="${endDate}" && to>="${startDate}")`);
-  } else if (filters.year) {
-    parts.push(`(from<="${filters.year}-12-31" && to>="${filters.year}-01-01")`);
+  } else if (resolvedMonth) {
+    const m = parseInt(resolvedMonth, 10);
+    const monthStr = resolvedMonth;
+    const yearFrom = new Date().getFullYear() - 8;
+    const yearTo = new Date().getFullYear() + 2;
+    const monthClauses: string[] = [];
+    for (let y = yearFrom; y <= yearTo; y += 1) {
+      const lastDay = new Date(y, m, 0).getDate();
+      const startDate = `${y}-${monthStr}-01`;
+      const endDate = `${y}-${monthStr}-${String(lastDay).padStart(2, '0')}`;
+      monthClauses.push(`(from<="${endDate}" && to>="${startDate}")`);
+    }
+    parts.push(`(${monthClauses.join(' || ')})`);
+  } else if (resolvedYear) {
+    parts.push(`(from<="${resolvedYear}-12-31" && to>="${resolvedYear}-01-01")`);
+  }
+
+  if (periodTab) {
+    const periodFilter = getPeriodFilter(periodTab);
+    if (periodFilter) parts.push(periodFilter);
   }
 
   return parts.join(' && ');
@@ -83,4 +160,12 @@ export function buildOrdersCalendarFilter(params: {
     calendarYear: params.year,
     calendarMonth: params.month,
   });
+}
+
+export function isRecentlyUpdated(updated: string, days = 7): boolean {
+  try {
+    return new Date(updated) >= subDays(new Date(), days);
+  } catch {
+    return false;
+  }
 }

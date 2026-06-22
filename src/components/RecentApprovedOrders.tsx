@@ -4,6 +4,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { Order } from '@/types';
 import { PocketBaseService } from '@/lib/pocketbase';
 import { SupabaseService } from '@/lib/supabase-service';
+import {
+  portalCardClass,
+  portalExportBtnClass,
+  portalRowHoverClass,
+  portalTheadClass,
+  portalThClass,
+  portalToolbarClass,
+} from '@/lib/portal-ui';
 
 interface RecentApprovedOrdersProps {
   onEditOrder?: (order: Order) => void;
@@ -119,8 +127,8 @@ export function RecentApprovedOrders({ onEditOrder, refreshKey }: RecentApproved
   }, [fetchRecentApproved, refreshKey]);
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-      <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+    <div className={portalCardClass}>
+      <div className={portalToolbarClass}>
         <div>
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Naujausi patvirtinti</h3>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
@@ -140,7 +148,7 @@ export function RecentApprovedOrders({ onEditOrder, refreshKey }: RecentApproved
         </div>
         <button
           onClick={fetchRecentApproved}
-          className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600"
+          className={portalExportBtnClass}
         >
           Atnaujinti
         </button>
@@ -164,30 +172,20 @@ export function RecentApprovedOrders({ onEditOrder, refreshKey }: RecentApproved
       ) : (
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-            <thead className="bg-gray-50 dark:bg-gray-700">
+            <thead className={portalTheadClass}>
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
-                  Data
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
-                  Klientas
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
-                  Agentūra
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
-                  Užsakymo Nr.
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
-                  Suma
-                </th>
+                <th className={portalThClass}>Data</th>
+                <th className={portalThClass}>Klientas</th>
+                <th className={portalThClass}>Agentūra</th>
+                <th className={portalThClass}>Užsakymo Nr.</th>
+                <th className={portalThClass}>Suma</th>
               </tr>
             </thead>
             <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
               {rows.map((row) => (
                 <tr
                   key={row.key}
-                  className={onEditOrder ? 'hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer' : undefined}
+                  className={onEditOrder ? portalRowHoverClass : undefined}
                   onClick={() => row.order && onEditOrder?.(row.order)}
                 >
                   <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">

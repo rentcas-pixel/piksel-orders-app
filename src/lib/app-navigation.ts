@@ -1,9 +1,13 @@
-export type AppTab = 'orders' | 'revenue' | 'partners' | 'agencies' | 'analytics' | 'latest';
+export type AppTab = 'orders' | 'invoices' | 'revenue' | 'partners' | 'agencies' | 'analytics' | 'latest';
 
 export const PAGE_META: Record<AppTab, { title: string; description: string }> = {
   orders: {
     title: 'Užsakymai',
     description: 'Valdykite reklamos užsakymus, statusus ir sąskaitas.',
+  },
+  invoices: {
+    title: 'Sąskaitos',
+    description: 'Išrašytos sąskaitos ir laisvos sąskaitos.',
   },
   revenue: {
     title: 'Ekranų pajamos',
@@ -27,4 +31,4 @@ export const PAGE_META: Record<AppTab, { title: string; description: string }> =
   },
 };
 
-export const APP_TABS: AppTab[] = ['orders', 'revenue', 'partners', 'agencies', 'latest', 'analytics'];
+export const APP_TABS: AppTab[] = ['orders', 'revenue', 'partners', 'agencies', 'latest', 'analytics', 'invoices'];

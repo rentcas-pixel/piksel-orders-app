@@ -1,5 +1,8 @@
 'use client';
 
+import { portalCardClass } from '@/lib/portal-ui';
+import { FilterDropdown } from '@/components/FilterDropdown';
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Order, Screen } from '@/types';
 import { PocketBaseService } from '@/lib/pocketbase';
@@ -43,7 +46,7 @@ function AreaLineChart({
   const hoveredPoint = hoveredIdx !== null ? points[hoveredIdx] : null;
 
   return (
-    <div className="rounded-2xl border border-gray-100 dark:border-gray-700 bg-gradient-to-b from-white to-gray-50/60 dark:from-gray-800 dark:to-gray-800/80 p-4">
+    <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
       <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto" role="img" aria-label="Pajamų grafikas">
         <defs>
           <linearGradient id={`${idPrefix}-area`} x1="0" y1="0" x2="0" y2="1">
@@ -215,30 +218,29 @@ export function ChartsAnalysis({ filters }: ChartsAnalysisProps) {
   }, [screenSeriesMap, selectedScreenId]);
 
   if (loading) {
-    return <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 text-sm text-gray-500">Grafikai kraunami...</div>;
+    return <div className={`${portalCardClass} p-6 text-sm text-gray-500 dark:text-gray-400`}>Grafikai kraunami...</div>;
   }
 
   return (
     <div className="space-y-4">
-      <div className="bg-white/90 dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 shadow-sm">
+      <div className={`${portalCardClass} p-4`}>
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">{year} pajamos pagal mėnesius</h3>
         <AreaLineChart data={yearSeries} color="#7c6cf6" idPrefix="year-revenue" />
       </div>
 
-      <div className="bg-white/90 dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 shadow-sm">
+      <div className={`${portalCardClass} p-4`}>
         <div className="flex items-center justify-between gap-3 mb-3">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Ekrano pajamos pagal mėnesius</h3>
-          <select
+          <FilterDropdown
             value={selectedScreenId}
-            onChange={(e) => setSelectedScreenId(e.target.value)}
-            className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-          >
-            {screenTotals.slice(0, 200).map((s) => (
-              <option key={s.screenId} value={s.screenId}>
-                {s.screenName} - €{s.total.toLocaleString('lt-LT', { maximumFractionDigits: 0 })}
-              </option>
-            ))}
-          </select>
+            options={screenTotals.slice(0, 200).map((s) => ({
+              value: s.screenId,
+              label: `${s.screenName} - €${s.total.toLocaleString('lt-LT', { maximumFractionDigits: 0 })}`,
+            }))}
+            placeholder="Ekranas"
+            onChange={setSelectedScreenId}
+            className="max-w-xs"
+          />
         </div>
         <AreaLineChart data={selectedScreenSeries} color="#13b981" idPrefix="screen-revenue" />
       </div>

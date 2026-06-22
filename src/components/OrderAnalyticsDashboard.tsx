@@ -6,6 +6,7 @@ import { Order } from '@/types';
 import { PocketBaseService } from '@/lib/pocketbase';
 import { SupabaseService } from '@/lib/supabase-service';
 import { getDaysInMonth, getDaysInRange } from '@/lib/screen-revenue';
+import { resolveListMonthYear } from '@/lib/orders-filters';
 
 interface OrderAnalyticsDashboardProps {
   filters: { month: string; year: string; status: string };
@@ -72,33 +73,26 @@ const HIDE_UNAPPROVED_AFTER_DAYS = 30;
 const INVOICE_ISSUED_GRACE_DAYS = 7;
 
 function getFilterForPeriod(filters: { month: string; year: string }) {
-  if (filters.month && filters.year) {
-    const y = parseInt(filters.year, 10);
-    const m = parseInt(filters.month, 10);
+  const { month, year } = resolveListMonthYear(filters.month, filters.year);
+  if (month && year) {
+    const y = parseInt(year, 10);
+    const m = parseInt(month, 10);
     const lastDay = new Date(y, m, 0).getDate();
-    const startDate = `${filters.year}-${filters.month.padStart(2, '0')}-01`;
-    const endDate = `${filters.year}-${filters.month.padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    const startDate = `${year}-${month}-01`;
+    const endDate = `${year}-${month}-${String(lastDay).padStart(2, '0')}`;
     return `(from<="${endDate}" && to>="${startDate}")`;
   }
-  if (filters.year) {
-    return `(from<="${filters.year}-12-31" && to>="${filters.year}-01-01")`;
+  if (year) {
+    return `(from<="${year}-12-31" && to>="${year}-01-01")`;
   }
   return '';
 }
 
 function getComparisonTarget(filters: { month: string; year: string }) {
-  const year = parseInt(filters.year, 10);
-  if (!year) return null;
-
-  if (filters.month) {
-    return { month: parseInt(filters.month, 10), year };
-  }
-
-  const now = new Date();
-  const currentYear = now.getFullYear();
-  if (year < currentYear) return { month: 12, year };
-  if (year > currentYear) return { month: 1, year };
-  return { month: now.getMonth() + 1, year };
+  const { month, year } = resolveListMonthYear(filters.month, filters.year);
+  const yearNum = parseInt(year, 10);
+  if (!yearNum) return null;
+  return { month: parseInt(month, 10), year: yearNum };
 }
 
 
@@ -114,6 +108,10 @@ export function OrderAnalyticsDashboard({ filters, onEditOrder, refreshKey }: Or
   const [showBundleOrders, setShowBundleOrders] = useState(false);
   const [dismissedIncidentIds, setDismissedIncidentIds] = useState<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
+  const resolvedPeriod = useMemo(
+    () => resolveListMonthYear(filters.month, filters.year),
+    [filters.month, filters.year]
+  );
   const periodFilter = useMemo(
     () => getFilterForPeriod({ month: filters.month, year: filters.year }),
     [filters.month, filters.year]
@@ -311,9 +309,9 @@ export function OrderAnalyticsDashboard({ filters, onEditOrder, refreshKey }: Or
     const monthlyOrderAmounts = visibleOrders
       .map((o) => {
         const total = Number(o.final_price) || 0;
-        if (filters.month && filters.year) {
-          const year = parseInt(filters.year, 10);
-          const month = parseInt(filters.month, 10);
+        if (resolvedPeriod.month && resolvedPeriod.year) {
+          const year = parseInt(resolvedPeriod.year, 10);
+          const month = parseInt(resolvedPeriod.month, 10);
           const totalDays = getDaysInRange(o.from, o.to);
           const daysInMonth = getDaysInMonth(o.from, o.to, year, month);
           if (totalDays <= 0 || daysInMonth <= 0) return 0;
@@ -330,9 +328,9 @@ export function OrderAnalyticsDashboard({ filters, onEditOrder, refreshKey }: Or
       if (uniqueScreens.length === 0) return sum;
 
       const total = Number(o.final_price) || 0;
-      if (filters.month && filters.year) {
-        const year = parseInt(filters.year, 10);
-        const month = parseInt(filters.month, 10);
+      if (resolvedPeriod.month && resolvedPeriod.year) {
+        const year = parseInt(resolvedPeriod.year, 10);
+        const month = parseInt(resolvedPeriod.month, 10);
         const totalDays = getDaysInRange(o.from, o.to);
         const daysInMonth = getDaysInMonth(o.from, o.to, year, month);
         if (totalDays <= 0 || daysInMonth <= 0) return sum;

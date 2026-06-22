@@ -17,46 +17,37 @@ export function Header({ onAddOrder }: HeaderProps) {
   };
 
   return (
-    <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
-      <div className="container mx-auto px-4 relative">
-        <div className="flex items-center justify-between h-24">
-          {/* Spacer for balance */}
-          <div className="w-12" />
+    <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+      <div className="container mx-auto px-4 py-4 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center">
+          <Image
+            src="/Piksel-Logotipas-juodas-RGB.jpg?v=2"
+            alt="Piksel"
+            width={200}
+            height={64}
+            className="h-12 w-auto dark:invert"
+            priority
+          />
+        </div>
 
-          {/* Piksel logo - center */}
-          <div className="absolute left-1/2 transform -translate-x-1/2 flex items-center justify-center py-5">
-            <Image
-              src="/Piksel-Logotipas-juodas-RGB.jpg?v=2"
-              alt="Piksel"
-              width={240}
-              height={80}
-              className="h-14 w-auto dark:invert"
-            />
-          </div>
-
-          {/* Actions */}
-          <div className="flex items-center space-x-4">
-            {/* Dark Mode Toggle */}
-            <button
-              onClick={toggleDarkMode}
-              className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-            >
-              {isDarkMode ? (
-                <SunIcon className="w-5 h-5" />
-              ) : (
-                <MoonIcon className="w-5 h-5" />
-              )}
-            </button>
-
-            {/* Add Order Button */}
-            <button
-              onClick={onAddOrder}
-              title="Pridėti užsakymą"
-              className="p-2 rounded-lg bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors"
-            >
-              <CalendarDaysIcon className="w-5 h-5" />
-            </button>
-          </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={toggleDarkMode}
+            className="p-2 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-700 transition-colors"
+            aria-label="Perjungti temą"
+          >
+            {isDarkMode ? <SunIcon className="w-5 h-5" /> : <MoonIcon className="w-5 h-5" />}
+          </button>
+          <button
+            type="button"
+            onClick={onAddOrder}
+            title="Pridėti užsakymą"
+            aria-label="Pridėti užsakymą"
+            className="p-2 rounded-lg bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors"
+          >
+            <CalendarDaysIcon className="w-5 h-5" />
+          </button>
         </div>
       </div>
     </header>
