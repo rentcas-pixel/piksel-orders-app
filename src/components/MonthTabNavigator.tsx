@@ -34,8 +34,12 @@ const arrowBtnClass =
   'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors';
 
 export function MonthTabNavigator({ month, year, onChange }: MonthTabNavigatorProps) {
-  const selectedMonth = parseInt(normalizeFilterMonth(month), 10);
   const selectedYear = parseInt(year, 10) || new Date().getFullYear();
+  const allMonths = month === '';
+  const normalizedMonth = normalizeFilterMonth(month);
+  const selectedMonth = allMonths
+    ? new Date().getMonth() + 1
+    : parseInt(normalizedMonth, 10) || new Date().getMonth() + 1;
 
   const prev = shiftMonth(selectedYear, selectedMonth, -1);
   const next = shiftMonth(selectedYear, selectedMonth, 1);
@@ -49,9 +53,21 @@ export function MonthTabNavigator({ month, year, onChange }: MonthTabNavigatorPr
     { month: next.month, year: next.year },
   ];
 
-  const select = (m: number, y: number) => {
+  const selectMonth = (m: number, y: number) => {
     if (!allowedYears.includes(String(y))) return;
     onChange(padMonth(m), String(y));
+  };
+
+  const shift = (delta: number) => {
+    if (allMonths) {
+      const anchor = shiftMonth(selectedYear, selectedMonth, delta);
+      if (!allowedYears.includes(String(anchor.year))) return;
+      onChange(padMonth(anchor.month), String(anchor.year));
+      return;
+    }
+    const target = shiftMonth(selectedYear, selectedMonth, delta);
+    if (!allowedYears.includes(String(target.year))) return;
+    onChange(padMonth(target.month), String(target.year));
   };
 
   return (
@@ -64,15 +80,26 @@ export function MonthTabNavigator({ month, year, onChange }: MonthTabNavigatorPr
           type="button"
           aria-label="Ankstesnis mėnuo"
           disabled={!canGoPrev}
-          onClick={() => select(prev.month, prev.year)}
+          onClick={() => shift(-1)}
           className={arrowBtnClass}
         >
           <ChevronLeftIcon className="h-4 w-4" />
         </button>
 
         <div className={filterPillGroupClass} role="tablist" aria-label="Mėnuo">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={allMonths}
+            onClick={() => onChange('', String(selectedYear))}
+            className={`rounded-md px-3 py-2 text-sm transition-all whitespace-nowrap ${
+              allMonths ? filterPillActiveClass : filterPillInactiveClass
+            }`}
+          >
+            Visi
+          </button>
           {visibleTabs.map((tab) => {
-            const active = tab.month === selectedMonth && tab.year === selectedYear;
+            const active = !allMonths && tab.month === selectedMonth && tab.year === selectedYear;
             const enabled = allowedYears.includes(String(tab.year));
             return (
               <button
@@ -81,7 +108,7 @@ export function MonthTabNavigator({ month, year, onChange }: MonthTabNavigatorPr
                 role="tab"
                 aria-selected={active}
                 disabled={!enabled}
-                onClick={() => select(tab.month, tab.year)}
+                onClick={() => selectMonth(tab.month, tab.year)}
                 className={`rounded-md px-3 py-2 text-sm transition-all whitespace-nowrap disabled:opacity-40 ${
                   active ? filterPillActiveClass : filterPillInactiveClass
                 }`}
@@ -96,7 +123,7 @@ export function MonthTabNavigator({ month, year, onChange }: MonthTabNavigatorPr
           type="button"
           aria-label="Kitas mėnuo"
           disabled={!canGoNext}
-          onClick={() => select(next.month, next.year)}
+          onClick={() => shift(1)}
           className={arrowBtnClass}
         >
           <ChevronRightIcon className="h-4 w-4" />

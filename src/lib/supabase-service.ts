@@ -89,6 +89,32 @@ function matchesVisibility(
   return value === 'internal';
 }
 
+function isMissingColumnError(
+  error: { code?: string; message?: string } | null,
+  column = 'visibility'
+): boolean {
+  if (!error) return false;
+  if (error.code === '42703') return true;
+  if (error.code === 'PGRST204') {
+    return (error.message ?? '').includes(`'${column}'`);
+  }
+  return false;
+}
+
+async function insertRowLegacyVisibility<T extends Record<string, unknown>>(
+  table: 'comments' | 'reminders',
+  payload: T
+) {
+  let result = await supabase.from(table).insert([payload]).select().single();
+
+  if (result.error && isMissingColumnError(result.error) && 'visibility' in payload) {
+    const { visibility: _visibility, ...legacyPayload } = payload;
+    result = await supabase.from(table).insert([legacyPayload]).select().single();
+  }
+
+  return result;
+}
+
 function filterByVisibility<T extends { visibility?: string | null }>(
   rows: T[],
   scope: CommentVisibility
@@ -110,7 +136,7 @@ async function insertFileAttachmentRow(
     .select()
     .single();
 
-  if (result.error?.code === '42703') {
+  if (isMissingColumnError(result.error)) {
     const { visibility: _visibility, ...legacyMetadata } = withVisibility;
     result = await supabase
       .from('file_attachments')
@@ -324,18 +350,19 @@ export class SupabaseService {
   }
 
   static async addComment(comment: Omit<Comment, 'id' | 'created_at' | 'updated_at'>): Promise<Comment> {
-    const { data, error } = await supabase
-      .from('comments')
-      .insert([{ 
-        ...comment,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }])
-      .select()
-      .single();
+    const payload = {
+      ...comment,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await insertRowLegacyVisibility('comments', payload);
 
     if (error) throw error;
-    return data;
+    return {
+      ...data,
+      visibility: data.visibility ?? comment.visibility ?? 'internal',
+    } as Comment;
   }
 
   static async updateComment(id: string, text: string): Promise<Comment> {
@@ -383,19 +410,20 @@ export class SupabaseService {
     reminder: Omit<Reminder, 'id' | 'order_id' | 'created_at' | 'visibility'>,
     visibility: CommentVisibility = 'internal'
   ): Promise<Reminder> {
-    const { data, error } = await supabase
-      .from('reminders')
-      .insert([{ 
-        order_id: orderId, 
-        ...reminder,
-        visibility,
-        created_at: new Date().toISOString()
-      }])
-      .select()
-      .single();
+    const payload = {
+      order_id: orderId,
+      ...reminder,
+      visibility,
+      created_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await insertRowLegacyVisibility('reminders', payload);
 
     if (error) throw error;
-    return data;
+    return {
+      ...data,
+      visibility: data.visibility ?? visibility,
+    } as Reminder;
   }
 
   static async updateReminder(id: string, updates: Partial<Reminder>): Promise<Reminder> {

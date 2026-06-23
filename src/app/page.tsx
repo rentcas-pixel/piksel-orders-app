@@ -27,8 +27,6 @@ import type { Invoice } from '@/types';
 import type { AppTab } from '@/lib/app-navigation';
 import type { OrdersViewMode } from '@/lib/orders-filters';
 
-const currentMonth = String(new Date().getMonth() + 1).padStart(2, '0');
-
 export default function Home() {
   const [isWeekNumbersModalOpen, setIsWeekNumbersModalOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -40,7 +38,7 @@ export default function Home() {
   const [ordersViewMode, setOrdersViewMode] = useState<OrdersViewMode>('list');
   const [filters, setFilters] = useState({
     status: '',
-    month: currentMonth,
+    month: '',
     year: '2026',
     client: '',
     agency: '',

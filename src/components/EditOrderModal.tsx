@@ -383,22 +383,8 @@ export function EditOrderModal({
       if (contentEditableElement) {
         contentEditableElement.textContent = '';
       }
-    } catch {
-      console.error('Error adding comment');
-      const tempComment = {
-        id: `temp-${Date.now()}`,
-        text: newComment.trim(),
-        created_at: new Date().toISOString(),
-        order_id: order.id
-      } as Comment;
-      
-      setComments(prev => [tempComment, ...prev]);
-      setNewComment('');
-      
-      const contentEditableElement = document.querySelector('[contenteditable="true"]') as HTMLElement;
-      if (contentEditableElement) {
-        contentEditableElement.textContent = '';
-      }
+    } catch (error) {
+      console.error('Error adding comment:', error);
     }
   };
 

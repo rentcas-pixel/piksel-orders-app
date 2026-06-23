@@ -1,5 +1,6 @@
 import type { Invoice, Order } from '@/types';
 import { daysInclusiveBetween, parseDateOnlyLocal } from '@/lib/date-utils';
+import { isDentsuLatviaOrder, matchesDentsuLatvia } from '@/lib/invoice-clients';
 
 export const VAT_RATE = 0.21;
 
@@ -37,6 +38,25 @@ export const isOwexxClient = isOwexxOrder;
 
 export function matchesOwexx(label: string): boolean {
   return /owexx/i.test(label.trim());
+}
+
+export { isDentsuLatviaOrder, matchesDentsuLatvia } from '@/lib/invoice-clients';
+
+export function resolveVatRate(params: {
+  buyerName?: string;
+  order?: Pick<Order, 'client' | 'agency'> | null;
+}): number {
+  const buyerName = params.buyerName?.trim() ?? '';
+  if (matchesDentsuLatvia(buyerName)) return 0;
+  if (params.order && isDentsuLatviaOrder(params.order)) return 0;
+  return VAT_RATE;
+}
+
+export function getInvoiceVatRate(invoice: Pick<Invoice, 'amount' | 'vat_amount'>): number {
+  const amount = Number(invoice.amount);
+  const vatAmount = Number(invoice.vat_amount);
+  if (amount > 0 && vatAmount === 0) return 0;
+  return VAT_RATE;
 }
 
 export function applyPercentDiscount(amount: number, discountPercent: number): number {
@@ -225,8 +245,8 @@ export function calculateInvoicePeriod(
   }
 }
 
-export function calculateVat(amount: number): number {
-  return Math.round(amount * VAT_RATE * 100) / 100;
+export function calculateVat(amount: number, rate = VAT_RATE): number {
+  return Math.round(amount * rate * 100) / 100;
 }
 
 export function formatEuro(amount: number): string {
@@ -273,6 +293,7 @@ function numberToWordsLt(num: number): string {
   return String(integerPart);
 }
 
+/** @deprecated use amountInWords from invoice-locale */
 export function numberToWordsWithCurrency(num: number): string {
   const integerPart = Math.floor(num);
   const decimalPart = Math.round((num - integerPart) * 100);
@@ -281,10 +302,6 @@ export function numberToWordsWithCurrency(num: number): string {
     result += ` ir ${numberToWordsLt(decimalPart)} ct.`;
   }
   return result;
-}
-
-export function buildLineDescription(order: Order, periodFrom: string, periodTo: string): string {
-  return `Reklamos transliacijos (${order.client}, U-${order.invoice_id}) ${periodFrom} - ${periodTo}`;
 }
 
 export function parseInvoiceNumber(value: string): number {

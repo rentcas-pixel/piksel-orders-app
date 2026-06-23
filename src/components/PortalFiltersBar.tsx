@@ -57,7 +57,7 @@ export function PortalFiltersBar({
     if (secondaryActiveCount > 0) setSecondaryOpen(true);
   }, [secondaryActiveCount]);
 
-  const handleFilterChange = (key: keyof OrdersListFilters, value: string) => {
+  const handleFilterChange = (key: keyof OrdersListFilters, value: string | boolean) => {
     onFiltersChange({ ...filters, [key]: value });
   };
 

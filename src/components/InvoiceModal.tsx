@@ -9,34 +9,35 @@ import { buildInvoicePdfFilename, downloadInvoicePdfFromElement } from '@/lib/in
 import { PocketBaseService } from '@/lib/pocketbase';
 import { SupabaseService } from '@/lib/supabase-service';
 import {
-  PIKSEL_LOGO_SRC,
-  PIKSEL_SELLER,
-  INVOICE_FOOTER,
-  VAT_RATE,
   addDays,
-  buildLineDescription,
   calculateVat,
   formatDateOnly,
   formatEuro,
   formatInvoiceDate,
-  isMultiMonthOrder,
-  numberToWordsWithCurrency,
   resolveInvoiceAmountAndPeriod,
+  resolveVatRate,
   defaultInvoiceDate,
   isOwexxOrder,
   isStandaloneInvoiceOrder,
+  isMultiMonthOrder,
   matchesOwexx,
   applyPercentDiscount,
   OWEXX_CLIENT_DISCOUNT_PERCENT,
   type InvoiceAmountMode,
 } from '@/lib/invoice-utils';
 import {
+  buildLineDescription,
+  formatLineDescriptionForLocale,
+  getInvoiceLabels,
+  resolveInvoiceLocale,
+} from '@/lib/invoice-locale';
+import {
   modalBtnDanger,
   modalBtnPrimary,
   modalBtnSecondary,
 } from '@/lib/portal-ui';
+import { InvoiceDocumentView } from '@/components/InvoiceDocumentView';
 import { InvoiceLineDescription } from '@/components/InvoiceLineDescription';
-import { invoiceFont } from '@/lib/invoice-font';
 
 interface InvoiceModalProps {
   order: Order | null;
@@ -78,14 +79,15 @@ export function InvoiceModal({ order, isOpen, onClose, onSaved }: InvoiceModalPr
   const [savedInvoiceId, setSavedInvoiceId] = useState<string | null>(null);
 
   const applyAmountAndPeriod = useCallback(
-    (o: Order, date: string, mode: InvoiceAmountMode) => {
+    (o: Order, date: string, mode: InvoiceAmountMode, buyerName = buyer.name) => {
       const resolved = resolveInvoiceAmountAndPeriod(o, date, mode);
+      const locale = resolveInvoiceLocale({ buyerName, order: o });
       setBaseAmount(resolved.amount);
       setPeriodFrom(resolved.from);
       setPeriodTo(resolved.to);
-      setLineDescription(buildLineDescription(o, resolved.from, resolved.to));
+      setLineDescription(buildLineDescription(o, resolved.from, resolved.to, locale));
     },
-    []
+    [buyer.name]
   );
 
   const handleOwexxDiscountToggle = (enabled: boolean) => {
@@ -109,11 +111,21 @@ export function InvoiceModal({ order, isOpen, onClose, onSaved }: InvoiceModalPr
     setPeriodFrom(nextFrom);
     setPeriodTo(nextTo);
     if (order) {
-      setLineDescription(buildLineDescription(order, nextFrom, nextTo));
+      const locale = resolveInvoiceLocale({ buyerName: buyer.name, order });
+      setLineDescription(buildLineDescription(order, nextFrom, nextTo, locale));
     }
   };
-  const vatAmount = calculateVat(amount);
+  const invoiceLocale = resolveInvoiceLocale({ buyerName: buyer.name, order });
+  const invoiceLabels = getInvoiceLabels(invoiceLocale);
+  const vatRate = resolveVatRate({ buyerName: buyer.name, order });
+  const vatAmount = calculateVat(amount, vatRate);
   const totalWithVat = Math.round((amount + vatAmount) * 100) / 100;
+  const vatPercent = vatRate * 100;
+
+  useEffect(() => {
+    if (!order || isStandaloneInvoiceOrder(order.id) || !periodFrom || !periodTo) return;
+    setLineDescription(buildLineDescription(order, periodFrom, periodTo, invoiceLocale));
+  }, [invoiceLocale, order, periodFrom, periodTo]);
 
   const applyBuyerFromCompany = useCallback(
     (c: { full_name: string; company_code?: string | null; vat_code?: string | null; address?: string | null }) => {
@@ -139,7 +151,19 @@ export function InvoiceModal({ order, isOpen, onClose, onSaved }: InvoiceModalPr
         setInvoiceNumber(existing.invoice_number);
         setInvoiceDate(existing.invoice_date);
         setDueDate(existing.due_date);
-        setLineDescription(existing.line_description ?? '');
+        setLineDescription(
+          existing.line_description
+            ? formatLineDescriptionForLocale(existing.line_description, resolveInvoiceLocale({
+                buyerName: existing.buyer_name,
+                order: o,
+              }))
+            : buildLineDescription(
+                o,
+                existing.period_from ?? formatDateOnly(o.from),
+                existing.period_to ?? formatDateOnly(o.to),
+                resolveInvoiceLocale({ buyerName: existing.buyer_name, order: o })
+              )
+        );
         setPeriodFrom(existing.period_from ?? formatDateOnly(o.from));
         setPeriodTo(existing.period_to ?? formatDateOnly(o.to));
         setBuyer({
@@ -629,226 +653,90 @@ export function InvoiceModal({ order, isOpen, onClose, onSaved }: InvoiceModalPr
             {loading ? (
               <div className="py-12 text-center text-gray-500">Kraunama...</div>
             ) : (
-              <div
-                ref={invoiceRef}
-                className={`mx-auto flex w-full max-w-4xl flex-col bg-white p-10 text-xs text-black ${invoiceFont.className} ${
-                  isGenerating
-                    ? 'box-border'
-                    : 'min-h-[780px] rounded-lg border border-gray-200'
-                }`}
-              >
-                <div className="mb-6 text-center">
-                  <div className="mb-4 flex justify-center">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={PIKSEL_LOGO_SRC}
-                      alt="Piksel"
-                      className="h-[2.86rem] w-auto"
-                    />
-                  </div>
-                  <div className="mb-4 border-b border-gray-300" />
-                  <h1 className="mb-4 text-lg font-normal">PVM SĄSKAITA FAKTŪRA</h1>
-                  <div className="space-y-1 font-normal">
-                    <div>
-                      <span>Serija </span>
-                      {isEditing ? (
-                        <input
-                          value={invoiceNumber}
-                          onChange={(e) => setInvoiceNumber(e.target.value)}
-                          className="border-b border-gray-300 bg-transparent text-center font-bold outline-none"
-                        />
-                      ) : (
-                        <span className="font-bold">{invoiceNumber}</span>
-                      )}
-                    </div>
-                    <div>
-                      <span>Sąskaitos data </span>
-                      {isEditing ? (
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          placeholder="yyyy-mm-dd"
-                          value={invoiceDate}
-                          onChange={(e) => {
-                            const next = formatDateOnly(e.target.value);
-                            setInvoiceDate(next);
-                            if (/^\d{4}-\d{2}-\d{2}$/.test(next) && amountMode === 'monthly') {
-                              applyAmountAndPeriod(order, next, 'monthly');
-                            }
-                          }}
-                          className="bg-transparent font-bold outline-none"
-                        />
-                      ) : (
-                        <span className="font-bold">{formatDateOnly(invoiceDate)}</span>
-                      )}
-                    </div>
-                    <div>
-                      <span>Apmokėti iki </span>
-                      {isEditing ? (
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          placeholder="yyyy-mm-dd"
-                          value={dueDate}
-                          onChange={(e) => setDueDate(formatDateOnly(e.target.value))}
-                          className="bg-transparent font-bold outline-none"
-                        />
-                      ) : (
-                        <span className="font-bold">{formatDateOnly(dueDate)}</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mb-6 grid grid-cols-2 gap-8">
-                  <div>
-                    <h3 className="mb-2 font-bold">Pardavėjas</h3>
-                    <div className="space-y-0.5">
-                      <p className="font-semibold">{PIKSEL_SELLER.name}</p>
-                      <p>Įm. kodas {PIKSEL_SELLER.companyCode}</p>
-                      <p>PVM mokėtojo kodas {PIKSEL_SELLER.vatCode}</p>
-                      <p>{PIKSEL_SELLER.address}</p>
-                      <p>Bankas: {PIKSEL_SELLER.bank}</p>
-                      <p>Banko kodas: {PIKSEL_SELLER.bankCode}</p>
-                      <p>Sąskaita: {PIKSEL_SELLER.account}</p>
-                    </div>
-                  </div>
-                  <div>
-                    <h3 className="mb-2 font-bold">Pirkėjas</h3>
-                    <div className="space-y-0.5">
-                      <p className="font-semibold">{buyer.name || '—'}</p>
-                      <p>Įm. kodas {buyer.company_code || '—'}</p>
-                      <p>PVM mokėtojo kodas {buyer.vat_code || '—'}</p>
-                      <p>Adresas: {buyer.address || '—'}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <table className="mb-6 w-full border-collapse">
-                  <thead>
-                    <tr className="border-y border-gray-300">
-                      <th className="p-2 text-left font-bold">Pavadinimas</th>
-                      <th className="p-2 text-center font-bold">Kiekis</th>
-                      <th className="p-2 text-center font-bold">Matas</th>
-                      <th className="p-2 text-right font-bold">Kaina be PVM</th>
-                      <th className="p-2 text-right font-bold">Suma be PVM</th>
-                      <th className="p-2 text-right font-bold">PVM Suma</th>
-                      <th className="p-2 text-center font-bold">PVM %</th>
-                      <th className="p-2 text-right font-bold">Iš viso</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr className="border-b border-gray-200">
-                      <td className="p-2">
-                        {standalone ? (
-                          <div className="font-normal whitespace-pre-wrap">
-                            {isEditing ? (
-                              <textarea
-                                value={lineDescription}
-                                onChange={(e) => setLineDescription(e.target.value)}
-                                rows={3}
-                                className="w-full border border-gray-200 bg-transparent p-1 outline-none"
-                              />
-                            ) : (
-                              lineDescription || '—'
-                            )}
-                          </div>
-                        ) : isEditing ? (
-                          <div className="font-normal">
-                            Reklamos transliacijos (
-                            <strong className="font-extrabold">{order.client}</strong>, U-
-                            {order.invoice_id}){' '}
-                            <span className="inline-flex items-center gap-1">
-                              <input
-                                type="text"
-                                inputMode="numeric"
-                                placeholder="yyyy-mm-dd"
-                                value={periodFrom}
-                                onChange={(e) => updateInvoicePeriod(e.target.value, periodTo)}
-                                className="w-[6.5rem] border-b border-gray-200 bg-transparent outline-none"
-                              />
-                              <span>-</span>
-                              <input
-                                type="text"
-                                inputMode="numeric"
-                                placeholder="yyyy-mm-dd"
-                                value={periodTo}
-                                onChange={(e) => updateInvoicePeriod(periodFrom, e.target.value)}
-                                className="w-[6.5rem] border-b border-gray-200 bg-transparent outline-none"
-                              />
-                            </span>
-                          </div>
-                        ) : (
-                          <InvoiceLineDescription
-                            text={buildLineDescription(order, periodFrom, periodTo)}
-                          />
-                        )}
-                      </td>
-                      <td className="p-2 text-center">1</td>
-                      <td className="p-2 text-center">vnt.</td>
-                      <td className="p-2 text-right">
+              <div ref={invoiceRef} className="mx-auto w-full max-w-4xl">
+                <InvoiceDocumentView
+                  locale={invoiceLocale}
+                  isGenerating={isGenerating}
+                  invoiceNumber={invoiceNumber}
+                  invoiceDate={invoiceDate}
+                  dueDate={dueDate}
+                  buyer={buyer}
+                  amount={amount}
+                  vatAmount={vatAmount}
+                  totalWithVat={totalWithVat}
+                  vatPercent={vatPercent}
+                  isEditing={isEditing}
+                  showDiscountNote={!!showOwexxDiscount && owexxDiscount50}
+                  discountPercent={OWEXX_CLIENT_DISCOUNT_PERCENT}
+                  onInvoiceNumberChange={setInvoiceNumber}
+                  onInvoiceDateChange={(next) => {
+                    const formatted = formatDateOnly(next);
+                    setInvoiceDate(formatted);
+                    if (/^\d{4}-\d{2}-\d{2}$/.test(formatted) && amountMode === 'monthly' && order) {
+                      applyAmountAndPeriod(order, formatted, 'monthly');
+                    }
+                  }}
+                  onDueDateChange={(next) => setDueDate(formatDateOnly(next))}
+                  onAmountChange={(next) => {
+                    setAmount(next);
+                    setBaseAmount(
+                      owexxDiscount50 && showOwexxDiscount
+                        ? Math.round((next / (1 - OWEXX_CLIENT_DISCOUNT_PERCENT / 100)) * 100) / 100
+                        : next
+                    );
+                  }}
+                  lineDescription={
+                    standalone ? (
+                      <div className="whitespace-pre-wrap font-normal">
                         {isEditing ? (
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={amount}
-                            onChange={(e) => {
-                              const next = parseFloat(e.target.value) || 0;
-                              setAmount(next);
-                              setBaseAmount(
-                                owexxDiscount50 && showOwexxDiscount
-                                  ? Math.round((next / (1 - OWEXX_CLIENT_DISCOUNT_PERCENT / 100)) * 100) /
-                                    100
-                                  : next
-                              );
-                            }}
-                            className="w-24 border-b border-gray-200 bg-transparent text-right outline-none"
+                          <textarea
+                            value={lineDescription}
+                            onChange={(e) => setLineDescription(e.target.value)}
+                            rows={3}
+                            className="w-full border border-gray-200 bg-transparent p-1 outline-none"
                           />
                         ) : (
-                          formatEuro(amount)
+                          lineDescription || '—'
                         )}
-                      </td>
-                      <td className="p-2 text-right">{formatEuro(amount)}</td>
-                      <td className="p-2 text-right">{formatEuro(vatAmount)}</td>
-                      <td className="p-2 text-center">{VAT_RATE * 100}%</td>
-                      <td className="p-2 text-right font-bold">{formatEuro(totalWithVat)}</td>
-                    </tr>
-                  </tbody>
-                </table>
-
-                <div className="mb-4 flex justify-end font-normal">
-                  <div className="grid grid-cols-[auto_auto] gap-x-4 gap-y-0.5 text-right">
-                    <span>Suma be PVM ({VAT_RATE * 100}%):</span>
-                    <span>{formatEuro(amount)}</span>
-                    <span>PVM ({VAT_RATE * 100}%):</span>
-                    <span>{formatEuro(vatAmount)}</span>
-                    <span>Bendra suma:</span>
-                    <span className="font-bold">{formatEuro(totalWithVat)}</span>
-                  </div>
-                </div>
-
-                {showOwexxDiscount && owexxDiscount50 && (
-                  <p className="mb-2 text-right text-xs text-gray-600">
-                    Taikoma {OWEXX_CLIENT_DISCOUNT_PERCENT}% nuolaida.
-                  </p>
-                )}
-
-                <p className="mb-6 font-normal">
-                  <span>Suma žodžiais: </span>
-                  {numberToWordsWithCurrency(totalWithVat)}
-                </p>
-
-                <div
-                  className={`mt-auto ${
-                    isGenerating ? 'mb-8 pt-2' : 'border-t border-gray-300 pt-4'
-                  }`}
-                >
-                  <p className="font-normal italic">{INVOICE_FOOTER.legalNote}</p>
-                  <p className="mt-1 font-normal italic">
-                    {INVOICE_FOOTER.contactLabel}{' '}
-                    {INVOICE_FOOTER.contactEmail}
-                  </p>
-                </div>
+                      </div>
+                    ) : isEditing && order ? (
+                      <div className="font-normal">
+                        {invoiceLabels.linePrefix} (
+                        <strong className="font-extrabold">{order.client}</strong>, U-
+                        {order.invoice_id}){' '}
+                        <span className="inline-flex items-center gap-1">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="yyyy-mm-dd"
+                            value={periodFrom}
+                            onChange={(e) => updateInvoicePeriod(e.target.value, periodTo)}
+                            className="w-[6.5rem] border-b border-gray-200 bg-transparent outline-none"
+                          />
+                          <span>-</span>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="yyyy-mm-dd"
+                            value={periodTo}
+                            onChange={(e) => updateInvoicePeriod(periodFrom, e.target.value)}
+                            className="w-[6.5rem] border-b border-gray-200 bg-transparent outline-none"
+                          />
+                        </span>
+                      </div>
+                    ) : order ? (
+                      <InvoiceLineDescription
+                        text={
+                          lineDescription ||
+                          buildLineDescription(order, periodFrom, periodTo, invoiceLocale)
+                        }
+                        locale={invoiceLocale}
+                      />
+                    ) : (
+                      '—'
+                    )
+                  }
+                />
               </div>
             )}
           </div>

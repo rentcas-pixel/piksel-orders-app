@@ -1,4 +1,4 @@
-import { format, startOfDay, subDays } from 'date-fns';
+import { format, startOfDay, subDays, subMonths } from 'date-fns';
 
 export type OrdersPeriodTab = 'all' | 'current' | 'future' | 'past';
 export type OrdersViewMode = 'list' | 'calendar';
@@ -31,12 +31,38 @@ export interface OrdersListFilters {
   invoice_sent: string;
 }
 
+/** Data (YYYY-MM-DD): nepatvirtintos nuo šios datos dar „aktualios“. */
+export function staleUnapprovedCutoffIso(): string {
+  return format(subMonths(startOfDay(new Date()), 1), 'yyyy-MM-dd');
+}
+
+/** PocketBase: slėpti senas nepatvirtintas (pagal `from`), palikti patvirtintas. */
+export function buildHideStaleUnapprovedClause(): string {
+  const cutoff = staleUnapprovedCutoffIso();
+  return `(approved=true || from>="${cutoff}")`;
+}
+
+export function isStaleUnapprovedOrder(order: { approved: boolean; from: string }): boolean {
+  if (order.approved) return false;
+  try {
+    const start = startOfDay(new Date(`${order.from}T00:00:00`));
+    const cutoff = subMonths(startOfDay(new Date()), 1);
+    return start < cutoff;
+  } catch {
+    return false;
+  }
+}
+
 /** Konvertuoja tab reikšmes (past/current/future) į konkretų MM ir metus */
 export function resolveListMonthYear(
   month: string,
   year: string
 ): { month: string; year: string } {
   const yearNum = parseInt(year, 10) || new Date().getFullYear();
+
+  if (month === '') {
+    return { month: '', year: year.trim() ? String(yearNum) : '' };
+  }
 
   if (/^\d{1,2}$/.test(month)) {
     return { month: month.padStart(2, '0'), year: String(yearNum) };
@@ -58,6 +84,7 @@ export function resolveListMonthYear(
 
 /** Senos reikšmės (current/past/future) arba skaičius → MM */
 export function normalizeFilterMonth(month: string): string {
+  if (month === '') return '';
   if (/^\d{1,2}$/.test(month)) return month.padStart(2, '0');
   return resolveListMonthYear(month, String(new Date().getFullYear())).month;
 }
