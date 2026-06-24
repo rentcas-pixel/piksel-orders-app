@@ -10,7 +10,12 @@ import {
 } from '@/lib/combined-invoice';
 import { InvoiceService } from '@/lib/invoice-service';
 import { PocketBaseService } from '@/lib/pocketbase';
-import { buildInvoicePdfFilename, downloadInvoicePdfFromElement } from '@/lib/invoice-pdf';
+import {
+  buildInvoicePdfFilename,
+  downloadInvoicePdfFromElement,
+  INVOICE_PDF_WIDTH_PX,
+  resolveInvoicePdfCaptureElement,
+} from '@/lib/invoice-pdf';
 import {
   addDays,
   applyPercentDiscount,
@@ -278,6 +283,53 @@ export function CombinedInvoiceModal({
     return () => window.removeEventListener('keydown', handler, true);
   }, [isOpen, onClose]);
 
+  const handleRemoveLine = async (line: EditableLine) => {
+    const order = referenceOrders.find((o) => o.id === line.orderId);
+    const label = order?.invoice_id ? `U-${order.invoice_id}` : line.orderId;
+    const confirmed = window.confirm(
+      `Pašalinti ${label} iš sąskaitos?\n\nŠio užsakymo sąskaitos būsena bus atstatyta į „neišrašyta“.`
+    );
+    if (!confirmed) return;
+
+    if (lines.length <= 1) {
+      alert('Sąskaitoje turi likti bent viena eilutė. Norėdami atšaukti viską — ištrinkite visą sąskaitą.');
+      return;
+    }
+
+    if (savedInvoiceId) {
+      setLoading(true);
+      try {
+        const updated = await InvoiceService.removeOrderFromCombinedInvoice(
+          savedInvoiceId,
+          line.orderId
+        );
+        if (!updated) {
+          onSaved?.();
+          onClose();
+          return;
+        }
+        setLines((prev) => prev.filter((l) => l.key !== line.key));
+        setReferenceOrders((prev) => prev.filter((o) => o.id !== line.orderId));
+        setSavedInvoiceId(updated.id);
+        onSaved?.();
+      } catch (error) {
+        console.error('remove line from combined invoice:', error);
+        alert('Nepavyko pašalinti eilutės.');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    const nextLines = lines.filter((l) => l.key !== line.key);
+    if (nextLines.length < 2) {
+      alert('Sujungtoje sąskaitoje turi likti bent 2 kampanijos.');
+      return;
+    }
+    setLines(nextLines);
+    setReferenceOrders((prev) => prev.filter((o) => o.id !== line.orderId));
+  };
+
   const handleLineAmountChange = (key: string, value: number) => {
     setLines((prev) =>
       prev.map((l) => {
@@ -382,7 +434,7 @@ export function CombinedInvoiceModal({
     await new Promise((r) => setTimeout(r, 300));
     try {
       await downloadInvoicePdfFromElement(
-        invoiceRef.current,
+        resolveInvoicePdfCaptureElement(invoiceRef.current),
         buildInvoicePdfFilename({
           invoice_number: invoiceNumber,
           buyer_name: buyer.name || 'Saskaita',
@@ -489,16 +541,34 @@ export function CombinedInvoiceModal({
                 Eilutės ({lines.length})
               </h3>
               <ul className="max-h-48 space-y-2 overflow-y-auto text-xs text-gray-600 dark:text-gray-400">
-                {lines.map((line) => (
+                {lines.map((line) => {
+                  const order = referenceOrders.find((o) => o.id === line.orderId);
+                  return (
                   <li key={line.key} className="rounded border border-gray-200 p-2 dark:border-gray-700">
-                    <div className="font-medium text-gray-800 dark:text-gray-200">
-                      {referenceOrders.find((o) => o.id === line.orderId)?.invoice_id ?? line.orderId}
-                    </div>
-                    <div className="mt-0.5">
-                      {line.periodFrom} – {line.periodTo}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="font-medium text-gray-800 dark:text-gray-200">
+                          {order?.invoice_id ? `U-${order.invoice_id}` : line.orderId}
+                        </div>
+                        <div className="mt-0.5">
+                          {line.periodFrom} – {line.periodTo}
+                        </div>
+                      </div>
+                      {(isEditing || !isExisting) && (
+                        <button
+                          type="button"
+                          onClick={() => void handleRemoveLine(line)}
+                          disabled={loading}
+                          className="shrink-0 rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:hover:bg-red-950/30"
+                          title="Pašalinti iš sąskaitos"
+                        >
+                          <XMarkIcon className="h-4 w-4" />
+                        </button>
+                      )}
                     </div>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             </div>
 
@@ -529,7 +599,14 @@ export function CombinedInvoiceModal({
             {loading && lines.length === 0 ? (
               <p className="text-sm text-gray-500">Kraunama…</p>
             ) : (
-              <div ref={invoiceRef}>
+              <div
+                ref={invoiceRef}
+                className="mx-auto w-full"
+                style={{
+                  maxWidth: INVOICE_PDF_WIDTH_PX,
+                  width: isGenerating ? INVOICE_PDF_WIDTH_PX : undefined,
+                }}
+              >
                 <InvoiceDocumentView
                   locale={invoiceLocale}
                   isGenerating={isGenerating}

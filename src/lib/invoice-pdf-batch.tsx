@@ -41,8 +41,11 @@ export async function generateInvoicePdfBlob(invoice: Invoice): Promise<Blob> {
     await new Promise<void>((resolve) => {
       requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
     });
-    const element = host.firstElementChild as HTMLElement | null;
-    if (!element) throw new Error('Nepavyko paruošti sąskaitos PDF');
+    const element =
+      host.querySelector('[data-invoice-document-root]') ??
+      host.querySelector('[data-invoice-preview-ready="true"]') ??
+      host.firstElementChild;
+    if (!(element instanceof HTMLElement)) throw new Error('Nepavyko paruošti sąskaitos PDF');
     return await invoicePdfBlobFromElement(element);
   } finally {
     root.unmount();

@@ -23,7 +23,7 @@ export function InvoiceLineDescription({ text, locale = 'lt' }: InvoiceLineDescr
     const [, client, invoiceId, period] = orderMatch;
     const prefix = locale === 'en' ? 'Advertising broadcasts' : 'Reklamos transliacijos';
     return (
-      <div className="font-normal">
+      <div className="w-full text-left font-normal">
         {prefix} (
         <strong className="font-extrabold">{client}</strong>, U-{invoiceId}) {period}
       </div>

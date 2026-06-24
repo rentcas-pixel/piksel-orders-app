@@ -1,6 +1,8 @@
 import { supabase } from '@/lib/supabase';
 import { fetchAgencyOrderIds } from '@/lib/agency-orders';
 import {
+  computeInvoiceTotals,
+  getInvoiceVatRate,
   isCombinedInvoiceOrder,
   isStandaloneInvoiceOrder,
 } from '@/lib/invoice-utils';
@@ -140,6 +142,9 @@ export class InvoiceService {
     existingInvoiceId?: string | null
   ): Promise<Invoice> {
     let invoice: Invoice;
+    const previousOrderIds = existingInvoiceId
+      ? await this.getOrderIdsForInvoice(existingInvoiceId)
+      : [];
 
     if (existingInvoiceId) {
       invoice = await this.updateInvoice(existingInvoiceId, input);
@@ -167,13 +172,76 @@ export class InvoiceService {
     if (lineError) throw lineError;
 
     const orderIds = lines.map((l) => l.order_id);
+    const removedOrderIds = previousOrderIds.filter((id) => !orderIds.includes(id));
+
     await Promise.all(
       orderIds.map((orderId) =>
         SupabaseService.upsertInvoiceStatus(orderId, { invoice_issued: true })
       )
     );
 
+    await Promise.all(
+      removedOrderIds.map((orderId) =>
+        SupabaseService.upsertInvoiceStatus(orderId, {
+          invoice_issued: false,
+          invoice_sent: false,
+        })
+      )
+    );
+
     return invoice;
+  }
+
+  /** Pašalina vieną užsakymą iš sujungtos sąskaitos ir atstato jo būseną. */
+  static async removeOrderFromCombinedInvoice(
+    invoiceId: string,
+    orderId: string
+  ): Promise<Invoice | null> {
+    const invoice = await this.getById(invoiceId);
+    if (!invoice) return null;
+
+    const { error: delError } = await supabase
+      .from('invoice_lines')
+      .delete()
+      .eq('invoice_id', invoiceId)
+      .eq('order_id', orderId);
+    if (delError) throw delError;
+
+    await SupabaseService.upsertInvoiceStatus(orderId, {
+      invoice_issued: false,
+      invoice_sent: false,
+    });
+
+    const remainingLines = await this.getLinesForInvoice(invoiceId);
+    if (remainingLines.length === 0) {
+      const { error } = await supabase.from('invoices').delete().eq('id', invoiceId);
+      if (error) throw error;
+      return null;
+    }
+
+    const vatRate = getInvoiceVatRate(invoice);
+    const totals = computeInvoiceTotals(
+      remainingLines.map((line) => Number(line.amount)),
+      vatRate
+    );
+    const firstLine = remainingLines[0];
+
+    return this.updateInvoice(invoiceId, {
+      order_id: invoice.order_id,
+      invoice_number: invoice.invoice_number,
+      amount: totals.amount,
+      vat_amount: totals.vat_amount,
+      total_amount: totals.total_amount,
+      invoice_date: invoice.invoice_date,
+      due_date: invoice.due_date,
+      buyer_name: invoice.buyer_name,
+      buyer_company_code: invoice.buyer_company_code,
+      buyer_vat_code: invoice.buyer_vat_code,
+      buyer_address: invoice.buyer_address,
+      line_description: firstLine.line_description,
+      period_from: firstLine.period_from,
+      period_to: firstLine.period_to,
+    });
   }
 
   static async updateInvoice(id: string, input: InvoiceSaveInput): Promise<Invoice> {

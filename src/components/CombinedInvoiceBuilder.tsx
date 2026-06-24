@@ -178,14 +178,16 @@ export function CombinedInvoiceBuilder({
 
   return (
     <div className={`mb-4 ${portalCardClass}`}>
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className={`flex w-full items-center justify-between gap-3 px-4 py-3 text-left ${
+      <div
+        className={`flex w-full items-center justify-between gap-3 px-4 py-3 ${
           expanded ? 'border-b border-gray-200 dark:border-gray-700' : ''
         }`}
       >
-        <div className="flex min-w-0 items-start gap-2">
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex min-w-0 flex-1 items-start gap-2 text-left"
+        >
           <ChevronDownIcon
             className={`mt-0.5 h-5 w-5 shrink-0 text-gray-500 transition-transform ${expanded ? 'rotate-180' : ''}`}
           />
@@ -199,12 +201,9 @@ export function CombinedInvoiceBuilder({
                   : `${candidates.length} neužsakytų kampanijų — išskleiskite norėdami sujungti`}
             </p>
           </div>
-        </div>
+        </button>
         {expanded && (
-          <div
-            className="flex flex-wrap items-center justify-end gap-2"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="flex flex-wrap items-center justify-end gap-2">
           {selectedCandidates.length >= 1 && !agencyFilter && selectedCandidates[0].order.agency?.trim() && (
             <button
               type="button"
@@ -239,7 +238,7 @@ export function CombinedInvoiceBuilder({
           </button>
           </div>
         )}
-      </button>
+      </div>
 
       {expanded && (
         <>

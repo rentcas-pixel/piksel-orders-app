@@ -9,6 +9,7 @@ import {
   resolveInvoiceLocale,
 } from '@/lib/invoice-locale';
 import { InvoiceService } from '@/lib/invoice-service';
+import { INVOICE_PDF_WIDTH_PX } from '@/lib/invoice-pdf';
 import {
   getInvoiceVatRate,
   isCombinedInvoiceOrder,
@@ -73,7 +74,10 @@ export function InvoiceDocumentPreview({ invoice, forPdf = false }: InvoiceDocum
   }
 
   return (
-    <div data-invoice-preview-ready="true">
+    <div
+      data-invoice-preview-ready="true"
+      style={forPdf ? { width: INVOICE_PDF_WIDTH_PX } : undefined}
+    >
     <InvoiceDocumentView
       locale={locale}
       forPdf={forPdf}

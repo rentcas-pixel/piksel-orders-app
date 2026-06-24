@@ -6,7 +6,7 @@ import { format } from 'date-fns';
 import type { Invoice } from '@/types';
 import { InvoiceDocumentPreview } from '@/components/InvoiceDocumentPreview';
 import { InvoiceService } from '@/lib/invoice-service';
-import { buildInvoicePdfFilename, downloadInvoicePdfFromElement, INVOICE_PDF_WIDTH_PX } from '@/lib/invoice-pdf';
+import { buildInvoicePdfFilename, downloadInvoicePdfFromElement, INVOICE_PDF_WIDTH_PX, resolveInvoicePdfCaptureElement } from '@/lib/invoice-pdf';
 import { formatInvoiceListDescription } from '@/components/InvoiceLineDescription';
 import { downloadInvoicesZip } from '@/lib/invoice-pdf-batch';
 import { formatEuro } from '@/lib/invoice-utils';
@@ -71,7 +71,9 @@ export function InvoicesTable({
 
     const run = async () => {
       await new Promise((r) => setTimeout(r, 50));
-      const element = pdfHostRef.current?.firstElementChild as HTMLElement | null;
+      const element = pdfHostRef.current
+        ? resolveInvoicePdfCaptureElement(pdfHostRef.current)
+        : null;
       if (!element) return;
       try {
         await downloadInvoicePdfFromElement(element, buildInvoicePdfFilename(pdfInvoice));
