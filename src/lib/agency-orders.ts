@@ -5,9 +5,12 @@ import {
   type CampaignScreen,
 } from '@/lib/campaign-calculator';
 import { PocketBaseService } from '@/lib/pocketbase';
-import { resolveListMonthYear } from '@/lib/orders-filters';
+import {
+  buildHideStaleUnapprovedClause,
+  resolveListMonthYear,
+} from '@/lib/orders-filters';
 import { toCampaignOrderInput, toCampaignScreen } from '@/lib/reklamos-planas-data';
-import { getCanonicalAgencyLabel } from '@/lib/agency-names';
+import { agencyMatchesFilter, getCanonicalAgencyLabel } from '@/lib/agency-names';
 
 export type AgencyPeriodTab = 'all' | 'current' | 'future' | 'past';
 export type AgencyViewMode = 'list' | 'calendar';
@@ -17,6 +20,7 @@ export interface AgencyListFilters {
   month: string;
   year: string;
   client: string;
+  showStaleUnapproved?: boolean;
 }
 
 function todayIso(): string {
@@ -97,6 +101,10 @@ export function buildAgencyOrdersFilter(params: {
 
   const periodFilter = getPeriodFilter(periodTab);
   if (periodFilter) parts.push(periodFilter);
+
+  if (!filters.showStaleUnapproved) {
+    parts.push(buildHideStaleUnapprovedClause());
+  }
 
   return parts.join(' && ');
 }
@@ -253,6 +261,34 @@ export async function fetchAgencyOptions(): Promise<string[]> {
     if (!labels.has(key)) labels.set(key, label);
   }
   return Array.from(labels.values()).sort((a, b) => a.localeCompare(b, 'lt'));
+}
+
+/** PocketBase užsakymų ID, priklausančių agentūrai (sąskaitų filtravimui). */
+export async function fetchAgencyOrderIds(agency: string): Promise<Set<string>> {
+  const ids = new Set<string>();
+  if (!agency.trim()) return ids;
+
+  const filter = `agency~"${agency.trim()}"`;
+  let page = 1;
+  let totalPages = 1;
+
+  while (page <= totalPages) {
+    const result = await PocketBaseService.getOrders({
+      page,
+      perPage: 200,
+      filter,
+      sort: '-updated',
+    });
+    totalPages = result.totalPages ?? 1;
+    for (const order of result.items) {
+      if (agencyMatchesFilter(order.agency ?? '', agency)) {
+        ids.add(order.id);
+      }
+    }
+    page += 1;
+  }
+
+  return ids;
 }
 
 export function isRecentlyUpdated(updated: string, days = 7): boolean {
