@@ -153,6 +153,16 @@ export function defaultInvoiceDate(reference = new Date()): string {
   );
 }
 
+/** Sąskaitos data pagal sąskaitavimo mėnesį (filtras), arba einamasis mėnuo. */
+export function invoiceDateForBillingPeriod(month: string, year: string): string {
+  const monthNum = parseInt(month, 10);
+  const yearNum = parseInt(year, 10);
+  if (month && year && !Number.isNaN(monthNum) && !Number.isNaN(yearNum) && monthNum >= 1 && monthNum <= 12) {
+    return defaultInvoiceDate(new Date(yearNum, monthNum - 1, 1));
+  }
+  return defaultInvoiceDate();
+}
+
 export function calculateMonthlyAmount(order: Order, invoiceDate: string): number {
   if (!isMultiMonthOrder(order)) return order.final_price ?? 0;
   if (!order.from || !order.to || !order.final_price) return order.final_price ?? 0;
@@ -314,6 +324,7 @@ export function formatPikNumber(seq: number): string {
 }
 
 const STANDALONE_ORDER_PREFIX = 'standalone-';
+const COMBINED_ORDER_PREFIX = 'combined-';
 export const INVOICE_SEED_ORDER_ID = 'seed-last-number';
 
 /** Techninis įrašas PIK numeracijai — nerodomas sąraše. */
@@ -360,4 +371,22 @@ export function createStandaloneInvoiceOrder(orderId?: string): Order {
 
 export function isStandaloneInvoiceOrder(orderId: string): boolean {
   return orderId.startsWith(STANDALONE_ORDER_PREFIX);
+}
+
+export function createCombinedInvoiceOrderId(): string {
+  return `${COMBINED_ORDER_PREFIX}${crypto.randomUUID()}`;
+}
+
+export function isCombinedInvoiceOrder(orderId: string): boolean {
+  return orderId.startsWith(COMBINED_ORDER_PREFIX);
+}
+
+export function computeInvoiceTotals(
+  lineAmounts: number[],
+  vatRate: number
+): { amount: number; vat_amount: number; total_amount: number } {
+  const amount = Math.round(lineAmounts.reduce((s, a) => s + a, 0) * 100) / 100;
+  const vat_amount = calculateVat(amount, vatRate);
+  const total_amount = Math.round((amount + vat_amount) * 100) / 100;
+  return { amount, vat_amount, total_amount };
 }

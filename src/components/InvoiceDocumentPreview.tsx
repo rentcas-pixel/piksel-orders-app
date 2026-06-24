@@ -1,13 +1,19 @@
 'use client';
 
-import type { Invoice } from '@/types';
+import { useEffect, useMemo, useState } from 'react';
+import type { Invoice, InvoiceLine } from '@/types';
 import { InvoiceLineDescription } from '@/components/InvoiceLineDescription';
 import { InvoiceDocumentView } from '@/components/InvoiceDocumentView';
 import {
   formatLineDescriptionForLocale,
   resolveInvoiceLocale,
 } from '@/lib/invoice-locale';
-import { getInvoiceVatRate, isStandaloneInvoiceOrder } from '@/lib/invoice-utils';
+import { InvoiceService } from '@/lib/invoice-service';
+import {
+  getInvoiceVatRate,
+  isCombinedInvoiceOrder,
+  isStandaloneInvoiceOrder,
+} from '@/lib/invoice-utils';
 
 interface InvoiceDocumentPreviewProps {
   invoice: Invoice;
@@ -15,16 +21,59 @@ interface InvoiceDocumentPreviewProps {
 }
 
 export function InvoiceDocumentPreview({ invoice, forPdf = false }: InvoiceDocumentPreviewProps) {
+  const [lines, setLines] = useState<InvoiceLine[]>([]);
+  const [linesLoaded, setLinesLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLinesLoaded(false);
+    void InvoiceService.getLinesForInvoice(invoice.id).then((data) => {
+      if (!cancelled) {
+        setLines(data);
+        setLinesLoaded(true);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [invoice.id]);
+
   const locale = resolveInvoiceLocale({ buyerName: invoice.buyer_name });
   const amount = Number(invoice.amount);
   const vatAmount = Number(invoice.vat_amount);
   const totalWithVat = Number(invoice.total_amount);
   const vatPercent = getInvoiceVatRate(invoice) * 100;
-  const lineText = invoice.line_description
+
+  const documentLines = useMemo(() => {
+    if (lines.length === 0) return undefined;
+    return lines.map((line) => {
+      const text = formatLineDescriptionForLocale(line.line_description, locale);
+      return {
+        key: line.id,
+        amount: Number(line.amount),
+        description: isStandaloneInvoiceOrder(invoice.order_id) ? (
+          <div className="whitespace-pre-wrap font-normal">{text}</div>
+        ) : (
+          <InvoiceLineDescription text={text} locale={locale} />
+        ),
+      };
+    });
+  }, [lines, locale, invoice.order_id]);
+
+  const singleLineText = invoice.line_description
     ? formatLineDescriptionForLocale(invoice.line_description, locale)
     : '';
 
+  if (!linesLoaded) {
+    return (
+      <div className="flex min-h-[200px] items-center justify-center text-sm text-gray-500">
+        Kraunama…
+      </div>
+    );
+  }
+
   return (
+    <div data-invoice-preview-ready="true">
     <InvoiceDocumentView
       locale={locale}
       forPdf={forPdf}
@@ -41,17 +90,19 @@ export function InvoiceDocumentPreview({ invoice, forPdf = false }: InvoiceDocum
       vatAmount={vatAmount}
       totalWithVat={totalWithVat}
       vatPercent={vatPercent}
+      lines={documentLines}
       lineDescription={
-        lineText ? (
+        !documentLines && singleLineText ? (
           isStandaloneInvoiceOrder(invoice.order_id) ? (
-            <div className="whitespace-pre-wrap font-normal">{lineText}</div>
+            <div className="whitespace-pre-wrap font-normal">{singleLineText}</div>
           ) : (
-            <InvoiceLineDescription text={lineText} locale={locale} />
+            <InvoiceLineDescription text={singleLineText} locale={locale} />
           )
         ) : (
           '—'
         )
       }
     />
+    </div>
   );
 }

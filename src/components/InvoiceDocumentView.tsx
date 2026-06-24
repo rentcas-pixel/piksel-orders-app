@@ -1,7 +1,6 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import type { BuyerFields } from '@/types';
 import { invoiceFont } from '@/lib/invoice-font';
 import { INVOICE_PDF_MIN_HEIGHT_PX, INVOICE_PDF_WIDTH_PX } from '@/lib/invoice-pdf';
 import {
@@ -9,7 +8,19 @@ import {
   getInvoiceLabels,
   type InvoiceLocale,
 } from '@/lib/invoice-locale';
-import { formatDateOnly, formatEuro, PIKSEL_LOGO_SRC, PIKSEL_SELLER } from '@/lib/invoice-utils';
+import {
+  calculateVat,
+  formatDateOnly,
+  formatEuro,
+  PIKSEL_LOGO_SRC,
+  PIKSEL_SELLER,
+} from '@/lib/invoice-utils';
+
+export interface InvoiceDocumentLineView {
+  key: string;
+  description: ReactNode;
+  amount: number;
+}
 
 export interface InvoiceDocumentViewProps {
   locale: InvoiceLocale;
@@ -18,12 +29,20 @@ export interface InvoiceDocumentViewProps {
   invoiceNumber: string;
   invoiceDate: string;
   dueDate: string;
-  buyer: BuyerFields;
+  buyer: {
+    name: string;
+    company_code: string;
+    vat_code: string;
+    address: string;
+  };
   amount: number;
   vatAmount: number;
   totalWithVat: number;
   vatPercent: number;
-  lineDescription: ReactNode;
+  /** Viena eilutė (senas formatas) */
+  lineDescription?: ReactNode;
+  /** Kelios eilutės (sujungta sąskaita) */
+  lines?: InvoiceDocumentLineView[];
   showDiscountNote?: boolean;
   discountPercent?: number;
   isEditing?: boolean;
@@ -31,6 +50,7 @@ export interface InvoiceDocumentViewProps {
   onInvoiceDateChange?: (value: string) => void;
   onDueDateChange?: (value: string) => void;
   onAmountChange?: (value: number) => void;
+  onLineAmountChange?: (key: string, value: number) => void;
 }
 
 export function InvoiceDocumentView({
@@ -46,6 +66,7 @@ export function InvoiceDocumentView({
   totalWithVat,
   vatPercent,
   lineDescription,
+  lines,
   showDiscountNote = false,
   discountPercent = 0,
   isEditing = false,
@@ -53,8 +74,20 @@ export function InvoiceDocumentView({
   onInvoiceDateChange,
   onDueDateChange,
   onAmountChange,
+  onLineAmountChange,
 }: InvoiceDocumentViewProps) {
   const labels = getInvoiceLabels(locale);
+  const vatRate = vatPercent / 100;
+  const documentLines =
+    lines && lines.length > 0
+      ? lines
+      : [
+          {
+            key: 'single',
+            description: lineDescription ?? '—',
+            amount,
+          },
+        ];
 
   return (
     <div
@@ -178,28 +211,47 @@ export function InvoiceDocumentView({
           </tr>
         </thead>
         <tbody>
-          <tr className="border-b border-gray-200">
-            <td className="p-2">{lineDescription}</td>
-            <td className="p-2 text-center">1</td>
-            <td className="p-2 text-center">{labels.unitShort}</td>
-            <td className="p-2 text-right">
-              {isEditing && onAmountChange ? (
-                <input
-                  type="number"
-                  step="0.01"
-                  value={amount}
-                  onChange={(e) => onAmountChange(parseFloat(e.target.value) || 0)}
-                  className="w-24 border-b border-gray-200 bg-transparent text-right outline-none"
-                />
-              ) : (
-                formatEuro(amount)
-              )}
-            </td>
-            <td className="p-2 text-right">{formatEuro(amount)}</td>
-            <td className="p-2 text-right">{formatEuro(vatAmount)}</td>
-            <td className="p-2 text-center">{vatPercent}%</td>
-            <td className="p-2 text-right font-bold">{formatEuro(totalWithVat)}</td>
-          </tr>
+          {documentLines.map((line) => {
+            const lineVat = calculateVat(line.amount, vatRate);
+            const lineTotal = Math.round((line.amount + lineVat) * 100) / 100;
+            const isSingleEditable =
+              documentLines.length === 1 && isEditing && onAmountChange && line.key === 'single';
+
+            return (
+              <tr key={line.key} className="border-b border-gray-200">
+                <td className="p-2">{line.description}</td>
+                <td className="p-2 text-center">1</td>
+                <td className="p-2 text-center">{labels.unitShort}</td>
+                <td className="p-2 text-right">
+                  {isSingleEditable ? (
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={line.amount}
+                      onChange={(e) => onAmountChange(parseFloat(e.target.value) || 0)}
+                      className="w-24 border-b border-gray-200 bg-transparent text-right outline-none"
+                    />
+                  ) : isEditing && onLineAmountChange && line.key !== 'single' ? (
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={line.amount}
+                      onChange={(e) =>
+                        onLineAmountChange(line.key, parseFloat(e.target.value) || 0)
+                      }
+                      className="w-24 border-b border-gray-200 bg-transparent text-right outline-none"
+                    />
+                  ) : (
+                    formatEuro(line.amount)
+                  )}
+                </td>
+                <td className="p-2 text-right">{formatEuro(line.amount)}</td>
+                <td className="p-2 text-right">{formatEuro(lineVat)}</td>
+                <td className="p-2 text-center">{vatPercent}%</td>
+                <td className="p-2 text-right font-bold">{formatEuro(lineTotal)}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
 

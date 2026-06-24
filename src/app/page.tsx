@@ -16,12 +16,20 @@ import { AppTabsNav } from '@/components/AppTabsNav';
 import { PortalFiltersBar } from '@/components/PortalFiltersBar';
 import { EditOrderModal } from '@/components/EditOrderModal';
 import { InvoiceModal } from '@/components/InvoiceModal';
+import { CombinedInvoiceBuilder } from '@/components/CombinedInvoiceBuilder';
+import { CombinedInvoiceModal } from '@/components/CombinedInvoiceModal';
 import { InvoicesFiltersBar } from '@/components/InvoicesFiltersBar';
 import { InvoicesTable } from '@/components/InvoicesTable';
+import { InvoiceService } from '@/lib/invoice-service';
+import type { CombinedInvoiceCandidate } from '@/lib/combined-invoice';
 import { ReminderNotifications } from '@/components/ReminderNotifications';
 import { WeekNumbersModal } from '@/components/WeekNumbersModal';
 import { PocketBaseService } from '@/lib/pocketbase';
-import { createStandaloneInvoiceOrder, isStandaloneInvoiceOrder } from '@/lib/invoice-utils';
+import {
+  createStandaloneInvoiceOrder,
+  isCombinedInvoiceOrder,
+  isStandaloneInvoiceOrder,
+} from '@/lib/invoice-utils';
 import { Order } from '@/types';
 import type { Invoice } from '@/types';
 import type { AppTab } from '@/lib/app-navigation';
@@ -31,6 +39,10 @@ export default function Home() {
   const [isWeekNumbersModalOpen, setIsWeekNumbersModalOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [invoicingOrder, setInvoicingOrder] = useState<Order | null>(null);
+  const [combinedInvoice, setCombinedInvoice] = useState<Invoice | null>(null);
+  const [combinedCandidates, setCombinedCandidates] = useState<CombinedInvoiceCandidate[] | null>(
+    null
+  );
   const [searchQuery, setSearchQuery] = useState('');
   const [showReminders, setShowReminders] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -61,7 +73,12 @@ export default function Home() {
     setEditingOrder(null);
   };
 
-  const handleGenerateInvoice = (order: Order) => {
+  const handleGenerateInvoice = async (order: Order) => {
+    const existing = await InvoiceService.getLatestForOrder(order.id);
+    if (existing && (await InvoiceService.hasInvoiceLines(existing.id))) {
+      setCombinedInvoice(existing);
+      return;
+    }
     setInvoicingOrder(order);
   };
 
@@ -74,6 +91,14 @@ export default function Home() {
   };
 
   const handleOpenInvoice = async (invoice: Invoice) => {
+    if (isCombinedInvoiceOrder(invoice.order_id)) {
+      setCombinedInvoice(invoice);
+      return;
+    }
+    if (await InvoiceService.hasInvoiceLines(invoice.id)) {
+      setCombinedInvoice(invoice);
+      return;
+    }
     if (isStandaloneInvoiceOrder(invoice.order_id)) {
       setInvoicingOrder(createStandaloneInvoiceOrder(invoice.order_id));
       return;
@@ -157,6 +182,16 @@ export default function Home() {
           )}
 
           {activeTab === 'invoices' && (
+            <CombinedInvoiceBuilder
+              month={filters.month}
+              year={filters.year}
+              searchQuery={debouncedSearch}
+              refreshKey={refreshKey}
+              onCreateCombined={(candidates) => setCombinedCandidates(candidates)}
+            />
+          )}
+
+          {activeTab === 'invoices' && (
             <InvoicesTable
               key={refreshKey}
               searchQuery={debouncedSearch}
@@ -217,6 +252,23 @@ export default function Home() {
         order={invoicingOrder}
         isOpen={!!invoicingOrder}
         onClose={() => setInvoicingOrder(null)}
+        onSaved={handleInvoiceSaved}
+        onOpenCombined={(invoice) => {
+          setInvoicingOrder(null);
+          setCombinedInvoice(invoice);
+        }}
+      />
+
+      <CombinedInvoiceModal
+        isOpen={!!combinedInvoice || !!combinedCandidates}
+        invoice={combinedInvoice}
+        candidates={combinedCandidates}
+        billingMonth={filters.month}
+        billingYear={filters.year}
+        onClose={() => {
+          setCombinedInvoice(null);
+          setCombinedCandidates(null);
+        }}
         onSaved={handleInvoiceSaved}
       />
 

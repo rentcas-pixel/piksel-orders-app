@@ -447,6 +447,23 @@ export class SupabaseService {
     if (error) throw error;
   }
 
+  /** Neužbaigti vidiniai priminimai iki nurodytos datos (įskaitant). */
+  static async getUpcomingInternalReminders(dueBeforeYmd: string): Promise<Reminder[]> {
+    const { data, error } = await supabase
+      .from('reminders')
+      .select('*')
+      .eq('is_completed', false)
+      .lte('due_date', dueBeforeYmd)
+      .order('due_date', { ascending: true });
+
+    if (error) throw error;
+
+    return filterByVisibility(data || [], 'internal').map((reminder) => ({
+      ...reminder,
+      visibility: reminder.visibility ?? 'internal',
+    }));
+  }
+
   // File Attachments
   static async getFiles(
     orderId: string,

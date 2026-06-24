@@ -116,6 +116,20 @@ export interface BillingCompany {
   updated_at: string;
 }
 
+export interface InvoiceLine {
+  id: string;
+  invoice_id: string;
+  order_id: string;
+  line_description: string;
+  period_from?: string | null;
+  period_to?: string | null;
+  amount: number;
+  sort_order: number;
+  created_at: string;
+}
+
+export type InvoiceLineInput = Omit<InvoiceLine, 'id' | 'invoice_id' | 'created_at'>;
+
 export interface Invoice {
   id: string;
   order_id: string;

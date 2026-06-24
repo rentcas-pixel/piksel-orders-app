@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/lib/supabase';
+import { SupabaseService } from '@/lib/supabase-service';
 import { PocketBaseService } from '@/lib/pocketbase';
 import { Reminder } from '@/types';
 
@@ -17,6 +17,13 @@ function toYmdLocal(date: Date) {
   return `${y}-${m}-${d}`;
 }
 
+function isRelevantReminder(dueDateYmd: string): boolean {
+  const dueDate = new Date(dueDateYmd);
+  const today = new Date();
+  const diffDays = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  return diffDays <= 3;
+}
+
 export function ReminderNotifications({ onClose, onOpenEditModal }: ReminderNotificationProps) {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -24,58 +31,47 @@ export function ReminderNotifications({ onClose, onOpenEditModal }: ReminderNoti
 
   const loadAllReminders = useCallback(async () => {
     try {
-      // Get reminders that are due today or in the next 7 days, or overdue
       const today = new Date();
       const nextWeek = new Date();
       nextWeek.setDate(today.getDate() + 7);
-      
-      const { data, error } = await supabase
-        .from('reminders')
-        .select('*')
-        .eq('is_completed', false)
-        .eq('visibility', 'internal')
-        .lte('due_date', toYmdLocal(nextWeek)) // Due today or earlier
-        .order('due_date', { ascending: true });
 
-      if (error) throw error;
-      
-      // Filter reminders to show only relevant ones (due today, overdue, or due soon)
-      const relevantReminders = (data || []).filter(reminder => {
-        const dueDate = new Date(reminder.due_date);
-        const today = new Date();
-        const diffTime = dueDate.getTime() - today.getTime();
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        
-        // Show if: overdue, due today, or due in next 3 days
-        return diffDays <= 3;
-      });
-      
+      const data = await SupabaseService.getUpcomingInternalReminders(toYmdLocal(nextWeek));
+      const relevantReminders = data.filter((reminder) => isRelevantReminder(reminder.due_date));
+
       setReminders(relevantReminders);
 
-      // Get client names for each order
-      if (relevantReminders && relevantReminders.length > 0) {
-        const orderIds = [...new Set(relevantReminders.map(r => r.order_id))];
+      if (relevantReminders.length > 0) {
+        const orderIds = [...new Set(relevantReminders.map((r) => r.order_id))];
         const clients: Record<string, string> = {};
 
-        const orders = await PocketBaseService.getOrdersBatch(orderIds);
-        for (const order of orders) {
-          clients[order.id] = order.client;
+        try {
+          const orders = await PocketBaseService.getOrdersBatch(orderIds);
+          for (const order of orders) {
+            clients[order.id] = order.client;
+          }
+        } catch (batchError) {
+          console.error('Error loading reminder order clients:', batchError);
         }
+
         for (const orderId of orderIds) {
           if (!clients[orderId]) clients[orderId] = 'Nežinomas klientas';
         }
-        
+
         setOrderClients(clients);
       }
     } catch (error) {
-      console.error('Error loading reminders:', error);
+      const message =
+        error && typeof error === 'object' && 'message' in error
+          ? String((error as { message: unknown }).message)
+          : String(error);
+      console.error('Error loading reminders:', message || error);
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadAllReminders();
+    void loadAllReminders();
   }, [loadAllReminders]);
 
   if (loading) {
@@ -96,8 +92,8 @@ export function ReminderNotifications({ onClose, onOpenEditModal }: ReminderNoti
   return (
     <div className="fixed top-4 right-4 z-50 space-y-3 max-w-sm">
       {reminders.map((reminder) => (
-        <div 
-          key={reminder.id} 
+        <div
+          key={reminder.id}
           className="bg-white border border-gray-200 rounded-xl shadow-xl p-5 backdrop-blur-sm hover:shadow-2xl transition-all duration-300 cursor-pointer hover:bg-gray-50"
           onClick={() => onOpenEditModal(reminder.order_id)}
         >
@@ -132,7 +128,7 @@ export function ReminderNotifications({ onClose, onOpenEditModal }: ReminderNoti
                     const today = new Date();
                     const diffTime = dueDate.getTime() - today.getTime();
                     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                    
+
                     if (diffDays < 0) {
                       return <span className="text-red-600 font-medium"> (Vėluoja {Math.abs(diffDays)} d.)</span>;
                     } else if (diffDays === 0) {
@@ -148,7 +144,7 @@ export function ReminderNotifications({ onClose, onOpenEditModal }: ReminderNoti
           </div>
         </div>
       ))}
-      
+
       <div className="flex justify-end pt-2">
         <button
           onClick={onClose}

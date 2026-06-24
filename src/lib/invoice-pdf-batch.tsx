@@ -33,6 +33,11 @@ export async function generateInvoicePdfBlob(invoice: Invoice): Promise<Blob> {
   try {
     root.render(<InvoiceDocumentPreview invoice={invoice} forPdf />);
     await document.fonts.ready;
+    const deadline = Date.now() + 8000;
+    while (Date.now() < deadline) {
+      if (host.querySelector('[data-invoice-preview-ready="true"]')) break;
+      await new Promise((r) => setTimeout(r, 50));
+    }
     await new Promise<void>((resolve) => {
       requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
     });

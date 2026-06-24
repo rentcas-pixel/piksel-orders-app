@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { DocumentArrowDownIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import type { BuyerFields, BuyerSource, Order } from '@/types';
+import type { BuyerFields, BuyerSource, Invoice, Order } from '@/types';
 import { BillingCompanyService } from '@/lib/billing-company-service';
 import { InvoiceService } from '@/lib/invoice-service';
 import { buildInvoicePdfFilename, downloadInvoicePdfFromElement } from '@/lib/invoice-pdf';
@@ -44,6 +44,7 @@ interface InvoiceModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSaved?: () => void;
+  onOpenCombined?: (invoice: Invoice) => void;
 }
 
 const emptyBuyer = (): BuyerFields => ({
@@ -53,7 +54,7 @@ const emptyBuyer = (): BuyerFields => ({
   address: '',
 });
 
-export function InvoiceModal({ order, isOpen, onClose, onSaved }: InvoiceModalProps) {
+export function InvoiceModal({ order, isOpen, onClose, onSaved, onOpenCombined }: InvoiceModalProps) {
   const invoiceRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -145,6 +146,12 @@ export function InvoiceModal({ order, isOpen, onClose, onSaved }: InvoiceModalPr
     setBaseAmount(0);
     try {
       const existing = await InvoiceService.getLatestForOrder(o.id);
+
+      if (existing && (await InvoiceService.hasInvoiceLines(existing.id))) {
+        onOpenCombined?.(existing);
+        onClose();
+        return;
+      }
 
       if (existing) {
         setSavedInvoiceId(existing.id);
@@ -265,7 +272,7 @@ export function InvoiceModal({ order, isOpen, onClose, onSaved }: InvoiceModalPr
     } finally {
       setLoading(false);
     }
-  }, [applyBuyerFromCompany, applyAmountAndPeriod]);
+  }, [applyBuyerFromCompany, applyAmountAndPeriod, onClose, onOpenCombined]);
 
   useEffect(() => {
     if (!isOpen) return;

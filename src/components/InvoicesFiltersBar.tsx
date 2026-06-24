@@ -30,7 +30,7 @@ export function InvoicesFiltersBar({
             type="search"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Ieškoti sąskaitų (nr., pirkėjas, aprašymas)…"
+            placeholder="Ieškoti (klientas, agentūra, kampanija, sąskaita)…"
             className="h-10 w-full rounded-lg bg-transparent pl-10 pr-3 text-sm focus:outline-none"
           />
         </div>
