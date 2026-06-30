@@ -249,7 +249,10 @@ export class BankTransactionService {
   }
 
   /** Pašalina DB dublikatus (tas pačias operacijas importuotas kelis kartus). */
-  static async deduplicateAll(): Promise<{ removed: number }> {
+  static async deduplicateAll(options?: {
+    /** Default true. Importo metu false — kitaip FIFO perrišą visas sąskaitas. */
+    rebuildAllocations?: boolean;
+  }): Promise<{ removed: number }> {
     const transactions = await this.getAll();
     const groups = new Map<string, BankTransaction[]>();
 
@@ -278,7 +281,11 @@ export class BankTransactionService {
     }
 
     if (toDelete.length > 0) {
-      await this.rebuildAllocationsFromScratch();
+      if (options?.rebuildAllocations !== false) {
+        await this.rebuildAllocationsFromScratch();
+      } else {
+        await this.syncInvoicePaidAmountsFromAllocations();
+      }
     }
 
     return { removed: toDelete.length };

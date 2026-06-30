@@ -6,7 +6,9 @@ import {
   DocumentArrowUpIcon,
   TrashIcon,
 } from '@heroicons/react/24/outline';
-import { runBankStatementImport } from '@/lib/bank-import-runner';
+import { BankImportReviewModal } from '@/components/BankImportReviewModal';
+import { applyBankImportReview, prepareBankImportReview } from '@/lib/bank-import-runner';
+import type { BankImportReview } from '@/lib/bank-import-suggestions';
 import { BankTransactionService } from '@/lib/bank-transaction-service';
 import { matchesBankSearch } from '@/lib/bank-search';
 import { isSignificantBankExpense } from '@/lib/bank-statement-import';
@@ -120,6 +122,10 @@ export function BankPanel({
   const [loading, setLoading] = useState(true);
   const [allocating, setAllocating] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [importFileName, setImportFileName] = useState('');
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importReview, setImportReview] = useState<BankImportReview | null>(null);
+  const [importReviewOpen, setImportReviewOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [deduplicating, setDeduplicating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -302,15 +308,41 @@ export function BankPanel({
     setImporting(true);
     setError(null);
     try {
-      await runBankStatementImport(file);
-      await loadData();
-      onChanged?.();
+      const prepared = await prepareBankImportReview(file);
+      if (prepared.groups.length === 0) {
+        setError('Naujų pavedimų nerasta — galbūt jau importuoti.');
+        return;
+      }
+      setImportFile(file);
+      setImportFileName(file.name);
+      setImportReview(prepared);
+      setImportReviewOpen(true);
     } catch (importError) {
-      console.error('bank import:', importError);
-      setError('Nepavyko importuoti banko failo.');
+      console.error('bank import preview:', importError);
+      setError('Nepavyko nuskaityti banko failo.');
     } finally {
       setImporting(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleConfirmImportReview = async (confirmed: BankImportReview) => {
+    if (!importFile) return;
+
+    setImporting(true);
+    setError(null);
+    try {
+      await applyBankImportReview(importFile, confirmed);
+      setImportReviewOpen(false);
+      setImportReview(null);
+      setImportFile(null);
+      await loadData();
+      onChanged?.();
+    } catch (importError) {
+      console.error('bank import apply:', importError);
+      setError('Nepavyko importuoti banko failo.');
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -485,6 +517,15 @@ export function BankPanel({
           </table>
         </div>
       </div>
+
+      <BankImportReviewModal
+        isOpen={importReviewOpen}
+        fileName={importFileName}
+        review={importReview}
+        applying={importing}
+        onClose={() => setImportReviewOpen(false)}
+        onConfirm={(confirmed) => void handleConfirmImportReview(confirmed)}
+      />
     </div>
   );
 }
