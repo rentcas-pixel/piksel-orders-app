@@ -140,6 +140,7 @@ export interface Invoice {
   invoice_date: string;
   due_date: string;
   payment_date?: string | null;
+  paid_amount?: number;
   buyer_name: string;
   buyer_company_code?: string | null;
   buyer_vat_code?: string | null;
@@ -147,11 +148,68 @@ export interface Invoice {
   line_description?: string | null;
   period_from?: string | null;
   period_to?: string | null;
+  file_url?: string | null;
+  file_name?: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export type InvoiceSaveInput = Omit<Invoice, 'id' | 'created_at' | 'updated_at' | 'payment_date'>;
+
+export interface ReceivedInvoice {
+  id: string;
+  invoice_number?: string | null;
+  seller_name: string;
+  seller_company_code?: string | null;
+  seller_vat_code?: string | null;
+  seller_address?: string | null;
+  amount: number;
+  vat_amount: number;
+  total_amount: number;
+  currency?: string | null;
+  invoice_date: string;
+  due_date?: string | null;
+  payment_date?: string | null;
+  paid_amount?: number;
+  category?: string | null;
+  description?: string | null;
+  file_url?: string | null;
+  file_name?: string | null;
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ReceivedInvoiceInput = Omit<ReceivedInvoice, 'id' | 'created_at' | 'updated_at'>;
+
+export type BankDirection = 'income' | 'expense';
+
+export interface BankTransaction {
+  id: string;
+  transaction_date: string;
+  amount: number;
+  direction: BankDirection;
+  counterparty: string;
+  description?: string | null;
+  source: string;
+  created_at: string;
+  updated_at: string;
+  allocated_amount?: number;
+}
+
+export type BankTransactionInput = Pick<
+  BankTransaction,
+  'transaction_date' | 'amount' | 'direction' | 'counterparty' | 'description' | 'source'
+>;
+
+export interface PaymentAllocation {
+  id: string;
+  bank_transaction_id: string;
+  issued_invoice_id?: string | null;
+  received_invoice_id?: string | null;
+  amount: number;
+  created_at: string;
+}
 
 export interface BuyerFields {
   name: string;

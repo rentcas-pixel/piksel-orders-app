@@ -390,3 +390,50 @@ export function computeInvoiceTotals(
   const total_amount = Math.round((amount + vat_amount) * 100) / 100;
   return { amount, vat_amount, total_amount };
 }
+
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+/** Vieninga sumų skaidymas sąrašų suvestinėms — PVM iš total − amount, kad sutaptų su Su PVM. */
+export function getInvoiceAmountBreakdown(invoice: {
+  amount: number;
+  vat_amount: number;
+  total_amount: number;
+}): { amount: number; vat: number; total: number } {
+  const amount = roundMoney(Number(invoice.amount));
+  const storedTotal = Number(invoice.total_amount);
+  const storedVat = Number(invoice.vat_amount);
+
+  if (storedTotal > 0) {
+    const total = roundMoney(storedTotal);
+    return {
+      amount,
+      vat: roundMoney(total - amount),
+      total,
+    };
+  }
+
+  const vat = roundMoney(storedVat);
+  return {
+    amount,
+    vat,
+    total: roundMoney(amount + vat),
+  };
+}
+
+export function sumInvoiceAmountBreakdowns(
+  invoices: Array<{ amount: number; vat_amount: number; total_amount: number }>
+): { amount: number; vat: number; total: number } {
+  return invoices.reduce(
+    (acc, invoice) => {
+      const breakdown = getInvoiceAmountBreakdown(invoice);
+      return {
+        amount: roundMoney(acc.amount + breakdown.amount),
+        vat: roundMoney(acc.vat + breakdown.vat),
+        total: roundMoney(acc.total + breakdown.total),
+      };
+    },
+    { amount: 0, vat: 0, total: 0 }
+  );
+}

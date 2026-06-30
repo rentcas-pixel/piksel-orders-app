@@ -4,7 +4,8 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import { Order } from '@/types';
 import { PocketBaseService } from '@/lib/pocketbase';
-import { calculatePartnerRevenues } from '@/lib/partner-revenue';
+import { calculatePartnerRevenuesForPeriod } from '@/lib/partner-revenue';
+import { resolveRevenueAnalysisPeriod } from '@/lib/screen-revenue';
 import { format } from 'date-fns';
 import { downloadExcel } from '@/lib/export-excel';
 import { resolveListMonthYear } from '@/lib/orders-filters';
@@ -19,8 +20,13 @@ import {
 
 const MONTH_NAMES = ['Sausis', 'Vasaris', 'Kovas', 'Balandis', 'Gegužė', 'Birželis', 'Liepa', 'Rugpjūtis', 'Rugsėjis', 'Spalis', 'Lapkritis', 'Gruodis'];
 
+function formatRevenuePeriodTitle(month: string, year: string): string {
+  if (!month.trim()) return year;
+  return `${MONTH_NAMES[parseInt(month, 10) - 1]} ${year}`;
+}
+
 const REVENUE_CACHE_TTL = 5 * 60 * 1000; // 5 min
-const partnerRevenueCache = new Map<string, { revenues: ReturnType<typeof calculatePartnerRevenues>; expires: number }>();
+const partnerRevenueCache = new Map<string, { revenues: ReturnType<typeof calculatePartnerRevenuesForPeriod>; expires: number }>();
 
 interface PartnerRevenueAnalysisProps {
   filters: { month: string; year: string; status: string };
@@ -30,7 +36,7 @@ interface PartnerRevenueAnalysisProps {
 
 export function PartnerRevenueAnalysis({ filters, onEditOrder, refreshKey }: PartnerRevenueAnalysisProps) {
   const [loading, setLoading] = useState(true);
-  const [revenues, setRevenues] = useState<ReturnType<typeof calculatePartnerRevenues>>([]);
+  const [revenues, setRevenues] = useState<ReturnType<typeof calculatePartnerRevenuesForPeriod>>([]);
   const [expandedPartner, setExpandedPartner] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -38,11 +44,16 @@ export function PartnerRevenueAnalysis({ filters, onEditOrder, refreshKey }: Par
     () => resolveListMonthYear(filters.month, filters.year),
     [filters.month, filters.year]
   );
+  const analysisPeriod = useMemo(
+    () => resolveRevenueAnalysisPeriod(resolvedPeriod.month, resolvedPeriod.year),
+    [resolvedPeriod.month, resolvedPeriod.year]
+  );
+  const periodTitle = formatRevenuePeriodTitle(resolvedPeriod.month, resolvedPeriod.year);
 
   const handleExportExcel = useCallback(() => {
     setExporting(true);
     try {
-      const monthName = `${MONTH_NAMES[parseInt(resolvedPeriod.month, 10) - 1]}_${resolvedPeriod.year}`;
+      const monthName = `${formatRevenuePeriodTitle(resolvedPeriod.month, resolvedPeriod.year).replace(' ', '_')}`;
       const data: unknown[][] = [
         ['Nr.', 'Partneris', 'Pajamos', 'Užsakymai'],
         ...revenues.map((r, i) => [
@@ -59,7 +70,7 @@ export function PartnerRevenueAnalysis({ filters, onEditOrder, refreshKey }: Par
   }, [revenues, resolvedPeriod.month, resolvedPeriod.year]);
 
   const fetchData = useCallback(async () => {
-    const cacheKey = `partner_${resolvedPeriod.month}-${resolvedPeriod.year}`;
+    const cacheKey = `partner_${resolvedPeriod.month || 'all'}-${resolvedPeriod.year}`;
     const cached = partnerRevenueCache.get(cacheKey);
     if (cached && cached.expires > Date.now()) {
       setRevenues(cached.revenues);
@@ -71,13 +82,10 @@ export function PartnerRevenueAnalysis({ filters, onEditOrder, refreshKey }: Par
     abortRef.current = new AbortController();
     setLoading(true);
     try {
-      const y = parseInt(resolvedPeriod.year, 10);
-      const m = parseInt(resolvedPeriod.month, 10);
-      const lastDay = new Date(y, m, 0).getDate();
-      const startDate = `${resolvedPeriod.year}-${resolvedPeriod.month}-01`;
-      const endDate = `${resolvedPeriod.year}-${resolvedPeriod.month}-${String(lastDay).padStart(2, '0')}`;
-
-      const filterParts = ['approved=true', `(from<="${endDate}" && to>="${startDate}")`];
+      const filterParts = [
+        'approved=true',
+        `(from<="${analysisPeriod.endDate}" && to>="${analysisPeriod.startDate}")`,
+      ];
       const filterString = filterParts.join(' && ');
 
       const [ordersResult, partners] = await Promise.all([
@@ -93,7 +101,12 @@ export function PartnerRevenueAnalysis({ filters, onEditOrder, refreshKey }: Par
       const items = ordersResult.items || [];
       const screenIds = [...new Set(items.flatMap(o => o.screens || []).filter(Boolean))];
       const screensWithPartner = await PocketBaseService.getScreensWithPartner(screenIds);
-      const calculated = calculatePartnerRevenues(items, screensWithPartner, partners, y, m);
+      const calculated = calculatePartnerRevenuesForPeriod(
+        items,
+        screensWithPartner,
+        partners,
+        analysisPeriod
+      );
 
       setRevenues(calculated);
       partnerRevenueCache.set(cacheKey, { revenues: calculated, expires: Date.now() + REVENUE_CACHE_TTL });
@@ -102,7 +115,7 @@ export function PartnerRevenueAnalysis({ filters, onEditOrder, refreshKey }: Par
     } finally {
       setLoading(false);
     }
-  }, [resolvedPeriod.month, resolvedPeriod.year]);
+  }, [analysisPeriod, resolvedPeriod.month, resolvedPeriod.year]);
 
   useEffect(() => {
     if (refreshKey !== undefined) partnerRevenueCache.clear();
@@ -131,10 +144,12 @@ export function PartnerRevenueAnalysis({ filters, onEditOrder, refreshKey }: Par
     return (
       <div className={`${portalCardClass} p-6`}>
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-          Partnerių pajamos – {MONTH_NAMES[parseInt(resolvedPeriod.month, 10) - 1]} {resolvedPeriod.year}
+          Partnerių pajamos – {periodTitle}
         </h3>
         <p className="text-gray-500 dark:text-gray-400">
-          Šiame mėnesyje nėra patvirtintų užsakymų su ekranais, kurie turi priskirtą partnerį.
+          {resolvedPeriod.month.trim()
+            ? 'Šiame mėnesyje nėra patvirtintų užsakymų su ekranais, kurie turi priskirtą partnerį.'
+            : `Šiais metais (${resolvedPeriod.year}) nėra patvirtintų užsakymų su ekranais, kurie turi priskirtą partnerį.`}
         </p>
       </div>
     );
@@ -147,7 +162,7 @@ export function PartnerRevenueAnalysis({ filters, onEditOrder, refreshKey }: Par
       <div className={portalToolbarClass}>
         <div>
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-            Partnerių pajamos – {MONTH_NAMES[parseInt(resolvedPeriod.month, 10) - 1]} {resolvedPeriod.year}
+            Partnerių pajamos – {periodTitle}
           </h3>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             Bendros pajamos: €{totalRevenue.toLocaleString('lt-LT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

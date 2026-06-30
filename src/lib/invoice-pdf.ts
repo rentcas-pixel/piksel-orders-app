@@ -277,5 +277,5 @@ export async function downloadInvoicePdfFromElement(
 }
 
 export function buildInvoicesZipFilename(year: string, month: string): string {
-  return `Saskaitos ${year}-${month}.zip`;
+  return month ? `Israsytos_saskaitos_${year}-${month}.zip` : `Israsytos_saskaitos_${year}.zip`;
 }

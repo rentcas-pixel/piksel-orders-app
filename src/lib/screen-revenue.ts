@@ -16,6 +16,9 @@ export function getDaysInMonth(
   year: number,
   month: number
 ): number {
+  if (!Number.isFinite(month) || month < 1 || month > 12 || !Number.isFinite(year)) {
+    return 0;
+  }
   const orderStart = parseDateOnlyLocal(orderFrom);
   const orderEnd = parseDateOnlyLocal(orderTo);
   if (!orderStart || !orderEnd) return 0;
@@ -33,7 +36,7 @@ export function getDaysInMonth(
 /** Ekrano kaina užsakyme: final_price padalinta iš unikalių ekranų skaičiaus */
 export function getScreenPriceInOrder(order: Order): number {
   const uniqueScreenCount = new Set(order.screens?.filter(Boolean) || []).size || 1;
-  return order.final_price / uniqueScreenCount;
+  return (Number(order.final_price) || 0) / uniqueScreenCount;
 }
 
 /** Pajamos vienam ekranui per dieną: suma / dienų / ekranų */
@@ -41,7 +44,7 @@ export function getRevenuePerScreenPerDay(order: Order): number {
   const days = getDaysInRange(order.from, order.to);
   const screenCount = new Set(order.screens?.filter(Boolean) || []).size || 1;
   if (days <= 0 || screenCount <= 0) return 0;
-  return order.final_price / days / screenCount;
+  return (Number(order.final_price) || 0) / days / screenCount;
 }
 
 export interface ScreenMonthRevenue {
@@ -84,7 +87,7 @@ export function calculateScreenRevenues(
     for (const screenId of screenIds) {
       const daysInMonth = getDaysInMonth(order.from, order.to, filterYear, filterMonth);
 
-      if (daysInMonth <= 0) continue;
+      if (!Number.isFinite(daysInMonth) || daysInMonth <= 0) continue;
 
       const screenPrice = getScreenPriceInOrder(order);
       const revenueForMonth = (screenPrice / totalDays) * daysInMonth;
@@ -124,4 +127,80 @@ export function calculateScreenRevenues(
   }
 
   return Array.from(screenMap.values()).sort((a, b) => b.totalRevenue - a.totalRevenue);
+}
+
+export interface RevenueAnalysisPeriod {
+  year: number;
+  month: number | null;
+  startDate: string;
+  endDate: string;
+}
+
+export function resolveRevenueAnalysisPeriod(month: string, year: string): RevenueAnalysisPeriod {
+  const y = parseInt(year, 10) || new Date().getFullYear();
+
+  if (!month.trim()) {
+    return {
+      year: y,
+      month: null,
+      startDate: `${y}-01-01`,
+      endDate: `${y}-12-31`,
+    };
+  }
+
+  const m = parseInt(month, 10);
+  const monthPadded = month.padStart(2, '0');
+  const lastDay = new Date(y, m, 0).getDate();
+
+  return {
+    year: y,
+    month: m,
+    startDate: `${y}-${monthPadded}-01`,
+    endDate: `${y}-${monthPadded}-${String(lastDay).padStart(2, '0')}`,
+  };
+}
+
+export function calculateScreenRevenuesForPeriod(
+  orders: Order[],
+  screenNames: Record<string, Screen>,
+  period: RevenueAnalysisPeriod
+): ScreenRevenueSummary[] {
+  if (period.month === null) {
+    const merged = new Map<string, ScreenRevenueSummary>();
+    const orderIdsByScreen = new Map<string, Set<string>>();
+
+    for (let month = 1; month <= 12; month += 1) {
+      for (const row of calculateScreenRevenues(orders, screenNames, period.year, month)) {
+        const existing = merged.get(row.screenId);
+        if (existing) {
+          existing.totalRevenue += row.totalRevenue;
+          existing.totalDays += row.totalDays;
+          existing.byMonth.push(...row.byMonth);
+        } else {
+          merged.set(row.screenId, {
+            ...row,
+            byMonth: [...row.byMonth],
+          });
+          orderIdsByScreen.set(row.screenId, new Set());
+        }
+
+        const orderIds = orderIdsByScreen.get(row.screenId)!;
+        for (const monthRow of row.byMonth) {
+          for (const { order } of monthRow.orders) {
+            orderIds.add(order.id);
+          }
+        }
+      }
+    }
+
+    for (const [screenId, summary] of merged) {
+      summary.orderCount = orderIdsByScreen.get(screenId)?.size ?? 0;
+      summary.revenuePerDay =
+        summary.totalDays > 0 ? summary.totalRevenue / summary.totalDays : 0;
+    }
+
+    return Array.from(merged.values()).sort((a, b) => b.totalRevenue - a.totalRevenue);
+  }
+
+  return calculateScreenRevenues(orders, screenNames, period.year, period.month);
 }

@@ -4,6 +4,7 @@ import {
   type CampaignBundle,
   type CampaignScreen,
 } from '@/lib/campaign-calculator';
+import { getOrdersServer } from '@/lib/pocketbase-server';
 import { PocketBaseService } from '@/lib/pocketbase';
 import {
   buildHideStaleUnapprovedClause,
@@ -21,6 +22,18 @@ export interface AgencyListFilters {
   year: string;
   client: string;
   showStaleUnapproved?: boolean;
+}
+
+function escapePocketBaseValue(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+/** PocketBase filtras pagal agentūros reikšmes (įvairūs PB įrašų variantai). */
+export function buildAgencyMatchClause(matchValues: string[]): string {
+  const values = [...new Set(matchValues.map((v) => v.trim()).filter(Boolean))];
+  if (values.length === 0) return '';
+  if (values.length === 1) return `agency~"${escapePocketBaseValue(values[0])}"`;
+  return `(${values.map((v) => `agency~"${escapePocketBaseValue(v)}"`).join(' || ')})`;
 }
 
 function todayIso(): string {
@@ -42,17 +55,23 @@ export function getPeriodFilter(tab: AgencyPeriodTab): string {
 }
 
 export function buildAgencyOrdersFilter(params: {
-  agency: string;
+  agency?: string;
+  agencyMatchValues?: string[];
   searchQuery: string;
   filters: AgencyListFilters;
   periodTab: AgencyPeriodTab;
 }): string {
   const parts: string[] = [];
-  const { agency, searchQuery, filters, periodTab } = params;
+  const { agency, agencyMatchValues, searchQuery, filters, periodTab } = params;
 
-  if (agency.trim()) {
-    parts.push(`agency~"${agency.trim()}"`);
-  }
+  const matchValues =
+    agencyMatchValues && agencyMatchValues.length > 0
+      ? agencyMatchValues
+      : agency?.trim()
+        ? [agency.trim()]
+        : [];
+  const agencyClause = buildAgencyMatchClause(matchValues);
+  if (agencyClause) parts.push(agencyClause);
 
   if (searchQuery.trim()) {
     parts.push(
@@ -111,7 +130,8 @@ export function buildAgencyOrdersFilter(params: {
 
 /** Kalendoriaus mėnesiui — be einamos/būsimos/buvusios skirtuko */
 export function buildAgencyCalendarFilter(params: {
-  agency: string;
+  agency?: string;
+  agencyMatchValues?: string[];
   searchQuery: string;
   filters: Pick<AgencyListFilters, 'status' | 'client'>;
   year: number;
@@ -121,6 +141,7 @@ export function buildAgencyCalendarFilter(params: {
   const yearStr = String(params.year);
   return buildAgencyOrdersFilter({
     agency: params.agency,
+    agencyMatchValues: params.agencyMatchValues,
     searchQuery: params.searchQuery,
     filters: {
       status: params.filters.status,
@@ -265,12 +286,17 @@ export async function fetchAgencyOptions(): Promise<string[]> {
 
 /** PocketBase užsakymų ID, priklausančių agentūrai (sąskaitų filtravimui). */
 export async function fetchAgencyOrderIds(agency: string): Promise<Set<string>> {
-  const ids = new Set<string>();
-  if (!agency.trim()) return ids;
+  return fetchAgencyOrderIdsByValues([agency]);
+}
 
-  const filter = `agency~"${agency.trim()}"`;
+export async function fetchAgencyOrderIdsByValues(matchValues: string[]): Promise<Set<string>> {
+  const ids = new Set<string>();
+  const filter = buildAgencyMatchClause(matchValues);
+  if (!filter) return ids;
+
   let page = 1;
   let totalPages = 1;
+  const primary = matchValues[0] ?? '';
 
   while (page <= totalPages) {
     const result = await PocketBaseService.getOrders({
@@ -281,7 +307,36 @@ export async function fetchAgencyOrderIds(agency: string): Promise<Set<string>> 
     });
     totalPages = result.totalPages ?? 1;
     for (const order of result.items) {
-      if (agencyMatchesFilter(order.agency ?? '', agency)) {
+      if (!primary || agencyMatchesFilter(order.agency ?? '', primary)) {
+        ids.add(order.id);
+      }
+    }
+    page += 1;
+  }
+
+  return ids;
+}
+
+/** Serverio pusėje — agentūrų portalui. */
+export async function fetchAgencyOrderIdsServer(matchValues: string[]): Promise<Set<string>> {
+  const ids = new Set<string>();
+  const filter = buildAgencyMatchClause(matchValues);
+  if (!filter) return ids;
+
+  let page = 1;
+  let totalPages = 1;
+  const primary = matchValues[0] ?? '';
+
+  while (page <= totalPages) {
+    const result = await getOrdersServer({
+      page,
+      perPage: 200,
+      filter,
+      sort: '-updated',
+    });
+    totalPages = result.totalPages ?? 1;
+    for (const order of result.items) {
+      if (!primary || agencyMatchesFilter(order.agency ?? '', primary)) {
         ids.add(order.id);
       }
     }

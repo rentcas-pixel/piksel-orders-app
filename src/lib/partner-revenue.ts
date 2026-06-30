@@ -1,5 +1,9 @@
 import { Order, Screen, Partner } from '@/types';
-import { getDaysInRange, getDaysInMonth } from './screen-revenue';
+import {
+  getDaysInRange,
+  getDaysInMonth,
+  type RevenueAnalysisPeriod,
+} from './screen-revenue';
 
 export interface PartnerRevenueSummary {
   partnerId: string;
@@ -30,7 +34,7 @@ export function calculatePartnerRevenues(
     if (totalDays <= 0) continue;
 
     const daysInMonth = getDaysInMonth(order.from, order.to, filterYear, filterMonth);
-    if (daysInMonth <= 0) continue;
+    if (!Number.isFinite(daysInMonth) || daysInMonth <= 0) continue;
 
     const partnerAmounts = new Map<string, number>();
 
@@ -40,7 +44,7 @@ export function calculatePartnerRevenues(
       if (!partnerId) continue;
 
       // Partner split must be based on final order amount distributed by screen count.
-      const screenPrice = order.final_price / screenIds.length;
+      const screenPrice = (Number(order.final_price) || 0) / screenIds.length;
       const revenueForMonth = (screenPrice / totalDays) * daysInMonth;
 
       partnerAmounts.set(partnerId, (partnerAmounts.get(partnerId) || 0) + revenueForMonth);
@@ -69,4 +73,58 @@ export function calculatePartnerRevenues(
   }
 
   return Array.from(partnerMap.values()).sort((a, b) => b.totalRevenue - a.totalRevenue);
+}
+
+export function calculatePartnerRevenuesForPeriod(
+  orders: Order[],
+  screensWithPartner: Record<string, Screen>,
+  partners: Partner[],
+  period: RevenueAnalysisPeriod
+): PartnerRevenueSummary[] {
+  if (period.month === null) {
+    const merged = new Map<string, PartnerRevenueSummary>();
+    const orderIdsByPartner = new Map<string, Set<string>>();
+
+    for (let month = 1; month <= 12; month += 1) {
+      for (const row of calculatePartnerRevenues(
+        orders,
+        screensWithPartner,
+        partners,
+        period.year,
+        month
+      )) {
+        const existing = merged.get(row.partnerId);
+        if (existing) {
+          existing.totalRevenue += row.totalRevenue;
+          existing.totalDays += row.totalDays;
+          existing.orders.push(...row.orders);
+        } else {
+          merged.set(row.partnerId, {
+            ...row,
+            orders: [...row.orders],
+          });
+          orderIdsByPartner.set(row.partnerId, new Set());
+        }
+
+        const orderIds = orderIdsByPartner.get(row.partnerId)!;
+        for (const { order } of row.orders) {
+          orderIds.add(order.id);
+        }
+      }
+    }
+
+    for (const [partnerId, summary] of merged) {
+      summary.orderCount = orderIdsByPartner.get(partnerId)?.size ?? 0;
+    }
+
+    return Array.from(merged.values()).sort((a, b) => b.totalRevenue - a.totalRevenue);
+  }
+
+  return calculatePartnerRevenues(
+    orders,
+    screensWithPartner,
+    partners,
+    period.year,
+    period.month
+  );
 }

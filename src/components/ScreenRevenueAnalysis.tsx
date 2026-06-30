@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import { Order } from '@/types';
 import { PocketBaseService } from '@/lib/pocketbase';
-import { calculateScreenRevenues, getDaysInRange } from '@/lib/screen-revenue';
+import { calculateScreenRevenuesForPeriod, getDaysInRange, resolveRevenueAnalysisPeriod } from '@/lib/screen-revenue';
 import { format } from 'date-fns';
 import { downloadExcel } from '@/lib/export-excel';
 import { resolveListMonthYear } from '@/lib/orders-filters';
@@ -20,8 +20,13 @@ import {
 
 const MONTH_NAMES = ['Sausis', 'Vasaris', 'Kovas', 'Balandis', 'Gegužė', 'Birželis', 'Liepa', 'Rugpjūtis', 'Rugsėjis', 'Spalis', 'Lapkritis', 'Gruodis'];
 
+function formatRevenuePeriodTitle(month: string, year: string): string {
+  if (!month.trim()) return year;
+  return `${MONTH_NAMES[parseInt(month, 10) - 1]} ${year}`;
+}
+
 const REVENUE_CACHE_TTL = 5 * 60 * 1000; // 5 min
-const revenueCache = new Map<string, { revenues: ReturnType<typeof calculateScreenRevenues>; expires: number }>();
+const revenueCache = new Map<string, { revenues: ReturnType<typeof calculateScreenRevenuesForPeriod>; expires: number }>();
 
 interface ScreenRevenueAnalysisProps {
   filters: { month: string; year: string; status: string };
@@ -31,7 +36,7 @@ interface ScreenRevenueAnalysisProps {
 
 export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: ScreenRevenueAnalysisProps) {
   const [loading, setLoading] = useState(true);
-  const [revenues, setRevenues] = useState<ReturnType<typeof calculateScreenRevenues>>([]);
+  const [revenues, setRevenues] = useState<ReturnType<typeof calculateScreenRevenuesForPeriod>>([]);
   const [expandedScreen, setExpandedScreen] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [selectedOwner, setSelectedOwner] = useState('');
@@ -49,6 +54,11 @@ export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: Scre
     () => resolveListMonthYear(filters.month, filters.year),
     [filters.month, filters.year]
   );
+  const analysisPeriod = useMemo(
+    () => resolveRevenueAnalysisPeriod(resolvedPeriod.month, resolvedPeriod.year),
+    [resolvedPeriod.month, resolvedPeriod.year]
+  );
+  const periodTitle = formatRevenuePeriodTitle(resolvedPeriod.month, resolvedPeriod.year);
 
   const filteredRevenues = useMemo(() => {
     if (!selectedOwner) return revenues;
@@ -58,7 +68,7 @@ export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: Scre
   const handleExportExcel = useCallback(() => {
     setExporting(true);
     try {
-      const monthName = `${MONTH_NAMES[parseInt(resolvedPeriod.month, 10) - 1]}_${resolvedPeriod.year}`;
+      const monthName = `${formatRevenuePeriodTitle(resolvedPeriod.month, resolvedPeriod.year).replace(' ', '_')}`;
       const data: unknown[][] = [
         ['Nr.', 'Ekranas', 'Owner', 'Miestas', 'Pajamos', 'Užsakymai'],
         ...filteredRevenues.map((r, i) => [
@@ -77,7 +87,7 @@ export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: Scre
   }, [filteredRevenues, ownerByScreenId, resolvedPeriod.month, resolvedPeriod.year]);
 
   const fetchData = useCallback(async () => {
-    const cacheKey = `${resolvedPeriod.month}-${resolvedPeriod.year}`;
+    const cacheKey = `${resolvedPeriod.month || 'all'}-${resolvedPeriod.year}`;
     const cached = revenueCache.get(cacheKey);
     if (cached && cached.expires > Date.now()) {
       setRevenues(cached.revenues);
@@ -89,13 +99,10 @@ export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: Scre
     abortRef.current = new AbortController();
     setLoading(true);
     try {
-      const y = parseInt(resolvedPeriod.year, 10);
-      const m = parseInt(resolvedPeriod.month, 10);
-      const lastDay = new Date(y, m, 0).getDate();
-      const startDate = `${resolvedPeriod.year}-${resolvedPeriod.month}-01`;
-      const endDate = `${resolvedPeriod.year}-${resolvedPeriod.month}-${String(lastDay).padStart(2, '0')}`;
-
-      const filterParts = ['approved=true', `(from<="${endDate}" && to>="${startDate}")`];
+      const filterParts = [
+        'approved=true',
+        `(from<="${analysisPeriod.endDate}" && to>="${analysisPeriod.startDate}")`,
+      ];
       const filterString = filterParts.join(' && ');
 
       const result = await PocketBaseService.getOrders({
@@ -111,7 +118,7 @@ export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: Scre
         PocketBaseService.getScreensWithPartner(screenIds),
         PocketBaseService.getPartners(),
       ]);
-      const calculated = calculateScreenRevenues(items, screenNames, y, m);
+      const calculated = calculateScreenRevenuesForPeriod(items, screenNames, analysisPeriod);
       const partnerNameById = new Map(partners.map((p) => [p.id, p.name]));
       const nextOwnerByScreenId: Record<string, string> = {};
 
@@ -136,7 +143,7 @@ export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: Scre
     } finally {
       setLoading(false);
     }
-  }, [resolvedPeriod.month, resolvedPeriod.year]);
+  }, [analysisPeriod, resolvedPeriod.month, resolvedPeriod.year]);
 
   useEffect(() => {
     if (selectedOwner && !ownerOptions.some((o) => o.id === selectedOwner)) {
@@ -171,10 +178,12 @@ export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: Scre
     return (
       <div className={`${portalCardClass} p-6`}>
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-          Ekranų pajamos – {MONTH_NAMES[parseInt(resolvedPeriod.month, 10) - 1]} {resolvedPeriod.year}
+          Ekranų pajamos – {periodTitle}
         </h3>
         <p className="text-gray-500 dark:text-gray-400">
-          Šiame mėnesyje nėra patvirtintų užsakymų su ekranais arba užsakymai neturi ekranų ID.
+          {resolvedPeriod.month.trim()
+            ? 'Šiame mėnesyje nėra patvirtintų užsakymų su ekranais arba užsakymai neturi ekranų ID.'
+            : `Šiais metais (${resolvedPeriod.year}) nėra patvirtintų užsakymų su ekranais arba užsakymai neturi ekranų ID.`}
         </p>
       </div>
     );
@@ -187,7 +196,7 @@ export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: Scre
       <div className={portalToolbarClass}>
         <div>
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-            Ekranų pajamos – {MONTH_NAMES[parseInt(resolvedPeriod.month, 10) - 1]} {resolvedPeriod.year}
+            Ekranų pajamos – {periodTitle}
           </h3>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             Bendros pajamos: €{totalRevenue.toLocaleString('lt-LT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

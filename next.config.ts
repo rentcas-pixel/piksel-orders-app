@@ -1,6 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  serverExternalPackages: ['pdf-parse', 'imapflow', 'nodemailer', 'mailparser'],
+  turbopack: {
+    root: __dirname,
+  },
   images: {
     remotePatterns: [
       {

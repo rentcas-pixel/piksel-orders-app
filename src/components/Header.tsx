@@ -2,18 +2,32 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
-import { SunIcon, MoonIcon, CalendarDaysIcon } from '@heroicons/react/24/outline';
+import { SunIcon, MoonIcon, CalendarDaysIcon, ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline';
+import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
 
 interface HeaderProps {
   onAddOrder: () => void;
+  userEmail?: string;
 }
 
-export function Header({ onAddOrder }: HeaderProps) {
+export function Header({ onAddOrder, userEmail }: HeaderProps) {
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   const toggleDarkMode = () => {
     setIsDarkMode(!isDarkMode);
     document.documentElement.classList.toggle('dark');
+  };
+
+  const handleSignOut = async () => {
+    setSigningOut(true);
+    try {
+      const supabase = createSupabaseBrowserClient();
+      await supabase.auth.signOut();
+      window.location.assign('/login');
+    } finally {
+      setSigningOut(false);
+    }
   };
 
   return (
@@ -31,6 +45,11 @@ export function Header({ onAddOrder }: HeaderProps) {
         </div>
 
         <div className="flex items-center gap-2">
+          {userEmail && (
+            <span className="hidden sm:inline text-sm text-gray-500 dark:text-gray-400 mr-2">
+              {userEmail}
+            </span>
+          )}
           <button
             type="button"
             onClick={toggleDarkMode}
@@ -47,6 +66,16 @@ export function Header({ onAddOrder }: HeaderProps) {
             className="p-2 rounded-lg bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors"
           >
             <CalendarDaysIcon className="w-5 h-5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleSignOut()}
+            disabled={signingOut}
+            title="Atsijungti"
+            aria-label="Atsijungti"
+            className="p-2 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-60"
+          >
+            <ArrowRightOnRectangleIcon className="w-5 h-5" />
           </button>
         </div>
       </div>

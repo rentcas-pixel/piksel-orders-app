@@ -5,6 +5,10 @@ import { FilterTabGroup } from '@/components/FilterTabGroup';
 import { filterControlClass } from '@/components/FilterDropdown';
 import { MonthTabNavigator } from '@/components/MonthTabNavigator';
 import { yearTabs } from '@/lib/filter-options';
+import {
+  ISSUED_PAYMENT_FILTER_OPTIONS,
+  type IssuedInvoicePaymentFilter,
+} from '@/lib/issued-invoice-filters';
 
 interface InvoicesFiltersBarProps {
   searchQuery: string;
@@ -12,6 +16,8 @@ interface InvoicesFiltersBarProps {
   month: string;
   year: string;
   onMonthYearChange: (month: string, year: string) => void;
+  paymentFilter: IssuedInvoicePaymentFilter;
+  onPaymentFilterChange: (filter: IssuedInvoicePaymentFilter) => void;
 }
 
 export function InvoicesFiltersBar({
@@ -20,6 +26,8 @@ export function InvoicesFiltersBar({
   month,
   year,
   onMonthYearChange,
+  paymentFilter,
+  onPaymentFilterChange,
 }: InvoicesFiltersBarProps) {
   return (
     <div className="mb-4 rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-600 dark:bg-gray-800">
@@ -46,6 +54,12 @@ export function InvoicesFiltersBar({
             value={year || '2026'}
             options={yearTabs}
             onChange={(v) => onMonthYearChange(month, v)}
+          />
+          <FilterTabGroup
+            label="Apmokėjimas"
+            value={paymentFilter}
+            options={ISSUED_PAYMENT_FILTER_OPTIONS}
+            onChange={(v) => onPaymentFilterChange(v as IssuedInvoicePaymentFilter)}
           />
         </div>
       </div>

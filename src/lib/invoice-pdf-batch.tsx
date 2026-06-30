@@ -9,6 +9,7 @@ import {
   buildInvoicesZipFilename,
   invoicePdfBlobFromElement,
   INVOICE_PDF_WIDTH_PX,
+  resolveInvoicePdfCaptureElement,
 } from '@/lib/invoice-pdf';
 
 function uniqueZipEntryName(filename: string, used: Set<string>): string {
@@ -22,6 +23,15 @@ function uniqueZipEntryName(filename: string, used: Set<string>): string {
   const unique = `${base} (${index}).pdf`;
   used.add(unique);
   return unique;
+}
+
+function triggerBlobDownload(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
 }
 
 export async function generateInvoicePdfBlob(invoice: Invoice): Promise<Blob> {
@@ -53,6 +63,35 @@ export async function generateInvoicePdfBlob(invoice: Invoice): Promise<Blob> {
   }
 }
 
+/** PDF blob iš DB įrašo — naudojamas ZIP ir vienetiniam atsisiuntimui. */
+export async function getIssuedInvoicePdfBlob(invoice: Invoice): Promise<Blob> {
+  if (invoice.file_url) {
+    const response = await fetch(invoice.file_url);
+    if (!response.ok) throw new Error('Nepavyko atsisiųsti sąskaitos failo.');
+    return await response.blob();
+  }
+  return generateInvoicePdfBlob(invoice);
+}
+
+/** Vienintelis atsisiuntimo kelias iš sąskaitų sąrašų, agentūros portalo ir pan. */
+export async function downloadIssuedInvoicePdf(invoice: Invoice): Promise<void> {
+  const blob = await getIssuedInvoicePdfBlob(invoice);
+  triggerBlobDownload(
+    blob,
+    invoice.file_name?.trim() || buildInvoicePdfFilename(invoice)
+  );
+}
+
+/** Sąskaitos modalo peržiūra — generuoja iš jau atvaizduoto DOM (neišsaugoti pakeitimai). */
+export async function downloadIssuedInvoicePdfFromElement(
+  element: HTMLElement,
+  invoice: Pick<Invoice, 'invoice_number' | 'buyer_name' | 'invoice_date'>
+): Promise<void> {
+  const captureTarget = resolveInvoicePdfCaptureElement(element);
+  const blob = await invoicePdfBlobFromElement(captureTarget, { keepInPlace: true });
+  triggerBlobDownload(blob, buildInvoicePdfFilename(invoice));
+}
+
 export async function downloadInvoicesZip(
   invoices: Invoice[],
   year: string,
@@ -64,16 +103,11 @@ export async function downloadInvoicesZip(
   const usedNames = new Set<string>();
 
   for (const invoice of invoices) {
-    const blob = await generateInvoicePdfBlob(invoice);
+    const blob = await getIssuedInvoicePdfBlob(invoice);
     const filename = uniqueZipEntryName(buildInvoicePdfFilename(invoice), usedNames);
     zip.file(filename, blob);
   }
 
   const zipBlob = await zip.generateAsync({ type: 'blob' });
-  const url = URL.createObjectURL(zipBlob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = buildInvoicesZipFilename(year, month);
-  anchor.click();
-  URL.revokeObjectURL(url);
+  triggerBlobDownload(zipBlob, buildInvoicesZipFilename(year, month));
 }

@@ -1,16 +1,23 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
-import { DocumentArrowDownIcon, FolderArrowDownIcon, PlusCircleIcon } from '@heroicons/react/24/outline';
+import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react';
+import { DocumentArrowDownIcon, FolderArrowDownIcon, PlusCircleIcon, QueueListIcon } from '@heroicons/react/24/outline';
 import { format } from 'date-fns';
 import type { Invoice } from '@/types';
-import { InvoiceDocumentPreview } from '@/components/InvoiceDocumentPreview';
 import { InvoiceService } from '@/lib/invoice-service';
-import { buildInvoicePdfFilename, downloadInvoicePdfFromElement, INVOICE_PDF_WIDTH_PX, resolveInvoicePdfCaptureElement } from '@/lib/invoice-pdf';
+import { fetchAgencyInvoices } from '@/lib/agency-portal-api';
+import { downloadIssuedInvoicePdf, downloadInvoicesZip } from '@/lib/invoice-pdf-batch';
 import { formatInvoiceListDescription } from '@/components/InvoiceLineDescription';
-import { downloadInvoicesZip } from '@/lib/invoice-pdf-batch';
-import { formatEuro } from '@/lib/invoice-utils';
+import { InvoiceListTotalsSummary } from '@/components/InvoiceListTotalsSummary';
+import { formatEuro, sumInvoiceAmountBreakdowns } from '@/lib/invoice-utils';
+import {
+  issuedToPaymentRow,
+} from '@/lib/payment-tracking';
 import { resolveListMonthYear } from '@/lib/orders-filters';
+import {
+  matchesIssuedInvoicePaymentFilter,
+  type IssuedInvoicePaymentFilter,
+} from '@/lib/issued-invoice-filters';
 import {
   portalCardClass,
   portalExportBtnClass,
@@ -21,13 +28,23 @@ import {
   portalToolbarClass,
 } from '@/lib/portal-ui';
 
+import { InvoicePaymentStatusBadge } from '@/components/InvoicePaymentStatusBadge';
+import {
+  nextOverdueSort,
+  type OverdueSortDirection,
+} from '@/lib/invoice-payment-table';
+
 interface InvoicesTableProps {
+  agency?: string;
+  portalMode?: boolean;
   searchQuery: string;
   month: string;
   year: string;
-  refreshKey: number;
-  onNewInvoice: () => void;
-  onOpenInvoice: (invoice: Invoice) => void;
+  paymentFilter?: IssuedInvoicePaymentFilter;
+  refreshKey?: number;
+  onNewInvoice?: () => void;
+  onBatchImport?: () => void;
+  onOpenInvoice?: (invoice: Invoice) => void;
 }
 
 function formatDate(value: string) {
@@ -39,61 +56,60 @@ function formatDate(value: string) {
 }
 
 export function InvoicesTable({
+  agency,
+  portalMode = false,
   searchQuery,
   month,
   year,
-  refreshKey,
+  paymentFilter = 'all',
+  refreshKey = 0,
   onNewInvoice,
+  onBatchImport,
   onOpenInvoice,
 }: InvoicesTableProps) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [zipping, setZipping] = useState(false);
-  const [pdfInvoice, setPdfInvoice] = useState<Invoice | null>(null);
-  const pdfHostRef = useRef<HTMLDivElement>(null);
+  const [overdueSort, setOverdueSort] = useState<OverdueSortDirection | null>(null);
 
   const loadInvoices = useCallback(async () => {
     setLoading(true);
     try {
-      setInvoices(await InvoiceService.getAll());
+      if (portalMode) {
+        setInvoices(await fetchAgencyInvoices());
+      } else {
+        setInvoices(await InvoiceService.getAll());
+      }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [portalMode]);
 
   useEffect(() => {
     void loadInvoices();
   }, [loadInvoices, refreshKey]);
 
   useEffect(() => {
-    if (!pdfInvoice || !pdfHostRef.current) return;
+    if (paymentFilter === 'overdue') {
+      setOverdueSort('desc');
+    } else {
+      setOverdueSort(null);
+    }
+  }, [paymentFilter]);
 
-    const run = async () => {
-      await new Promise((r) => setTimeout(r, 50));
-      const element = pdfHostRef.current
-        ? resolveInvoicePdfCaptureElement(pdfHostRef.current)
-        : null;
-      if (!element) return;
-      try {
-        await downloadInvoicePdfFromElement(element, buildInvoicePdfFilename(pdfInvoice));
-      } catch (error) {
-        console.error('PDF:', error);
-        alert('Klaida generuojant PDF');
-      } finally {
-        setPdfInvoice(null);
-        setDownloadingId(null);
-      }
-    };
-
-    void run();
-  }, [pdfInvoice]);
-
-  const handleDownloadPdf = (invoice: Invoice, event: MouseEvent) => {
+  const handleDownloadPdf = async (invoice: Invoice, event: MouseEvent) => {
     event.stopPropagation();
     if (downloadingId || zipping) return;
     setDownloadingId(invoice.id);
-    setPdfInvoice(invoice);
+    try {
+      await downloadIssuedInvoicePdf(invoice);
+    } catch (error) {
+      console.error('PDF:', error);
+      alert('Klaida atsisiunčiant PDF');
+    } finally {
+      setDownloadingId(null);
+    }
   };
 
   const { month: resolvedMonth, year: resolvedYear } = useMemo(
@@ -101,29 +117,23 @@ export function InvoicesTable({
     [month, year]
   );
 
-  const monthInvoices = useMemo(() => {
-    const periodPrefix = `${resolvedYear}-${resolvedMonth}`;
-    return invoices.filter((inv) => inv.invoice_date.startsWith(periodPrefix));
+  const periodInvoices = useMemo(() => {
+    const periodPrefix = resolvedMonth
+      ? `${resolvedYear}-${resolvedMonth}`
+      : resolvedYear
+        ? `${resolvedYear}-`
+        : '';
+
+    return invoices.filter(
+      (inv) => !periodPrefix || inv.invoice_date.startsWith(periodPrefix)
+    );
   }, [invoices, resolvedMonth, resolvedYear]);
 
-  const handleDownloadMonthZip = async () => {
-    if (zipping || downloadingId || monthInvoices.length === 0) return;
-    setZipping(true);
-    try {
-      await downloadInvoicesZip(monthInvoices, resolvedYear, resolvedMonth);
-    } catch (error) {
-      console.error('ZIP:', error);
-      alert('Klaida generuojant ZIP archyvą');
-    } finally {
-      setZipping(false);
-    }
-  };
-
   const filtered = useMemo(() => {
-    const periodPrefix = `${resolvedYear}-${resolvedMonth}`;
-
-    return invoices.filter((inv) => {
-      if (!inv.invoice_date.startsWith(periodPrefix)) return false;
+    return periodInvoices.filter((inv) => {
+      if (!matchesIssuedInvoicePaymentFilter(issuedToPaymentRow(inv).status, paymentFilter)) {
+        return false;
+      }
 
       const q = searchQuery.trim().toLowerCase();
       if (!q) return true;
@@ -138,80 +148,94 @@ export function InvoicesTable({
         .toLowerCase();
       return haystack.includes(q);
     });
-  }, [invoices, searchQuery, resolvedMonth, resolvedYear]);
+  }, [periodInvoices, searchQuery, paymentFilter]);
 
-  const totals = useMemo(
-    () =>
-      filtered.reduce(
-        (acc, inv) => ({
-          amount: acc.amount + Number(inv.amount),
-          vat: acc.vat + Number(inv.vat_amount),
-          total: acc.total + Number(inv.total_amount),
-        }),
-        { amount: 0, vat: 0, total: 0 }
-      ),
-    [filtered]
-  );
+  const sorted = useMemo(() => {
+    if (overdueSort) {
+      return [...filtered].sort((a, b) => {
+        const daysA = issuedToPaymentRow(a).daysOverdue;
+        const daysB = issuedToPaymentRow(b).daysOverdue;
+        if (daysA !== daysB) {
+          return overdueSort === 'desc' ? daysB - daysA : daysA - daysB;
+        }
+        return b.invoice_date.localeCompare(a.invoice_date);
+      });
+    }
+
+    return [...filtered].sort((a, b) => {
+      const amountDiff = Number(b.amount) - Number(a.amount);
+      if (amountDiff !== 0) return amountDiff;
+      return b.invoice_date.localeCompare(a.invoice_date);
+    });
+  }, [filtered, overdueSort]);
+
+  const totals = useMemo(() => sumInvoiceAmountBreakdowns(filtered), [filtered]);
 
   const invoiceCountLabel =
     filtered.length === 1 ? '1 sąskaita' : `${filtered.length} sąskaitų`;
 
+  const invoicesWithFile = useMemo(
+    () => filtered.filter((invoice) => invoice.file_url),
+    [filtered]
+  );
+
+  const handleDownloadZip = async () => {
+    if (zipping || downloadingId || filtered.length === 0) return;
+    setZipping(true);
+    try {
+      await downloadInvoicesZip(filtered, resolvedYear, resolvedMonth);
+    } catch (error) {
+      console.error('ZIP:', error);
+      alert('Klaida generuojant ZIP archyvą');
+    } finally {
+      setZipping(false);
+    }
+  };
+
   return (
     <div className={portalCardClass}>
-      {pdfInvoice && (
-        <div
-          ref={pdfHostRef}
-          className="pointer-events-none fixed left-0 top-0 -z-50 opacity-0"
-          style={{ width: INVOICE_PDF_WIDTH_PX }}
-          aria-hidden
-        >
-          <InvoiceDocumentPreview invoice={pdfInvoice} forPdf />
-        </div>
-      )}
-
       <div className={`${portalToolbarClass} flex flex-wrap items-center justify-between gap-3`}>
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm text-gray-500 dark:text-gray-400">
           {loading ? (
             <span>Kraunama…</span>
           ) : (
-            <>
-              <span className="font-medium text-gray-700 dark:text-gray-300">{invoiceCountLabel}</span>
-              <span className="tabular-nums">
-                Be PVM:{' '}
-                <span className="font-medium text-gray-900 dark:text-white">
-                  {formatEuro(totals.amount)}
-                </span>
-              </span>
-              <span className="tabular-nums">
-                PVM:{' '}
-                <span className="font-medium text-gray-900 dark:text-white">
-                  {formatEuro(totals.vat)}
-                </span>
-              </span>
-              <span className="tabular-nums">
-                Su PVM:{' '}
-                <span className="font-medium text-gray-900 dark:text-white">
-                  {formatEuro(totals.total)}
-                </span>
-              </span>
-            </>
+            <InvoiceListTotalsSummary
+              countLabel={invoiceCountLabel}
+              fileCount={invoicesWithFile.length}
+              amountExVat={totals.amount}
+              vat={totals.vat}
+              totalWithVat={totals.total}
+            />
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {onBatchImport && (
+            <button
+              type="button"
+              onClick={onBatchImport}
+              className={portalExportBtnClass}
+              title="Importuoti PDF sąskaitas per OCR"
+            >
+              <QueueListIcon className="h-4 w-4" />
+              Importuoti PDF
+            </button>
+          )}
           <button
             type="button"
-            onClick={() => void handleDownloadMonthZip()}
-            disabled={loading || zipping || monthInvoices.length === 0}
+            onClick={() => void handleDownloadZip()}
+            disabled={loading || zipping || filtered.length === 0}
             className={portalExportBtnClass}
-            title="Atsisiųsti visų mėnesio sąskaitų ZIP"
+            title="Atsisiųsti visas rodomas išrašytas sąskaitas ZIP archyve (PDF)"
           >
             <FolderArrowDownIcon className="h-4 w-4" />
-            {zipping ? 'Ruošiama…' : 'ZIP mėnuo'}
+            {zipping ? 'Ruošiama ZIP…' : 'ZIP visos'}
           </button>
-          <button type="button" onClick={onNewInvoice} className={portalExportBtnClass}>
-            <PlusCircleIcon className="h-4 w-4" />
-            Nauja sąskaita
-          </button>
+          {onNewInvoice && (
+            <button type="button" onClick={onNewInvoice} className={portalExportBtnClass}>
+              <PlusCircleIcon className="h-4 w-4" />
+              Nauja sąskaita
+            </button>
+          )}
         </div>
       </div>
 
@@ -219,44 +243,101 @@ export function InvoicesTable({
         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
           <thead className={portalTheadClass}>
             <tr>
-              <th className={portalThClass}>Nr.</th>
-              <th className={portalThClass}>Data</th>
+              <th className={`${portalThClass} whitespace-nowrap`}>Data</th>
               <th className={portalThClass}>Pirkėjas</th>
+              <th className={portalThClass}>Nr.</th>
               <th className={portalThClass}>Aprašymas</th>
-              <th className={`${portalThClass} text-right`}>Suma</th>
+              <th className={`${portalThClass} text-right`}>
+                <span className="inline-flex items-center gap-1">
+                  Suma
+                  {!overdueSort ? (
+                    <span className="normal-case font-semibold text-blue-700 dark:text-blue-300">
+                      ↓
+                    </span>
+                  ) : null}
+                </span>
+              </th>
+              <th className={portalThClass}>Statusas</th>
+              <th className={`${portalThClass} text-right`}>
+                <button
+                  type="button"
+                  onClick={() => setOverdueSort((current) => nextOverdueSort(current))}
+                  className={`inline-flex items-center gap-1 uppercase tracking-wider transition-colors hover:text-gray-800 dark:hover:text-gray-200 ${
+                    overdueSort
+                      ? 'font-semibold text-blue-700 dark:text-blue-300'
+                      : 'text-gray-500 dark:text-gray-400'
+                  }`}
+                  title={
+                    overdueSort === 'desc'
+                      ? 'Rūšiuojama: daugiausiai vėluoja. Spauskite — mažiausiai'
+                      : overdueSort === 'asc'
+                        ? 'Rūšiuojama: mažiausiai vėluoja. Spauskite — numatytasis'
+                        : 'Rūšiuoti pagal vėlavimo dienas'
+                  }
+                >
+                  Vėluoja
+                  <span className="normal-case text-gray-400 dark:text-gray-500">
+                    {overdueSort === 'desc' ? '↓' : overdueSort === 'asc' ? '↑' : '↕'}
+                  </span>
+                </button>
+              </th>
               <th className={`${portalThClass} w-12 text-center`}>PDF</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-gray-800">
             {loading ? (
               <tr>
-                <td colSpan={6} className={`${portalTdClass} py-10 text-center text-gray-500`}>
+                <td colSpan={8} className={`${portalTdClass} py-10 text-center text-gray-500`}>
                   Kraunama…
                 </td>
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={6} className={`${portalTdClass} py-10 text-center text-gray-500`}>
-                  Šį mėnesį sąskaitų nerasta.
+                <td colSpan={8} className={`${portalTdClass} py-10 text-center text-gray-500`}>
+                  {paymentFilter === 'all'
+                    ? 'Šį mėnesį sąskaitų nerasta.'
+                    : paymentFilter === 'paid'
+                      ? 'Šį mėnesį apmokėtų sąskaitų nerasta.'
+                      : paymentFilter === 'overdue'
+                        ? 'Šį mėnesį vėluojančių sąskaitų nerasta.'
+                        : 'Šį mėnesį neapmokėtų sąskaitų nerasta.'}
                 </td>
               </tr>
             ) : (
-              filtered.map((invoice) => (
+              sorted.map((invoice) => {
+                const payment = issuedToPaymentRow(invoice);
+                return (
                 <tr
                   key={invoice.id}
-                  className={`cursor-pointer ${portalRowHoverClass}`}
-                  onClick={() => onOpenInvoice(invoice)}
+                  className={onOpenInvoice ? `cursor-pointer ${portalRowHoverClass}` : ''}
+                  onClick={() => onOpenInvoice?.(invoice)}
                 >
+                  <td className={`${portalTdClass} whitespace-nowrap tabular-nums`}>
+                    {formatDate(invoice.invoice_date)}
+                  </td>
+                  <td className={`${portalTdClass} font-medium text-gray-900 dark:text-white`}>
+                    {invoice.buyer_name}
+                  </td>
                   <td className={`${portalTdClass} font-medium text-gray-900 dark:text-white`}>
                     {invoice.invoice_number}
                   </td>
-                  <td className={portalTdClass}>{formatDate(invoice.invoice_date)}</td>
-                  <td className={portalTdClass}>{invoice.buyer_name}</td>
                   <td className={`${portalTdClass} max-w-xs truncate`}>
                     {formatInvoiceListDescription(invoice.line_description)}
                   </td>
                   <td className={`${portalTdClass} text-right font-medium tabular-nums text-gray-900 dark:text-white`}>
-                    {formatEuro(invoice.total_amount)}
+                    {formatEuro(invoice.amount)}
+                  </td>
+                  <td className={`${portalTdClass} overflow-visible`}>
+                    <InvoicePaymentStatusBadge payment={payment} />
+                  </td>
+                  <td
+                    className={`${portalTdClass} text-right tabular-nums ${
+                      payment.status === 'overdue'
+                        ? 'font-semibold text-red-700 dark:text-red-300'
+                        : 'text-gray-400 dark:text-gray-500'
+                    }`}
+                  >
+                    {payment.status === 'overdue' ? `${payment.daysOverdue} d.` : '—'}
                   </td>
                   <td className={`${portalTdClass} text-center`}>
                     <button
@@ -271,7 +352,8 @@ export function InvoicesTable({
                     </button>
                   </td>
                 </tr>
-              ))
+              );
+              })
             )}
           </tbody>
         </table>

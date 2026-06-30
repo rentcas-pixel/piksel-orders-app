@@ -5,7 +5,7 @@ import { DocumentArrowDownIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import type { BuyerFields, BuyerSource, Invoice, Order } from '@/types';
 import { BillingCompanyService } from '@/lib/billing-company-service';
 import { InvoiceService } from '@/lib/invoice-service';
-import { buildInvoicePdfFilename, downloadInvoicePdfFromElement } from '@/lib/invoice-pdf';
+import { downloadIssuedInvoicePdfFromElement } from '@/lib/invoice-pdf-batch';
 import { PocketBaseService } from '@/lib/pocketbase';
 import { SupabaseService } from '@/lib/supabase-service';
 import {
@@ -38,6 +38,8 @@ import {
 } from '@/lib/portal-ui';
 import { InvoiceDocumentView } from '@/components/InvoiceDocumentView';
 import { InvoiceLineDescription } from '@/components/InvoiceLineDescription';
+import { InvoicePartialPaymentNotice } from '@/components/InvoicePartialPaymentNotice';
+import type { InvoicePartialPaymentFields } from '@/lib/invoice-payment-table';
 
 interface InvoiceModalProps {
   order: Order | null;
@@ -78,6 +80,10 @@ export function InvoiceModal({ order, isOpen, onClose, onSaved, onOpenCombined }
   const [amountMode, setAmountMode] = useState<InvoiceAmountMode>('monthly');
   const [quote, setQuote] = useState<{ link: string; viaduct_link: string } | null>(null);
   const [savedInvoiceId, setSavedInvoiceId] = useState<string | null>(null);
+  const [paymentDate, setPaymentDate] = useState<string | null>(null);
+  const [savedInvoicePayment, setSavedInvoicePayment] = useState<InvoicePartialPaymentFields | null>(
+    null
+  );
 
   const applyAmountAndPeriod = useCallback(
     (o: Order, date: string, mode: InvoiceAmountMode, buyerName = buyer.name) => {
@@ -155,9 +161,15 @@ export function InvoiceModal({ order, isOpen, onClose, onSaved, onOpenCombined }
 
       if (existing) {
         setSavedInvoiceId(existing.id);
+        setSavedInvoicePayment({
+          paid_amount: Number(existing.paid_amount ?? 0),
+          total_amount: Number(existing.total_amount),
+          payment_date: existing.payment_date ?? null,
+        });
         setInvoiceNumber(existing.invoice_number);
         setInvoiceDate(existing.invoice_date);
         setDueDate(existing.due_date);
+        setPaymentDate(existing.payment_date ? formatDateOnly(existing.payment_date) : null);
         setLineDescription(
           existing.line_description
             ? formatLineDescriptionForLocale(existing.line_description, resolveInvoiceLocale({
@@ -214,6 +226,8 @@ export function InvoiceModal({ order, isOpen, onClose, onSaved, onOpenCombined }
         }
       } else if (isStandaloneInvoiceOrder(o.id)) {
         setSavedInvoiceId(null);
+        setSavedInvoicePayment(null);
+        setPaymentDate(null);
         const invoiceDay = defaultInvoiceDate();
         setInvoiceDate(invoiceDay);
         setDueDate(addDays(invoiceDay, 30));
@@ -228,6 +242,8 @@ export function InvoiceModal({ order, isOpen, onClose, onSaved, onOpenCombined }
         setIsEditing(true);
       } else {
         setSavedInvoiceId(null);
+        setSavedInvoicePayment(null);
+        setPaymentDate(null);
         const invoiceDay = defaultInvoiceDate();
         setInvoiceDate(invoiceDay);
         setDueDate(addDays(invoiceDay, 30));
@@ -363,7 +379,26 @@ export function InvoiceModal({ order, isOpen, onClose, onSaved, onOpenCombined }
     if (!order) return;
     await persistInvoice();
     const latest = await InvoiceService.getLatestForOrder(order.id);
-    setSavedInvoiceId(latest?.id ?? null);
+    const invoiceId = latest?.id ?? null;
+    setSavedInvoiceId(invoiceId);
+    if (latest) {
+      setSavedInvoicePayment({
+        paid_amount: Number(latest.paid_amount ?? 0),
+        total_amount: Number(latest.total_amount),
+        payment_date: latest.payment_date ?? null,
+      });
+      setPaymentDate(latest.payment_date ? formatDateOnly(latest.payment_date) : null);
+    } else {
+      setSavedInvoicePayment(null);
+    }
+
+    if (invoiceId && isStandaloneInvoiceOrder(order.id)) {
+      if (paymentDate) {
+        await InvoiceService.markAsPaid(invoiceId, paymentDate);
+      } else {
+        await InvoiceService.clearPaymentDate(invoiceId);
+      }
+    }
   };
 
   const handleSave = async () => {
@@ -414,15 +449,11 @@ export function InvoiceModal({ order, isOpen, onClose, onSaved, onOpenCombined }
     setIsEditing(false);
     await new Promise((r) => setTimeout(r, 300));
     try {
-      await downloadInvoicePdfFromElement(
-        invoiceRef.current,
-        buildInvoicePdfFilename({
-          invoice_number: invoiceNumber,
-          buyer_name: buyer.name || order.client || 'Saskaita',
-          invoice_date: invoiceDate,
-        }),
-        { keepInPlace: true }
-      );
+      await downloadIssuedInvoicePdfFromElement(invoiceRef.current, {
+        invoice_number: invoiceNumber,
+        buyer_name: buyer.name || order.client || 'Saskaita',
+        invoice_date: invoiceDate,
+      });
     } catch (error) {
       console.error('PDF:', error);
       alert('Klaida generuojant PDF');
@@ -584,6 +615,49 @@ export function InvoiceModal({ order, isOpen, onClose, onSaved, onOpenCombined }
                   onChange={(e) => setBaseAmount(parseFloat(e.target.value) || 0)}
                   className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-800"
                 />
+              </div>
+            )}
+
+            {savedInvoiceId && savedInvoicePayment && (
+              <div className="mt-4">
+                <InvoicePartialPaymentNotice invoice={savedInvoicePayment} />
+              </div>
+            )}
+
+            {standalone && savedInvoiceId && (
+              <div className="mt-4 border-t border-gray-200 pt-4 dark:border-gray-700">
+                <h3 className="mb-2 text-sm font-semibold text-gray-900 dark:text-white">
+                  Apmokėjimas
+                </h3>
+                <label className="mb-1 block text-xs font-medium text-gray-500">
+                  Apmokėjimo data
+                </label>
+                <input
+                  type="date"
+                  value={paymentDate ?? ''}
+                  onChange={(e) =>
+                    setPaymentDate(e.target.value ? formatDateOnly(e.target.value) : null)
+                  }
+                  className="mb-2 w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-800"
+                />
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentDate(formatInvoiceDate(new Date()))}
+                    className="rounded-md px-2 py-1 text-xs text-blue-700 hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-950/40"
+                  >
+                    Pažymėti šiandien
+                  </button>
+                  {paymentDate && (
+                    <button
+                      type="button"
+                      onClick={() => setPaymentDate(null)}
+                      className="rounded-md px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+                    >
+                      Nuimti
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 

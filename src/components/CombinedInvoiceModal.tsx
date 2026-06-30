@@ -10,12 +10,8 @@ import {
 } from '@/lib/combined-invoice';
 import { InvoiceService } from '@/lib/invoice-service';
 import { PocketBaseService } from '@/lib/pocketbase';
-import {
-  buildInvoicePdfFilename,
-  downloadInvoicePdfFromElement,
-  INVOICE_PDF_WIDTH_PX,
-  resolveInvoicePdfCaptureElement,
-} from '@/lib/invoice-pdf';
+import { INVOICE_PDF_WIDTH_PX } from '@/lib/invoice-pdf';
+import { downloadIssuedInvoicePdfFromElement } from '@/lib/invoice-pdf-batch';
 import {
   addDays,
   applyPercentDiscount,
@@ -37,6 +33,11 @@ import {
 import { modalBtnDanger, modalBtnPrimary, modalBtnSecondary } from '@/lib/portal-ui';
 import { InvoiceDocumentView } from '@/components/InvoiceDocumentView';
 import { InvoiceLineDescription } from '@/components/InvoiceLineDescription';
+import { InvoicePartialPaymentNotice } from '@/components/InvoicePartialPaymentNotice';
+import {
+  getInvoicePartialPaymentSummary,
+  type InvoicePartialPaymentFields,
+} from '@/lib/invoice-payment-table';
 
 interface EditableLine {
   key: string;
@@ -91,6 +92,9 @@ export function CombinedInvoiceModal({
   const [lines, setLines] = useState<EditableLine[]>([]);
   const [referenceOrders, setReferenceOrders] = useState<Order[]>([]);
   const [owexxDiscount50, setOwexxDiscount50] = useState(false);
+  const [savedInvoicePayment, setSavedInvoicePayment] = useState<InvoicePartialPaymentFields | null>(
+    null
+  );
 
   const invoiceLocale = resolveInvoiceLocale({
     buyerName: buyer.name,
@@ -160,6 +164,7 @@ export function CombinedInvoiceModal({
       setReferenceOrders(orders);
       setCombinedOrderId(createCombinedInvoiceOrderId());
       setSavedInvoiceId(null);
+      setSavedInvoicePayment(null);
       setIsEditing(true);
 
       const nextNumber = await InvoiceService.getNextInvoiceNumber();
@@ -202,6 +207,11 @@ export function CombinedInvoiceModal({
     try {
       setCombinedOrderId(invoice.order_id);
       setSavedInvoiceId(invoice.id);
+      setSavedInvoicePayment({
+        paid_amount: Number(invoice.paid_amount ?? 0),
+        total_amount: Number(invoice.total_amount),
+        payment_date: invoice.payment_date ?? null,
+      });
       setInvoiceNumber(invoice.invoice_number);
       setInvoiceDate(invoice.invoice_date);
       setDueDate(invoice.due_date);
@@ -433,15 +443,11 @@ export function CombinedInvoiceModal({
     setIsEditing(false);
     await new Promise((r) => setTimeout(r, 300));
     try {
-      await downloadInvoicePdfFromElement(
-        resolveInvoicePdfCaptureElement(invoiceRef.current),
-        buildInvoicePdfFilename({
-          invoice_number: invoiceNumber,
-          buyer_name: buyer.name || 'Saskaita',
-          invoice_date: invoiceDate,
-        }),
-        { keepInPlace: true }
-      );
+      await downloadIssuedInvoicePdfFromElement(invoiceRef.current, {
+        invoice_number: invoiceNumber,
+        buyer_name: buyer.name || 'Saskaita',
+        invoice_date: invoiceDate,
+      });
     } catch (error) {
       console.error('PDF:', error);
       alert('Klaida generuojant PDF');
@@ -512,6 +518,14 @@ export function CombinedInvoiceModal({
                 </div>
               ))}
             </div>
+
+            {isExisting &&
+              savedInvoicePayment &&
+              getInvoicePartialPaymentSummary(savedInvoicePayment) && (
+              <div className="mt-6 border-t border-gray-200 pt-4 dark:border-gray-700">
+                <InvoicePartialPaymentNotice invoice={savedInvoicePayment} withTitle />
+              </div>
+            )}
 
             {showOwexxDiscount && (
               <div className="mt-6 border-t border-gray-200 pt-4 dark:border-gray-700">

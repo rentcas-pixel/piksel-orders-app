@@ -278,7 +278,25 @@ export class InvoiceService {
     );
   }
 
-  static async getAll(limit = 250): Promise<Invoice[]> {
+  static async getAllForDateRange(startDate: string, endDate: string): Promise<Invoice[]> {
+    const { data, error } = await supabase
+      .from('invoices')
+      .select('*')
+      .not('buyer_name', 'is', null)
+      .neq('buyer_name', '')
+      .neq('order_id', INVOICE_SEED_ORDER_ID)
+      .gte('invoice_date', startDate)
+      .lte('invoice_date', endDate)
+      .order('invoice_date', { ascending: false });
+
+    if (error) {
+      console.error('getAllForDateRange:', error);
+      return [];
+    }
+    return (data ?? []).filter(isInvoiceListable);
+  }
+
+  static async getAll(limit = 500): Promise<Invoice[]> {
     const { data, error } = await supabase
       .from('invoices')
       .select('*')
@@ -293,6 +311,47 @@ export class InvoiceService {
       return [];
     }
     return (data ?? []).filter(isInvoiceListable);
+  }
+
+  static async markAsPaid(id: string, paymentDate: string): Promise<Invoice> {
+    const { data: existing, error: fetchError } = await supabase
+      .from('invoices')
+      .select('total_amount')
+      .eq('id', id)
+      .single();
+    if (fetchError) throw fetchError;
+
+    const { data, error } = await supabase
+      .from('invoices')
+      .update({
+        payment_date: paymentDate,
+        paid_amount: Number(existing.total_amount),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  static async clearPaymentDate(id: string): Promise<Invoice> {
+    await supabase.from('payment_allocations').delete().eq('issued_invoice_id', id);
+
+    const { data, error } = await supabase
+      .from('invoices')
+      .update({
+        payment_date: null,
+        paid_amount: 0,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
   }
 
   /** Sąskaitos, susietos su agentūros užsakymais (agentūrų portalui). */
@@ -333,5 +392,92 @@ export class InvoiceService {
       return [];
     }
     return data ?? [];
+  }
+
+  static async findByInvoiceNumber(invoiceNumber: string): Promise<Invoice | null> {
+    const normalized = invoiceNumber.trim();
+    if (!normalized) return null;
+
+    const { data, error } = await supabase
+      .from('invoices')
+      .select('*')
+      .eq('invoice_number', normalized)
+      .maybeSingle();
+
+    if (error) {
+      console.error('findByInvoiceNumber:', error);
+      return null;
+    }
+    return data;
+  }
+
+  static async createImported(input: InvoiceSaveInput): Promise<Invoice> {
+    const { data, error } = await supabase
+      .from('invoices')
+      .insert([
+        {
+          ...input,
+          updated_at: new Date().toISOString(),
+        },
+      ])
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  static async uploadFile(
+    invoiceId: string,
+    file: File
+  ): Promise<{ file_url: string; file_name: string }> {
+    const safeBaseName = file.name.replace(/[/\\]/g, '-');
+    const isPdf =
+      safeBaseName.toLowerCase().endsWith('.pdf') ||
+      (file.type || '').toLowerCase() === 'application/pdf';
+
+    let storagePath: string;
+    let body: Blob;
+    let contentType: string;
+
+    if (isPdf) {
+      const stem = safeBaseName.replace(/\.pdf$/i, '').trim() || 'invoice';
+      const buf = await file.arrayBuffer();
+      storagePath = `issued-invoices/${invoiceId}/${Date.now()}_${stem}.pdf`;
+      body = new Blob([buf], { type: 'application/pdf' });
+      contentType = 'application/pdf';
+
+      let uploadError = (
+        await supabase.storage.from('files').upload(storagePath, body, { contentType })
+      ).error;
+
+      if (uploadError && /mime|content.?type/i.test(uploadError.message)) {
+        storagePath = `issued-invoices/${invoiceId}/${Date.now()}_${stem}.png`;
+        body = new Blob([buf], { type: 'image/png' });
+        contentType = 'image/png';
+        uploadError = (
+          await supabase.storage.from('files').upload(storagePath, body, { contentType })
+        ).error;
+      }
+
+      if (uploadError) throw uploadError;
+    } else {
+      storagePath = `issued-invoices/${invoiceId}/${Date.now()}_${safeBaseName}`;
+      body = file;
+      contentType = file.type || 'application/octet-stream';
+
+      const { error: uploadError } = await supabase.storage
+        .from('files')
+        .upload(storagePath, body, { contentType });
+
+      if (uploadError) throw uploadError;
+    }
+
+    const { data: urlData } = supabase.storage.from('files').getPublicUrl(storagePath);
+    if (!urlData.publicUrl) {
+      throw new Error('Nepavyko gauti failo URL');
+    }
+
+    return { file_url: urlData.publicUrl, file_name: file.name };
   }
 }

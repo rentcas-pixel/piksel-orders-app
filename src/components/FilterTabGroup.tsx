@@ -1,5 +1,6 @@
 'use client';
 
+import type { ComponentType } from 'react';
 import {
   filterPillActiveClass,
   filterPillGroupClass,
@@ -9,6 +10,7 @@ import {
 interface FilterTabOption<T extends string> {
   value: T;
   label: string;
+  icon?: ComponentType<{ className?: string }>;
 }
 
 interface FilterTabGroupProps<T extends string> {
@@ -39,10 +41,11 @@ export function FilterTabGroup<T extends string>({
               role="tab"
               aria-selected={active}
               onClick={() => onChange(opt.value)}
-              className={`rounded-md px-3.5 py-2 text-sm transition-all whitespace-nowrap ${
+              className={`flex items-center gap-1.5 rounded-md px-3.5 py-2 text-sm transition-all whitespace-nowrap ${
                 active ? filterPillActiveClass : filterPillInactiveClass
               }`}
             >
+              {opt.icon ? <opt.icon className="h-4 w-4 shrink-0" aria-hidden /> : null}
               {opt.label}
             </button>
           );
