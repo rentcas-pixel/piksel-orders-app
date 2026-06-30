@@ -105,11 +105,11 @@ async function insertRowLegacyVisibility<T extends Record<string, unknown>>(
   table: 'comments' | 'reminders',
   payload: T
 ) {
-  let result = await supabase.from(table).insert([payload]).select().single();
+  let result = await supabase.from(table).insert([payload] as never[]).select().single();
 
   if (result.error && isMissingColumnError(result.error) && 'visibility' in payload) {
     const { visibility: _visibility, ...legacyPayload } = payload;
-    result = await supabase.from(table).insert([legacyPayload]).select().single();
+    result = await supabase.from(table).insert([legacyPayload] as never[]).select().single();
   }
 
   return result;
