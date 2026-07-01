@@ -1,5 +1,4 @@
 import type { AgencyRecord } from '@/lib/agency-auth';
-import { buildAgencyMatchClause } from '@/lib/agency-orders';
 import { getOrdersServer } from '@/lib/pocketbase-server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { isCombinedInvoiceOrder, isStandaloneInvoiceOrder } from '@/lib/invoice-utils';
@@ -49,22 +48,27 @@ async function fetchOrdersByIds(orderIds: string[]): Promise<Order[]> {
   const uniqueIds = [...new Set(orderIds.filter(Boolean))];
   if (uniqueIds.length === 0) return [];
 
-  const orders: Order[] = [];
   const batchSize = 50;
-
+  const batches: string[][] = [];
   for (let i = 0; i < uniqueIds.length; i += batchSize) {
-    const batch = uniqueIds.slice(i, i + batchSize);
-    const filter = batch.map((id) => `id="${escapePocketBaseValue(id)}"`).join(' || ');
-    const result = await getOrdersServer({
-      page: 1,
-      perPage: batchSize,
-      filter,
-      timeoutMs: 30000,
-    });
-    orders.push(...result.items);
+    batches.push(uniqueIds.slice(i, i + batchSize));
   }
 
-  return orders;
+  const batchResults = await Promise.all(
+    batches.map(async (batch) => {
+      const filter = batch.map((id) => `id="${escapePocketBaseValue(id)}"`).join(' || ');
+      const result = await getOrdersServer({
+        page: 1,
+        perPage: batchSize,
+        filter,
+        fields: 'id,client,agency',
+        timeoutMs: 20000,
+      });
+      return result.items;
+    })
+  );
+
+  return batchResults.flat();
 }
 
 /** Sutapatinimas pagal sąskaitose minimus užsakymus — ne visas PB agentūros katalogas. */
@@ -82,25 +86,6 @@ export async function fetchAgencyInvoiceMatchContext(
     orderIds.add(order.id);
     const client = order.client?.trim();
     if (client) clientKeys.add(normalizeLabel(client));
-  }
-
-  const filter = buildAgencyMatchClause(matchValues);
-  if (filter) {
-    const maxPages = 3;
-    for (let page = 1; page <= maxPages; page += 1) {
-      const result = await getOrdersServer({
-        page,
-        perPage: 500,
-        filter,
-        sort: '-updated',
-        timeoutMs: 30000,
-      });
-      for (const order of result.items) {
-        const client = order.client?.trim();
-        if (client) clientKeys.add(normalizeLabel(client));
-      }
-      if (page >= (result.totalPages ?? 1)) break;
-    }
   }
 
   return {

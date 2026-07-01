@@ -7,6 +7,11 @@ import {
 } from '@/lib/agency-orders';
 import { getOrdersServer } from '@/lib/pocketbase-server';
 
+export const maxDuration = 60;
+
+const AGENCY_ORDER_FIELDS =
+  'id,client,agency,invoice_id,approved,from,to,final_price,media_received,invoice_sent,updated,viaduct,screens';
+
 function readFilters(searchParams: URLSearchParams): AgencyListFilters {
   return {
     status: searchParams.get('status') ?? 'taip',
@@ -52,6 +57,8 @@ export async function GET(request: Request) {
     perPage: Number.isFinite(perPage) ? perPage : 20,
     sort,
     filter,
+    fields: AGENCY_ORDER_FIELDS,
+    timeoutMs: 20000,
   });
 
   return Response.json(result);

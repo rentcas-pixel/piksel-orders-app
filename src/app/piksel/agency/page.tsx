@@ -12,7 +12,7 @@ import { AgencyOrdersCalendar } from '@/components/agency/AgencyOrdersCalendar';
 import { EditOrderModal } from '@/components/EditOrderModal';
 import { AgencySearchFilters } from '@/components/agency/AgencySearchFilters';
 import { type AgencyListFilters, type AgencyPeriodTab, type AgencyViewMode } from '@/lib/agency-orders';
-import { agencyLogout, AgencyNoLinkError, fetchAgencyMe } from '@/lib/agency-portal-api';
+import { agencyLogout, AgencyNoLinkError, fetchAgencyInvoices, fetchAgencyMe } from '@/lib/agency-portal-api';
 import { getClientAgencyPaths } from '@/lib/agency-portal-paths';
 import { getPhotoProofUrl } from '@/lib/photo-proof';
 import { Order } from '@/types';
@@ -69,6 +69,7 @@ function AgencyPortalContent() {
           setAgency(me.agency.name);
           setSessionError(null);
           document.title = `${me.agency.name} — Piksel`;
+          void fetchAgencyInvoices().catch(() => undefined);
         }
       } catch (error) {
         if (cancelled) return;

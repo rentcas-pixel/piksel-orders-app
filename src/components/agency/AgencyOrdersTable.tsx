@@ -94,7 +94,9 @@ export function AgencyOrdersTable({
         setTotalPages(result.totalPages || 1);
         setTotalItems(result.totalItems || 0);
 
-        if (items.length > 0) {
+        if (portalMode) {
+          setInvoiceStatuses({});
+        } else if (items.length > 0) {
           try {
             const statusMap = await SupabaseService.getInvoiceStatuses(items.map((item) => item.id));
             setInvoiceStatuses(statusMap);

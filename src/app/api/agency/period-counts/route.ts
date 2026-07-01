@@ -1,12 +1,8 @@
 import { agencyUnauthorizedResponse, getAgencySession } from '@/lib/agency-auth';
-import {
-  buildAgencyOrdersFilter,
-  type AgencyListFilters,
-  type AgencyPeriodTab,
-} from '@/lib/agency-orders';
-import { getOrdersServer } from '@/lib/pocketbase-server';
+import { getAgencyPeriodCountsCached } from '@/lib/agency-portal-cache';
+import type { AgencyListFilters } from '@/lib/agency-orders';
 
-const PERIOD_TABS: AgencyPeriodTab[] = ['all', 'current', 'future', 'past'];
+export const maxDuration = 60;
 
 function readFilters(searchParams: URLSearchParams): AgencyListFilters {
   return {
@@ -25,20 +21,12 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const searchQuery = searchParams.get('searchQuery') ?? '';
   const filters = readFilters(searchParams);
-  const matchValues = session.agency.pocketbase_values;
 
-  const entries = await Promise.all(
-    PERIOD_TABS.map(async (tab) => {
-      const filter = buildAgencyOrdersFilter({
-        agencyMatchValues: matchValues,
-        searchQuery,
-        filters,
-        periodTab: tab,
-      });
-      const result = await getOrdersServer({ page: 1, perPage: 1, filter });
-      return [tab, result.totalItems ?? 0] as const;
-    })
+  const counts = await getAgencyPeriodCountsCached(
+    session.agency.pocketbase_values,
+    searchQuery,
+    filters
   );
 
-  return Response.json(Object.fromEntries(entries));
+  return Response.json(counts);
 }

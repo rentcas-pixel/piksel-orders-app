@@ -117,9 +117,13 @@ export function AgencySearchFilters({
       }
     };
 
-    load();
+    const timer = window.setTimeout(() => {
+      void load();
+    }, 200);
+
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
   }, [agency, countSearchQuery, countFilters, mode, portalMode]);
 

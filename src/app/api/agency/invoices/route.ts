@@ -1,5 +1,5 @@
 import { agencyUnauthorizedResponse, getAgencySession } from '@/lib/agency-auth';
-import { listAgencyInvoicesServer } from '@/lib/agency-invoice-match';
+import { getAgencyInvoicesCached } from '@/lib/agency-portal-cache';
 
 export const maxDuration = 60;
 
@@ -19,7 +19,7 @@ export async function GET() {
   }
 
   try {
-    const items = await listAgencyInvoicesServer(session.agency);
+    const items = await getAgencyInvoicesCached(session.agency);
     return Response.json({ items });
   } catch (error) {
     const message =

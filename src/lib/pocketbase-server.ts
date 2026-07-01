@@ -32,14 +32,16 @@ export async function getOrdersServer(params: {
   perPage?: number;
   sort?: string;
   filter?: string;
+  fields?: string;
   timeoutMs?: number;
 } = {}): Promise<{ items: Order[]; totalItems: number; totalPages: number }> {
-  const { page = 1, perPage = 25, sort = '-updated', filter = '', timeoutMs } = params;
+  const { page = 1, perPage = 25, sort = '-updated', filter = '', fields, timeoutMs } = params;
   const queryParams = new URLSearchParams({
     page: page.toString(),
     perPage: perPage.toString(),
     sort,
     ...(filter && { filter }),
+    ...(fields && { fields }),
   });
 
   const response = (await pocketBaseFetch(`/records?${queryParams}`, timeoutMs)) as {
