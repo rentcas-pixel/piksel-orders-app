@@ -18,6 +18,7 @@ interface InvoicesFiltersBarProps {
   onMonthYearChange: (month: string, year: string) => void;
   paymentFilter: IssuedInvoicePaymentFilter;
   onPaymentFilterChange: (filter: IssuedInvoicePaymentFilter) => void;
+  hidePaymentFilter?: boolean;
 }
 
 export function InvoicesFiltersBar({
@@ -28,6 +29,7 @@ export function InvoicesFiltersBar({
   onMonthYearChange,
   paymentFilter,
   onPaymentFilterChange,
+  hidePaymentFilter = false,
 }: InvoicesFiltersBarProps) {
   return (
     <div className="mb-4 rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-600 dark:bg-gray-800">
@@ -55,12 +57,14 @@ export function InvoicesFiltersBar({
             options={yearTabs}
             onChange={(v) => onMonthYearChange(month, v)}
           />
-          <FilterTabGroup
-            label="Apmokėjimas"
-            value={paymentFilter}
-            options={ISSUED_PAYMENT_FILTER_OPTIONS}
-            onChange={(v) => onPaymentFilterChange(v as IssuedInvoicePaymentFilter)}
-          />
+          {!hidePaymentFilter && (
+            <FilterTabGroup
+              label="Apmokėjimas"
+              value={paymentFilter}
+              options={ISSUED_PAYMENT_FILTER_OPTIONS}
+              onChange={(v) => onPaymentFilterChange(v as IssuedInvoicePaymentFilter)}
+            />
+          )}
         </div>
       </div>
     </div>

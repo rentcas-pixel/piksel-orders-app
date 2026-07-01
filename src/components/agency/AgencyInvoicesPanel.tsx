@@ -34,6 +34,7 @@ export function AgencyInvoicesPanel({ agency, portalMode = false }: AgencyInvoic
         }}
         paymentFilter={paymentFilter}
         onPaymentFilterChange={setPaymentFilter}
+        hidePaymentFilter={portalMode}
       />
       <InvoicesTable
         agency={agency}

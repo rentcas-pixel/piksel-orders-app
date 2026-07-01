@@ -76,23 +76,26 @@ export function extractPikSequences(text: string | null | undefined): number[] {
   return seqs;
 }
 
+/** FIFO: seniausia data, tada mažesnis PIK nr. */
+export function compareFifoInvoiceOrder(
+  a: { invoiceDate: string; invoiceNumber?: string | null },
+  b: { invoiceDate: string; invoiceNumber?: string | null }
+): number {
+  const byDate = a.invoiceDate.localeCompare(b.invoiceDate);
+  if (byDate !== 0) return byDate;
+  return parseInvoiceNumber(a.invoiceNumber ?? '') - parseInvoiceNumber(b.invoiceNumber ?? '');
+}
+
 function sortTargetsForSource(
-  source: FifoPaymentSource,
+  _source: FifoPaymentSource,
   targets: FifoInvoiceTarget[]
 ): FifoInvoiceTarget[] {
-  const pikSeqs = extractPikSequences(source.description);
-  return [...targets].sort((a, b) => {
-    if (pikSeqs.length > 0) {
-      const aSeq = parseInvoiceNumber(a.invoiceNumber ?? '');
-      const bSeq = parseInvoiceNumber(b.invoiceNumber ?? '');
-      const aIdx = pikSeqs.indexOf(aSeq);
-      const bIdx = pikSeqs.indexOf(bSeq);
-      if (aIdx >= 0 && bIdx < 0) return -1;
-      if (aIdx < 0 && bIdx >= 0) return 1;
-      if (aIdx >= 0 && bIdx >= 0 && aIdx !== bIdx) return aIdx - bIdx;
-    }
-    return a.invoiceDate.localeCompare(b.invoiceDate);
-  });
+  return [...targets].sort((a, b) =>
+    compareFifoInvoiceOrder(
+      { invoiceDate: a.invoiceDate, invoiceNumber: a.invoiceNumber },
+      { invoiceDate: b.invoiceDate, invoiceNumber: b.invoiceNumber }
+    )
+  );
 }
 
 export function planFifoAllocations(

@@ -192,6 +192,8 @@ export function InvoicesTable({
     }
   };
 
+  const columnCount = portalMode ? 6 : 8;
+
   return (
     <div className={portalCardClass}>
       <div className={`${portalToolbarClass} flex flex-wrap items-center justify-between gap-3`}>
@@ -225,10 +227,10 @@ export function InvoicesTable({
             onClick={() => void handleDownloadZip()}
             disabled={loading || zipping || filtered.length === 0}
             className={portalExportBtnClass}
-            title="Atsisiųsti visas rodomas išrašytas sąskaitas ZIP archyve (PDF)"
+            title="Atsisiųsti visas rodomas sąskaitas ZIP archyve (PDF)"
           >
             <FolderArrowDownIcon className="h-4 w-4" />
-            {zipping ? 'Ruošiama ZIP…' : 'ZIP visos'}
+            {zipping ? 'Ruošiama…' : 'ZIP'}
           </button>
           {onNewInvoice && (
             <button type="button" onClick={onNewInvoice} className={portalExportBtnClass}>
@@ -250,57 +252,63 @@ export function InvoicesTable({
               <th className={`${portalThClass} text-right`}>
                 <span className="inline-flex items-center gap-1">
                   Suma
-                  {!overdueSort ? (
+                  {!portalMode && !overdueSort ? (
                     <span className="normal-case font-semibold text-blue-700 dark:text-blue-300">
                       ↓
                     </span>
                   ) : null}
                 </span>
               </th>
-              <th className={portalThClass}>Statusas</th>
-              <th className={`${portalThClass} text-right`}>
-                <button
-                  type="button"
-                  onClick={() => setOverdueSort((current) => nextOverdueSort(current))}
-                  className={`inline-flex items-center gap-1 uppercase tracking-wider transition-colors hover:text-gray-800 dark:hover:text-gray-200 ${
-                    overdueSort
-                      ? 'font-semibold text-blue-700 dark:text-blue-300'
-                      : 'text-gray-500 dark:text-gray-400'
-                  }`}
-                  title={
-                    overdueSort === 'desc'
-                      ? 'Rūšiuojama: daugiausiai vėluoja. Spauskite — mažiausiai'
-                      : overdueSort === 'asc'
-                        ? 'Rūšiuojama: mažiausiai vėluoja. Spauskite — numatytasis'
-                        : 'Rūšiuoti pagal vėlavimo dienas'
-                  }
-                >
-                  Vėluoja
-                  <span className="normal-case text-gray-400 dark:text-gray-500">
-                    {overdueSort === 'desc' ? '↓' : overdueSort === 'asc' ? '↑' : '↕'}
-                  </span>
-                </button>
-              </th>
+              {!portalMode && (
+                <>
+                  <th className={portalThClass}>Statusas</th>
+                  <th className={`${portalThClass} text-right`}>
+                    <button
+                      type="button"
+                      onClick={() => setOverdueSort((current) => nextOverdueSort(current))}
+                      className={`inline-flex items-center gap-1 uppercase tracking-wider transition-colors hover:text-gray-800 dark:hover:text-gray-200 ${
+                        overdueSort
+                          ? 'font-semibold text-blue-700 dark:text-blue-300'
+                          : 'text-gray-500 dark:text-gray-400'
+                      }`}
+                      title={
+                        overdueSort === 'desc'
+                          ? 'Rūšiuojama: daugiausiai vėluoja. Spauskite — mažiausiai'
+                          : overdueSort === 'asc'
+                            ? 'Rūšiuojama: mažiausiai vėluoja. Spauskite — numatytasis'
+                            : 'Rūšiuoti pagal vėlavimo dienas'
+                      }
+                    >
+                      Vėluoja
+                      <span className="normal-case text-gray-400 dark:text-gray-500">
+                        {overdueSort === 'desc' ? '↓' : overdueSort === 'asc' ? '↑' : '↕'}
+                      </span>
+                    </button>
+                  </th>
+                </>
+              )}
               <th className={`${portalThClass} w-12 text-center`}>PDF</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-gray-800">
             {loading ? (
               <tr>
-                <td colSpan={8} className={`${portalTdClass} py-10 text-center text-gray-500`}>
+                <td colSpan={columnCount} className={`${portalTdClass} py-10 text-center text-gray-500`}>
                   Kraunama…
                 </td>
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={8} className={`${portalTdClass} py-10 text-center text-gray-500`}>
-                  {paymentFilter === 'all'
-                    ? 'Šį mėnesį sąskaitų nerasta.'
-                    : paymentFilter === 'paid'
-                      ? 'Šį mėnesį apmokėtų sąskaitų nerasta.'
-                      : paymentFilter === 'overdue'
-                        ? 'Šį mėnesį vėluojančių sąskaitų nerasta.'
-                        : 'Šį mėnesį neapmokėtų sąskaitų nerasta.'}
+                <td colSpan={columnCount} className={`${portalTdClass} py-10 text-center text-gray-500`}>
+                  {portalMode && invoices.length > 0 && periodInvoices.length === 0
+                    ? `Šį mėnesį sąskaitų nėra. Iš viso turite ${invoices.length} sąskaitų — pasirinkite kitą mėnesį.`
+                    : paymentFilter === 'all'
+                      ? 'Šį mėnesį sąskaitų nerasta.'
+                      : paymentFilter === 'paid'
+                        ? 'Šį mėnesį apmokėtų sąskaitų nerasta.'
+                        : paymentFilter === 'overdue'
+                          ? 'Šį mėnesį vėluojančių sąskaitų nerasta.'
+                          : 'Šį mėnesį neapmokėtų sąskaitų nerasta.'}
                 </td>
               </tr>
             ) : (
@@ -327,18 +335,22 @@ export function InvoicesTable({
                   <td className={`${portalTdClass} text-right font-medium tabular-nums text-gray-900 dark:text-white`}>
                     {formatEuro(invoice.amount)}
                   </td>
-                  <td className={`${portalTdClass} overflow-visible`}>
-                    <InvoicePaymentStatusBadge payment={payment} />
-                  </td>
-                  <td
-                    className={`${portalTdClass} text-right tabular-nums ${
-                      payment.status === 'overdue'
-                        ? 'font-semibold text-red-700 dark:text-red-300'
-                        : 'text-gray-400 dark:text-gray-500'
-                    }`}
-                  >
-                    {payment.status === 'overdue' ? `${payment.daysOverdue} d.` : '—'}
-                  </td>
+                  {!portalMode && (
+                    <>
+                      <td className={`${portalTdClass} overflow-visible`}>
+                        <InvoicePaymentStatusBadge payment={payment} />
+                      </td>
+                      <td
+                        className={`${portalTdClass} text-right tabular-nums ${
+                          payment.status === 'overdue'
+                            ? 'font-semibold text-red-700 dark:text-red-300'
+                            : 'text-gray-400 dark:text-gray-500'
+                        }`}
+                      >
+                        {payment.status === 'overdue' ? `${payment.daysOverdue} d.` : '—'}
+                      </td>
+                    </>
+                  )}
                   <td className={`${portalTdClass} text-center`}>
                     <button
                       type="button"

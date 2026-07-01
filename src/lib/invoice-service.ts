@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase';
-import { fetchAgencyOrderIds } from '@/lib/agency-orders';
+import { listAgencyInvoicesServer } from '@/lib/agency-invoice-match';
 import {
   computeInvoiceTotals,
   getInvoiceVatRate,
@@ -356,28 +356,10 @@ export class InvoiceService {
 
   /** Sąskaitos, susietos su agentūros užsakymais (agentūrų portalui). */
   static async getForAgency(agency: string): Promise<Invoice[]> {
-    const [all, orderIds] = await Promise.all([
-      this.getAll(),
-      fetchAgencyOrderIds(agency),
-    ]);
-
-    const seen = new Set<string>();
-    const result: Invoice[] = [];
-
-    for (const invoice of all) {
-      if (seen.has(invoice.id)) continue;
-
-      if (isStandaloneInvoiceOrder(invoice.order_id)) continue;
-
-      const linkedOrderIds = await this.getOrderIdsForInvoice(invoice.id);
-      const matchesAgency = linkedOrderIds.some((id) => orderIds.has(id));
-      if (!matchesAgency && !orderIds.has(invoice.order_id)) continue;
-
-      seen.add(invoice.id);
-      result.push(invoice);
-    }
-
-    return result;
+    return listAgencyInvoicesServer([agency], {
+      name: agency,
+      pocketbase_values: [agency],
+    });
   }
 
   static async getByOrderId(orderId: string): Promise<Invoice[]> {

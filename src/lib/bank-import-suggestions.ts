@@ -5,6 +5,7 @@ import { bankPaymentMatchesCompany } from '@/lib/bank-counterparty';
 import { isSignificantBankExpense, type BankPayment } from '@/lib/bank-statement-import';
 import {
   AMOUNT_TOLERANCE,
+  compareFifoInvoiceOrder,
   extractPikSequences,
   getEffectivePaidAmount,
   invoiceBalance,
@@ -15,6 +16,7 @@ import type { Invoice, ReceivedInvoice } from '@/types';
 
 export type BankImportSuggestionReason = 'pik_number' | 'party_match' | 'amount_match' | 'fifo';
 export type BankImportInvoiceKind = 'issued' | 'received';
+export type BankImportLineCoverage = 'unchecked' | 'none' | 'partial' | 'full';
 
 export interface BankImportSuggestionLine {
   id: string;
@@ -110,6 +112,20 @@ function reserveSelected(
   }
 }
 
+function sortIssuedByFifo(a: Invoice, b: Invoice): number {
+  return compareFifoInvoiceOrder(
+    { invoiceDate: a.invoice_date, invoiceNumber: a.invoice_number },
+    { invoiceDate: b.invoice_date, invoiceNumber: b.invoice_number }
+  );
+}
+
+function sortReceivedByFifo(a: ReceivedInvoice, b: ReceivedInvoice): number {
+  return compareFifoInvoiceOrder(
+    { invoiceDate: a.invoice_date, invoiceNumber: a.invoice_number },
+    { invoiceDate: b.invoice_date, invoiceNumber: b.invoice_number }
+  );
+}
+
 export function suggestIssuedPayment(
   payment: BankPayment,
   invoices: Invoice[],
@@ -118,49 +134,52 @@ export function suggestIssuedPayment(
   const open = invoices.filter(
     (invoice) => !reserved.has(invoice.id) && issuedBalance(invoice) > AMOUNT_TOLERANCE
   );
-  const lines: BankImportSuggestionLine[] = [];
-  const added = new Set<string>();
   const haystack = `${payment.description} ${payment.counterparty ?? ''}`;
   const pikSeqs = extractPikSequences(haystack);
 
+  const pikIds = new Set<string>();
   for (const seq of pikSeqs) {
     const invoice = open.find(
-      (row) => parseInvoiceNumber(row.invoice_number ?? '') === seq && !added.has(row.id)
+      (row) => parseInvoiceNumber(row.invoice_number ?? '') === seq
     );
-    if (!invoice) continue;
-    lines.push(makeIssuedLine(invoice, 'pik_number', true));
-    added.add(invoice.id);
+    if (invoice) pikIds.add(invoice.id);
   }
 
-  const buyerPool = open
+  const clientPool = open
     .filter(
       (invoice) =>
-        !added.has(invoice.id) &&
         buyerMatchesPayment(invoice, payment) &&
         invoice.invoice_date <= payment.date
     )
-    .sort((a, b) => a.invoice_date.localeCompare(b.invoice_date));
+    .sort(sortIssuedByFifo);
 
-  for (const invoice of buyerPool) {
-    const exact = amountsClose(Number(invoice.total_amount), payment.amount);
-    const autoSelect = exact && lines.length === 0;
-    lines.push(makeIssuedLine(invoice, exact ? 'amount_match' : 'party_match', autoSelect));
-    added.add(invoice.id);
+  if (clientPool.length > 0) {
+    return clientPool.map((invoice) =>
+      makeIssuedLine(
+        invoice,
+        pikIds.has(invoice.id) ? 'pik_number' : 'party_match',
+        true
+      )
+    );
   }
 
-  if (lines.length === 0) {
-    const amountOnly = open.filter(
+  const pikMatches = open.filter((invoice) => pikIds.has(invoice.id)).sort(sortIssuedByFifo);
+  if (pikMatches.length > 0) {
+    return pikMatches.map((invoice) => makeIssuedLine(invoice, 'pik_number', true));
+  }
+
+  const amountOnly = open
+    .filter(
       (invoice) =>
-        !added.has(invoice.id) &&
         amountsClose(Number(invoice.total_amount), payment.amount) &&
         invoice.invoice_date <= payment.date
-    );
-    if (amountOnly.length === 1) {
-      lines.push(makeIssuedLine(amountOnly[0], 'amount_match', true));
-    }
+    )
+    .sort(sortIssuedByFifo);
+  if (amountOnly.length === 1) {
+    return [makeIssuedLine(amountOnly[0], 'amount_match', true)];
   }
 
-  return lines;
+  return [];
 }
 
 export function suggestReceivedPayment(
@@ -171,48 +190,52 @@ export function suggestReceivedPayment(
   const open = invoices.filter(
     (invoice) => !reserved.has(invoice.id) && receivedBalance(invoice) > AMOUNT_TOLERANCE
   );
-  const lines: BankImportSuggestionLine[] = [];
-  const added = new Set<string>();
   const haystack = `${payment.description} ${payment.counterparty ?? ''}`.toLowerCase();
 
+  const pikIds = new Set<string>();
   for (const invoice of open) {
-    if (!invoice.invoice_number || added.has(invoice.id)) continue;
+    if (!invoice.invoice_number) continue;
     const normalized = invoice.invoice_number.toLowerCase().replace(/[\s\-_/\\.]/g, '');
     if (normalized.length >= 3 && haystack.includes(normalized)) {
-      lines.push(makeReceivedLine(invoice, 'pik_number', true));
-      added.add(invoice.id);
+      pikIds.add(invoice.id);
     }
   }
 
   const sellerPool = open
     .filter(
       (invoice) =>
-        !added.has(invoice.id) &&
         sellerMatchesPayment(invoice, payment) &&
         invoice.invoice_date <= payment.date
     )
-    .sort((a, b) => a.invoice_date.localeCompare(b.invoice_date));
+    .sort(sortReceivedByFifo);
 
-  for (const invoice of sellerPool) {
-    const total = Number(invoice.total_amount) || Number(invoice.amount);
-    const exact = amountsClose(total, payment.amount);
-    const autoSelect = exact && lines.length === 0;
-    lines.push(makeReceivedLine(invoice, exact ? 'amount_match' : 'party_match', autoSelect));
-    added.add(invoice.id);
+  if (sellerPool.length > 0) {
+    return sellerPool.map((invoice) =>
+      makeReceivedLine(
+        invoice,
+        pikIds.has(invoice.id) ? 'pik_number' : 'party_match',
+        true
+      )
+    );
   }
 
-  if (lines.length === 0) {
-    const amountOnly = open.filter((invoice) => {
-      if (added.has(invoice.id) || invoice.invoice_date > payment.date) return false;
+  const pikMatches = open.filter((invoice) => pikIds.has(invoice.id)).sort(sortReceivedByFifo);
+  if (pikMatches.length > 0) {
+    return pikMatches.map((invoice) => makeReceivedLine(invoice, 'pik_number', true));
+  }
+
+  const amountOnly = open
+    .filter((invoice) => {
+      if (invoice.invoice_date > payment.date) return false;
       const total = Number(invoice.total_amount) || Number(invoice.amount);
       return amountsClose(total, payment.amount);
-    });
-    if (amountOnly.length === 1) {
-      lines.push(makeReceivedLine(amountOnly[0], 'amount_match', true));
-    }
+    })
+    .sort(sortReceivedByFifo);
+  if (amountOnly.length === 1) {
+    return [makeReceivedLine(amountOnly[0], 'amount_match', true)];
   }
 
-  return lines;
+  return [];
 }
 
 export function buildBankImportReview(
@@ -271,8 +294,16 @@ export function computeSelectedAllocations(
   let remaining = paymentAmount;
   const result: { lineId: string; amount: number }[] = [];
 
-  for (const line of suggestions) {
-    if (!line.selected) continue;
+  const selected = suggestions
+    .filter((line) => line.selected)
+    .sort((a, b) =>
+      compareFifoInvoiceOrder(
+        { invoiceDate: a.invoiceDate, invoiceNumber: a.invoiceNumber },
+        { invoiceDate: b.invoiceDate, invoiceNumber: b.invoiceNumber }
+      )
+    );
+
+  for (const line of selected) {
     if (remaining <= AMOUNT_TOLERANCE) break;
 
     const alloc = roundMoney(Math.min(remaining, line.balance));
@@ -283,6 +314,29 @@ export function computeSelectedAllocations(
   }
 
   return result;
+}
+
+export function getSuggestionLineCoverage(
+  line: BankImportSuggestionLine,
+  allocatedAmount: number
+): BankImportLineCoverage {
+  if (!line.selected) return 'unchecked';
+  if (allocatedAmount <= AMOUNT_TOLERANCE) return 'none';
+  if (allocatedAmount >= line.balance - AMOUNT_TOLERANCE) return 'full';
+  return 'partial';
+}
+
+export function coverageLabel(coverage: BankImportLineCoverage): string | null {
+  switch (coverage) {
+    case 'unchecked':
+      return 'nepažymėta';
+    case 'none':
+      return 'nesusidengia';
+    case 'partial':
+      return 'dalinis dengimas';
+    case 'full':
+      return null;
+  }
 }
 
 export function suggestionReasonLabel(reason: BankImportSuggestionReason): string {
