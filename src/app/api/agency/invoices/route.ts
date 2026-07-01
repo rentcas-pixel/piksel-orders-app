@@ -6,10 +6,7 @@ export async function GET() {
   if (!session) return agencyUnauthorizedResponse();
 
   try {
-    const items = await listAgencyInvoicesServer(
-      session.agency.pocketbase_values,
-      session.agency
-    );
+    const items = await listAgencyInvoicesServer(session.agency);
     return Response.json({ items });
   } catch {
     return Response.json({ error: 'Nepavyko užkrauti sąskaitų.' }, { status: 500 });

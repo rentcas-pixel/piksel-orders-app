@@ -174,6 +174,30 @@ export function InvoicesTable({
   const invoiceCountLabel =
     filtered.length === 1 ? '1 sąskaita' : `${filtered.length} sąskaitų`;
 
+  const emptyTableMessage = useMemo(() => {
+    if (portalMode && !loading && invoices.length === 0) {
+      return 'Sąskaitų nerasta.';
+    }
+    if (portalMode && !loading && invoices.length > 0 && periodInvoices.length === 0) {
+      if (!resolvedMonth) {
+        return `Šiais metais (${resolvedYear}) sąskaitų nėra. Iš viso turite ${invoices.length} sąskaitų — pabandykite kitus metus.`;
+      }
+      return `Šį mėnesį sąskaitų nėra. Iš viso turite ${invoices.length} sąskaitų — pasirinkite kitą mėnesį arba „Visi“.`;
+    }
+    if (paymentFilter === 'all') return 'Šį mėnesį sąskaitų nerasta.';
+    if (paymentFilter === 'paid') return 'Šį mėnesį apmokėtų sąskaitų nerasta.';
+    if (paymentFilter === 'overdue') return 'Šį mėnesį vėluojančių sąskaitų nerasta.';
+    return 'Šį mėnesį neapmokėtų sąskaitų nerasta.';
+  }, [
+    portalMode,
+    loading,
+    invoices.length,
+    periodInvoices.length,
+    resolvedMonth,
+    resolvedYear,
+    paymentFilter,
+  ]);
+
   const invoicesWithFile = useMemo(
     () => filtered.filter((invoice) => invoice.file_url),
     [filtered]
@@ -300,15 +324,7 @@ export function InvoicesTable({
             ) : filtered.length === 0 ? (
               <tr>
                 <td colSpan={columnCount} className={`${portalTdClass} py-10 text-center text-gray-500`}>
-                  {portalMode && invoices.length > 0 && periodInvoices.length === 0
-                    ? `Šį mėnesį sąskaitų nėra. Iš viso turite ${invoices.length} sąskaitų — pasirinkite kitą mėnesį.`
-                    : paymentFilter === 'all'
-                      ? 'Šį mėnesį sąskaitų nerasta.'
-                      : paymentFilter === 'paid'
-                        ? 'Šį mėnesį apmokėtų sąskaitų nerasta.'
-                        : paymentFilter === 'overdue'
-                          ? 'Šį mėnesį vėluojančių sąskaitų nerasta.'
-                          : 'Šį mėnesį neapmokėtų sąskaitų nerasta.'}
+                  {emptyTableMessage}
                 </td>
               </tr>
             ) : (

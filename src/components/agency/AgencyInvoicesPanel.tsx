@@ -7,8 +7,6 @@ import { InvoicesTable } from '@/components/InvoicesTable';
 
 import type { IssuedInvoicePaymentFilter } from '@/lib/issued-invoice-filters';
 
-const currentMonth = String(new Date().getMonth() + 1).padStart(2, '0');
-
 interface AgencyInvoicesPanelProps {
   agency: string;
   portalMode?: boolean;
@@ -16,7 +14,7 @@ interface AgencyInvoicesPanelProps {
 
 export function AgencyInvoicesPanel({ agency, portalMode = false }: AgencyInvoicesPanelProps) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [month, setMonth] = useState(currentMonth);
+  const [month, setMonth] = useState('');
   const [year, setYear] = useState(String(new Date().getFullYear()));
   const [paymentFilter, setPaymentFilter] = useState<IssuedInvoicePaymentFilter>('all');
   const debouncedSearch = useDebounce(searchQuery, 400);

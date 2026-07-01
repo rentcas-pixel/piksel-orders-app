@@ -356,7 +356,7 @@ export class InvoiceService {
 
   /** Sąskaitos, susietos su agentūros užsakymais (agentūrų portalui). */
   static async getForAgency(agency: string): Promise<Invoice[]> {
-    return listAgencyInvoicesServer([agency], {
+    return listAgencyInvoicesServer({
       name: agency,
       pocketbase_values: [agency],
     });

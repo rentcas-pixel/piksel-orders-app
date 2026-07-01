@@ -1,5 +1,6 @@
 import type { AgencyRecord } from '@/lib/agency-auth';
 import { buildAgencyMatchClause } from '@/lib/agency-orders';
+import { agencyMatchesFilter } from '@/lib/agency-names';
 import { getOrdersServer } from '@/lib/pocketbase-server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { isCombinedInvoiceOrder, isStandaloneInvoiceOrder } from '@/lib/invoice-utils';
@@ -26,10 +27,21 @@ export function buildAgencyBuyerKeys(
   return keys;
 }
 
+export function buildAgencyMatchValues(
+  agency: Pick<AgencyRecord, 'name' | 'pocketbase_values'>
+): string[] {
+  return [...new Set([agency.name, ...agency.pocketbase_values].map((v) => v.trim()).filter(Boolean))];
+}
+
+function orderMatchesAgency(orderAgency: string, matchValues: string[]): boolean {
+  if (matchValues.length === 0) return false;
+  return matchValues.some((value) => agencyMatchesFilter(orderAgency, value));
+}
+
 export async function fetchAgencyInvoiceMatchContext(
-  matchValues: string[],
   agency: Pick<AgencyRecord, 'name' | 'pocketbase_values'>
 ): Promise<AgencyInvoiceMatchContext> {
+  const matchValues = buildAgencyMatchValues(agency);
   const orderIds = new Set<string>();
   const clientKeys = new Set<string>();
   const filter = buildAgencyMatchClause(matchValues);
@@ -46,6 +58,7 @@ export async function fetchAgencyInvoiceMatchContext(
       });
       totalPages = result.totalPages ?? 1;
       for (const order of result.items) {
+        if (!orderMatchesAgency(order.agency ?? '', matchValues)) continue;
         orderIds.add(order.id);
         const client = order.client?.trim();
         if (client) clientKeys.add(normalizeLabel(client));
@@ -120,12 +133,11 @@ export function filterInvoicesForAgency(
 
 /** Agentūrų portalui — 3 paralelūs užklausimai, be N+1 ciklo. */
 export async function listAgencyInvoicesServer(
-  matchValues: string[],
   agency: Pick<AgencyRecord, 'name' | 'pocketbase_values'>
 ): Promise<Invoice[]> {
   const supabase = createSupabaseAdminClient();
   const [ctx, invoicesResult, linesResult] = await Promise.all([
-    fetchAgencyInvoiceMatchContext(matchValues, agency),
+    fetchAgencyInvoiceMatchContext(agency),
     supabase.from('invoices').select('*').order('invoice_date', { ascending: false }),
     supabase.from('invoice_lines').select('invoice_id, order_id'),
   ]);

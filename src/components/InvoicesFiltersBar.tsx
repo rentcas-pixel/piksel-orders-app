@@ -4,7 +4,7 @@ import { MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import { FilterTabGroup } from '@/components/FilterTabGroup';
 import { filterControlClass } from '@/components/FilterDropdown';
 import { MonthTabNavigator } from '@/components/MonthTabNavigator';
-import { yearTabs } from '@/lib/filter-options';
+import { getYearTabOptions } from '@/lib/filter-options';
 import {
   ISSUED_PAYMENT_FILTER_OPTIONS,
   type IssuedInvoicePaymentFilter,
@@ -48,13 +48,13 @@ export function InvoicesFiltersBar({
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:gap-x-5">
           <MonthTabNavigator
             month={month}
-            year={year || '2026'}
+            year={year || String(new Date().getFullYear())}
             onChange={onMonthYearChange}
           />
           <FilterTabGroup
             label="Metai"
-            value={year || '2026'}
-            options={yearTabs}
+            value={year || String(new Date().getFullYear())}
+            options={getYearTabOptions()}
             onChange={(v) => onMonthYearChange(month, v)}
           />
           {!hidePaymentFilter && (

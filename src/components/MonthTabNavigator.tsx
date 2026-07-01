@@ -1,7 +1,7 @@
 'use client';
 
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
-import { monthFilterOptions, yearTabs } from '@/lib/filter-options';
+import { monthFilterOptions, getYearTabOptions } from '@/lib/filter-options';
 import { normalizeFilterMonth } from '@/lib/orders-filters';
 import {
   filterPillActiveClass,
@@ -28,7 +28,7 @@ function shiftMonth(year: number, month: number, delta: number): { year: number;
   return { year: d.getFullYear(), month: d.getMonth() + 1 };
 }
 
-const allowedYears = yearTabs.map((y) => y.value);
+const allowedYears = getYearTabOptions().map((y) => y.value);
 
 const arrowBtnClass =
   'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors';

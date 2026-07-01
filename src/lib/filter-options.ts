@@ -44,10 +44,15 @@ export const statusTabs: FilterOption[] = [
   { value: 'ne', label: 'Nepatvirtinta' },
 ];
 
-export const yearTabs: FilterOption[] = [
-  { value: '2026', label: '2026' },
-  { value: '2025', label: '2025' },
-];
+export function getYearTabOptions(referenceDate = new Date()): FilterOption[] {
+  const current = referenceDate.getFullYear();
+  return [current, current - 1, current - 2].map((y) => ({
+    value: String(y),
+    label: String(y),
+  }));
+}
+
+export const yearTabs: FilterOption[] = getYearTabOptions();
 
 /** Mėnesio tab'ai su tikrais pavadinimais (praeitas / esamas / būsimas mėnuo) */
 export function getMonthTabOptions(referenceDate = new Date()): FilterOption[] {
