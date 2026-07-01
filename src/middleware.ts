@@ -77,5 +77,15 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/', '/login', '/agency', '/agency/:path*', '/piksel/agency', '/piksel/agency/:path*'],
+  matcher: [
+    '/',
+    '/login',
+    '/agency',
+    '/agency/:path*',
+    '/piksel/agency',
+    '/piksel/agency/:path*',
+    '/api/ocr/:path*',
+    '/api/received-invoices/:path*',
+    '/api/email/:path*',
+  ],
 };

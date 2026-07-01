@@ -90,13 +90,20 @@ export async function scanReceivedInvoiceFile(
     body: formData,
   });
 
-  const payload = (await response.json()) as {
-    data?: MistralReceivedInvoiceExtraction;
-    error?: string;
-  };
+  const raw = await response.text();
+  let payload: { data?: MistralReceivedInvoiceExtraction; error?: string };
+  try {
+    payload = JSON.parse(raw) as { data?: MistralReceivedInvoiceExtraction; error?: string };
+  } catch {
+    throw new Error(
+      response.ok
+        ? 'Neteisingas serverio atsakymas'
+        : `Serverio klaida (${response.status}). Patikrinkite ar Vercel turi MISTRAL_API_KEY.`
+    );
+  }
 
   if (!response.ok) {
-    throw new Error(payload.error || 'OCR klaida');
+    throw new Error(payload.error || `OCR klaida (${response.status})`);
   }
   if (!payload.data) {
     throw new Error('Tuščias OCR atsakymas');
