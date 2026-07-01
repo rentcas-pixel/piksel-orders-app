@@ -3,10 +3,14 @@ import { buildAgencyMatchClause } from '@/lib/agency-orders';
 import { getOrdersServer } from '@/lib/pocketbase-server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { isCombinedInvoiceOrder, isStandaloneInvoiceOrder } from '@/lib/invoice-utils';
-import type { Invoice } from '@/types';
+import type { Invoice, Order } from '@/types';
 
 function normalizeLabel(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function escapePocketBaseValue(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
 export interface AgencyInvoiceMatchContext {
@@ -32,18 +36,58 @@ export function buildAgencyMatchValues(
   return [...new Set([agency.name, ...agency.pocketbase_values].map((v) => v.trim()).filter(Boolean))];
 }
 
+function orderAgencyMatches(orderAgency: string, matchValues: string[]): boolean {
+  const agency = normalizeLabel(orderAgency);
+  if (!agency) return false;
+  return matchValues.some((value) => {
+    const key = normalizeLabel(value);
+    return key && (agency === key || agency.includes(key) || key.includes(agency));
+  });
+}
+
+async function fetchOrdersByIds(orderIds: string[]): Promise<Order[]> {
+  const uniqueIds = [...new Set(orderIds.filter(Boolean))];
+  if (uniqueIds.length === 0) return [];
+
+  const orders: Order[] = [];
+  const batchSize = 50;
+
+  for (let i = 0; i < uniqueIds.length; i += batchSize) {
+    const batch = uniqueIds.slice(i, i + batchSize);
+    const filter = batch.map((id) => `id="${escapePocketBaseValue(id)}"`).join(' || ');
+    const result = await getOrdersServer({
+      page: 1,
+      perPage: batchSize,
+      filter,
+      timeoutMs: 30000,
+    });
+    orders.push(...result.items);
+  }
+
+  return orders;
+}
+
+/** Sutapatinimas pagal sąskaitose minimus užsakymus — ne visas PB agentūros katalogas. */
 export async function fetchAgencyInvoiceMatchContext(
-  agency: Pick<AgencyRecord, 'name' | 'pocketbase_values'>
+  agency: Pick<AgencyRecord, 'name' | 'pocketbase_values'>,
+  referencedOrderIds: Set<string>
 ): Promise<AgencyInvoiceMatchContext> {
   const matchValues = buildAgencyMatchValues(agency);
   const orderIds = new Set<string>();
   const clientKeys = new Set<string>();
-  const filter = buildAgencyMatchClause(matchValues);
 
+  const orders = await fetchOrdersByIds([...referencedOrderIds]);
+  for (const order of orders) {
+    if (!orderAgencyMatches(order.agency ?? '', matchValues)) continue;
+    orderIds.add(order.id);
+    const client = order.client?.trim();
+    if (client) clientKeys.add(normalizeLabel(client));
+  }
+
+  const filter = buildAgencyMatchClause(matchValues);
   if (filter) {
-    let page = 1;
-    let totalPages = 1;
-    while (page <= totalPages) {
+    const maxPages = 3;
+    for (let page = 1; page <= maxPages; page += 1) {
       const result = await getOrdersServer({
         page,
         perPage: 500,
@@ -51,13 +95,11 @@ export async function fetchAgencyInvoiceMatchContext(
         sort: '-updated',
         timeoutMs: 30000,
       });
-      totalPages = result.totalPages ?? 1;
       for (const order of result.items) {
-        orderIds.add(order.id);
         const client = order.client?.trim();
         if (client) clientKeys.add(normalizeLabel(client));
       }
-      page += 1;
+      if (page >= (result.totalPages ?? 1)) break;
     }
   }
 
@@ -125,13 +167,25 @@ export function filterInvoicesForAgency(
   });
 }
 
-/** Agentūrų portalui — 3 paralelūs užklausimai, be N+1 ciklo. */
+function collectReferencedOrderIds(
+  invoices: Invoice[],
+  linesByInvoice: Map<string, string[]>
+): Set<string> {
+  const referencedOrderIds = new Set<string>();
+  for (const invoice of invoices) {
+    for (const orderId of getLinkedOrderIdsForInvoice(invoice, linesByInvoice)) {
+      referencedOrderIds.add(orderId);
+    }
+  }
+  return referencedOrderIds;
+}
+
+/** Agentūrų portalui — Supabase sąskaitos + tik PB užsakymai, susieti su sąskaitomis. */
 export async function listAgencyInvoicesServer(
   agency: Pick<AgencyRecord, 'name' | 'pocketbase_values'>
 ): Promise<Invoice[]> {
   const supabase = createSupabaseAdminClient();
-  const [ctx, invoicesResult, linesResult] = await Promise.all([
-    fetchAgencyInvoiceMatchContext(agency),
+  const [invoicesResult, linesResult] = await Promise.all([
     supabase.from('invoices').select('*').order('invoice_date', { ascending: false }),
     supabase.from('invoice_lines').select('invoice_id, order_id'),
   ]);
@@ -143,6 +197,10 @@ export async function listAgencyInvoicesServer(
     throw new Error(linesResult.error.message);
   }
 
+  const invoices = (invoicesResult.data ?? []) as Invoice[];
   const linesByInvoice = buildInvoiceLinesMap(linesResult.data ?? []);
-  return filterInvoicesForAgency((invoicesResult.data ?? []) as Invoice[], ctx, linesByInvoice);
+  const referencedOrderIds = collectReferencedOrderIds(invoices, linesByInvoice);
+  const ctx = await fetchAgencyInvoiceMatchContext(agency, referencedOrderIds);
+
+  return filterInvoicesForAgency(invoices, ctx, linesByInvoice);
 }
