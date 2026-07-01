@@ -1,5 +1,12 @@
 import { supabase } from './supabase';
-import { Comment, Reminder, FileAttachment, OrderApprovalEvent, OrderInvoiceStatus, CommentVisibility } from '@/types';
+import { Comment, Reminder, FileAttachment, OrderApprovalEvent, OrderInvoiceStatus, CommentVisibility, type Order } from '@/types';
+import { InvoiceService } from '@/lib/invoice-service';
+import {
+  buildMonthStatusMap,
+  monthSentFlagKey,
+  toOrderInvoiceStatus,
+  type BillingMonthContext,
+} from '@/lib/invoice-month-status';
 
 /** Nuotraukos ir Excel (.xls / .xlsx) rodomi užsakymo modalo „Printscreens“ skiltyje */
 function isPrintscreenPanelFile(
@@ -209,6 +216,104 @@ export class SupabaseService {
       statusMap[status.order_id] = status;
     }
     return statusMap;
+  }
+
+  static async getOrderInvoiceMonthSentFlags(
+    orderIds: string[],
+    billing: BillingMonthContext | null
+  ): Promise<Record<string, boolean>> {
+    if (!billing?.month || !billing?.year || orderIds.length === 0) return {};
+
+    const uniqueOrderIds = [...new Set(orderIds.filter(Boolean))];
+    const year = parseInt(billing.year, 10);
+    const month = parseInt(billing.month, 10);
+    if (Number.isNaN(year) || Number.isNaN(month)) return {};
+
+    const { data, error } = await supabase
+      .from('order_invoice_month_flags')
+      .select('order_id, invoice_sent')
+      .in('order_id', uniqueOrderIds)
+      .eq('billing_year', year)
+      .eq('billing_month', month);
+
+    if (error) {
+      console.error('getOrderInvoiceMonthSentFlags:', error);
+      return {};
+    }
+
+    const flags: Record<string, boolean> = {};
+    for (const row of data ?? []) {
+      flags[monthSentFlagKey(row.order_id, billing.year, billing.month)] = !!row.invoice_sent;
+    }
+    return flags;
+  }
+
+  static async upsertOrderInvoiceMonthSent(
+    orderId: string,
+    billing: BillingMonthContext,
+    invoiceSent: boolean
+  ): Promise<void> {
+    const year = parseInt(billing.year, 10);
+    const month = parseInt(billing.month, 10);
+    if (!orderId || Number.isNaN(year) || Number.isNaN(month)) return;
+
+    const { error } = await supabase.from('order_invoice_month_flags').upsert(
+      {
+        order_id: orderId,
+        billing_year: year,
+        billing_month: month,
+        invoice_sent: invoiceSent,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'order_id,billing_year,billing_month' }
+    );
+
+    if (error) throw error;
+  }
+
+  static async getMonthInvoiceStatuses(
+    orders: Order[],
+    billing: BillingMonthContext | null
+  ): Promise<Record<string, OrderInvoiceStatus>> {
+    const orderIds = orders.map((order) => order.id);
+    if (orderIds.length === 0) return {};
+
+    const ordersById = Object.fromEntries(orders.map((order) => [order.id, order]));
+    const [coverages, legacyStatuses, monthSentFlags] = await Promise.all([
+      InvoiceService.getOrderInvoiceCoverages(orderIds),
+      this.getInvoiceStatuses(orderIds),
+      this.getOrderInvoiceMonthSentFlags(orderIds, billing),
+    ]);
+
+    const monthStatuses = buildMonthStatusMap({
+      orderIds,
+      ordersById,
+      billing,
+      coverages,
+      legacyStatuses,
+      monthSentFlags,
+    });
+
+    const result: Record<string, OrderInvoiceStatus> = {};
+    for (const orderId of orderIds) {
+      const status = monthStatuses[orderId];
+      if (status) {
+        result[orderId] = toOrderInvoiceStatus(orderId, status);
+      }
+    }
+    return result;
+  }
+
+  static getMonthInvoiceStatusValue(
+    statusMap: Record<string, OrderInvoiceStatus>,
+    order: Order,
+    field: keyof Pick<OrderInvoiceStatus, 'invoice_issued' | 'invoice_sent'>
+  ): boolean {
+    const status = statusMap[order.id];
+    if (field === 'invoice_issued') {
+      return status?.invoice_issued ?? !!order.invoice_sent;
+    }
+    return status?.invoice_sent ?? false;
   }
 
   static async upsertInvoiceStatus(

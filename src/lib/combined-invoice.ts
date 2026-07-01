@@ -2,6 +2,7 @@ import { PocketBaseService } from '@/lib/pocketbase';
 import { buildLineDescription } from '@/lib/invoice-locale';
 import {
   defaultInvoiceDate,
+  invoiceDateForBillingPeriod,
   resolveInvoiceAmountAndPeriod,
 } from '@/lib/invoice-utils';
 import { resolveListMonthYear } from '@/lib/orders-filters';
@@ -81,13 +82,16 @@ export async function fetchCombinedInvoiceCandidates(params: {
   });
 
   const orders = result.items ?? [];
-  const statusMap = await SupabaseService.getInvoiceStatuses(orders.map((o) => o.id));
-  const invoiceDay = defaultInvoiceDate();
+  const { month: resolvedMonth, year: resolvedYear } = resolveListMonthYear(params.month, params.year);
+  const billingContext =
+    resolvedMonth && resolvedYear ? { month: resolvedMonth, year: resolvedYear } : null;
+  const statusMap = await SupabaseService.getMonthInvoiceStatuses(orders, billingContext);
+  const invoiceDay = invoiceDateForBillingPeriod(resolvedMonth, resolvedYear);
 
   const candidates: CombinedInvoiceCandidate[] = [];
 
   for (const order of orders) {
-    const invoiceIssued = statusMap[order.id]?.invoice_issued ?? !!order.invoice_sent;
+    const invoiceIssued = statusMap[order.id]?.invoice_issued ?? false;
     if (params.onlyUninvoiced !== false && invoiceIssued) continue;
 
     const resolved = resolveInvoiceAmountAndPeriod(order, invoiceDay, 'monthly');

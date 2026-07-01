@@ -1,5 +1,10 @@
 import type { FilterOption } from '@/components/FilterDropdown';
 
+export function getMonthFilterLabel(month: number | string): string {
+  const value = String(month).padStart(2, '0');
+  return monthFilterOptions.find((m) => m.value === value)?.label ?? value;
+}
+
 export const monthFilterOptions: FilterOption[] = [
   { value: '01', label: 'Sausis' },
   { value: '02', label: 'Vasaris' },

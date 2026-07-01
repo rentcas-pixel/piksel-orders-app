@@ -16,6 +16,7 @@ import {
   type AgencyListFilters,
   type AgencyPeriodTab,
 } from '@/lib/agency-orders';
+import { resolveListMonthYear } from '@/lib/orders-filters';
 import { fetchAgencyOrders } from '@/lib/agency-portal-api';
 
 interface AgencyOrdersTableProps {
@@ -98,7 +99,9 @@ export function AgencyOrdersTable({
           setInvoiceStatuses({});
         } else if (items.length > 0) {
           try {
-            const statusMap = await SupabaseService.getInvoiceStatuses(items.map((item) => item.id));
+            const { month, year } = resolveListMonthYear(filters.month, filters.year);
+            const billingContext = month && year ? { month, year } : null;
+            const statusMap = await SupabaseService.getMonthInvoiceStatuses(items, billingContext);
             setInvoiceStatuses(statusMap);
           } catch {
             setInvoiceStatuses({});
@@ -141,7 +144,9 @@ export function AgencyOrdersTable({
       const items = result.items || [];
       let exportStatuses: Record<string, OrderInvoiceStatus> = {};
       try {
-        exportStatuses = await SupabaseService.getInvoiceStatuses(items.map((item) => item.id));
+        const { month, year } = resolveListMonthYear(filters.month, filters.year);
+        const billingContext = month && year ? { month, year } : null;
+        exportStatuses = await SupabaseService.getMonthInvoiceStatuses(items, billingContext);
       } catch {
         exportStatuses = {};
       }

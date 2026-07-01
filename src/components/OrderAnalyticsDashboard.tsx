@@ -121,13 +121,18 @@ export function OrderAnalyticsDashboard({ filters, onEditOrder, refreshKey }: Or
     [filters.month, filters.year]
   );
 
+  const billingContext = useMemo(() => {
+    const { month, year } = resolveListMonthYear(filters.month, filters.year);
+    return month && year ? { month, year } : null;
+  }, [filters.month, filters.year]);
+
   const fetchData = useCallback(async () => {
     const cacheKey = periodFilter || 'all';
     const cached = analyticsCache.get(cacheKey);
     if (cached && cached.expires > Date.now()) {
       setOrders(cached.orders);
       try {
-        const statuses = await SupabaseService.getInvoiceStatuses(cached.orders.map((o) => o.id));
+        const statuses = await SupabaseService.getMonthInvoiceStatuses(cached.orders, billingContext);
         setInvoiceStatusMap(statuses);
       } catch {
         setInvoiceStatusMap({});
@@ -163,7 +168,7 @@ export function OrderAnalyticsDashboard({ filters, onEditOrder, refreshKey }: Or
       setOrders(sliced);
       const [screens, statuses] = await Promise.all([
         PocketBaseService.getAllScreens(),
-        SupabaseService.getInvoiceStatuses(sliced.map((o) => o.id)),
+        SupabaseService.getMonthInvoiceStatuses(sliced, billingContext),
       ]);
       setAllScreens(screens.map((s) => ({ id: s.id, city: s.city })));
       setInvoiceStatusMap(statuses);
@@ -262,7 +267,7 @@ export function OrderAnalyticsDashboard({ filters, onEditOrder, refreshKey }: Or
     } finally {
       setLoading(false);
     }
-  }, [periodFilter, comparisonTarget]);
+  }, [periodFilter, comparisonTarget, billingContext]);
 
   useEffect(() => {
     if (refreshKey !== undefined) analyticsCache.clear();

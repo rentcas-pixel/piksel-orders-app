@@ -1,6 +1,11 @@
 import { supabase } from '@/lib/supabase';
 import { listAgencyInvoicesServer } from '@/lib/agency-invoice-match';
 import {
+  type OrderInvoiceCoverage,
+  periodCoversBillingMonth,
+  periodsOverlap,
+} from '@/lib/invoice-month-status';
+import {
   computeInvoiceTotals,
   getInvoiceVatRate,
   isCombinedInvoiceOrder,
@@ -94,6 +99,122 @@ export class InvoiceService {
     return invoices[0] ?? null;
   }
 
+  static async getForOrderBillingMonth(
+    orderId: string,
+    month: string,
+    year: string
+  ): Promise<Invoice | null> {
+    const billing = { month: month.padStart(2, '0'), year };
+    const invoices = await this.getByOrderId(orderId);
+
+    for (const invoice of invoices) {
+      if (isCombinedInvoiceOrder(invoice.order_id)) continue;
+      if (
+        periodCoversBillingMonth(
+          invoice.period_from,
+          invoice.period_to,
+          invoice.invoice_date,
+          billing
+        )
+      ) {
+        return invoice;
+      }
+    }
+
+    const { data: lines, error } = await supabase
+      .from('invoice_lines')
+      .select('invoice_id, period_from, period_to, invoices!inner(id, order_id, invoice_date, period_from, period_to)')
+      .eq('order_id', orderId);
+
+    if (error) {
+      console.error('getForOrderBillingMonth lines:', error);
+      return null;
+    }
+
+    for (const line of lines ?? []) {
+      const invoice = line.invoices as unknown as Invoice | null;
+      if (!invoice) continue;
+      if (
+        periodCoversBillingMonth(
+          line.period_from ?? invoice.period_from,
+          line.period_to ?? invoice.period_to,
+          invoice.invoice_date,
+          billing
+        )
+      ) {
+        return this.getById(invoice.id);
+      }
+    }
+
+    return null;
+  }
+
+  static async getOrderInvoiceCoverages(orderIds: string[]): Promise<OrderInvoiceCoverage[]> {
+    const uniqueOrderIds = [...new Set(orderIds.filter(Boolean))];
+    if (uniqueOrderIds.length === 0) return [];
+
+    const coverages: OrderInvoiceCoverage[] = [];
+
+    const { data: directInvoices, error: directError } = await supabase
+      .from('invoices')
+      .select('id, order_id, period_from, period_to, invoice_date')
+      .in('order_id', uniqueOrderIds);
+
+    if (directError) {
+      console.error('getOrderInvoiceCoverages direct:', directError);
+    } else {
+      for (const invoice of directInvoices ?? []) {
+        if (isCombinedInvoiceOrder(invoice.order_id) || isStandaloneInvoiceOrder(invoice.order_id)) {
+          continue;
+        }
+        coverages.push({
+          orderId: invoice.order_id,
+          invoiceId: invoice.id,
+          periodFrom: invoice.period_from,
+          periodTo: invoice.period_to,
+          invoiceDate: invoice.invoice_date,
+        });
+      }
+    }
+
+    const { data: lines, error: lineError } = await supabase
+      .from('invoice_lines')
+      .select('order_id, period_from, period_to, invoice_id, invoices!inner(invoice_date, period_from, period_to)')
+      .in('order_id', uniqueOrderIds);
+
+    if (lineError) {
+      console.error('getOrderInvoiceCoverages lines:', lineError);
+      return coverages;
+    }
+
+    for (const line of lines ?? []) {
+      const invoice = line.invoices as unknown as {
+        invoice_date: string;
+        period_from?: string | null;
+        period_to?: string | null;
+      } | null;
+      if (!invoice) continue;
+      coverages.push({
+        orderId: line.order_id,
+        invoiceId: line.invoice_id,
+        periodFrom: line.period_from ?? invoice.period_from ?? null,
+        periodTo: line.period_to ?? invoice.period_to ?? null,
+        invoiceDate: invoice.invoice_date,
+      });
+    }
+
+    return coverages;
+  }
+
+  static async syncLegacyInvoiceStatus(orderId: string): Promise<void> {
+    const coverages = await this.getOrderInvoiceCoverages([orderId]);
+    const hasAny = coverages.some((entry) => entry.orderId === orderId);
+    await SupabaseService.upsertInvoiceStatus(orderId, {
+      invoice_issued: hasAny,
+      ...(hasAny ? {} : { invoice_sent: false }),
+    });
+  }
+
   static async getById(id: string): Promise<Invoice | null> {
     const { data, error } = await supabase.from('invoices').select('*').eq('id', id).maybeSingle();
     if (error) {
@@ -116,7 +237,32 @@ export class InvoiceService {
   }
 
   static async saveInvoice(input: InvoiceSaveInput): Promise<Invoice> {
-    const existing = await this.getLatestForOrder(input.order_id);
+    let existing: Invoice | null = null;
+
+    if (input.period_from && input.period_to) {
+      const invoices = await this.getByOrderId(input.order_id);
+      existing =
+        invoices.find(
+          (invoice) =>
+            !isCombinedInvoiceOrder(invoice.order_id) &&
+            periodsOverlap(
+              invoice.period_from,
+              invoice.period_to,
+              input.period_from!,
+              input.period_to!
+            )
+        ) ?? null;
+    }
+
+    if (!existing) {
+      const latest = await this.getLatestForOrder(input.order_id);
+      if (latest && !isCombinedInvoiceOrder(latest.order_id)) {
+        if (!input.period_from || !input.period_to) {
+          existing = latest;
+        }
+      }
+    }
+
     if (existing && !isCombinedInvoiceOrder(existing.order_id)) {
       return this.updateInvoice(existing.id, input);
     }
@@ -175,18 +321,11 @@ export class InvoiceService {
     const removedOrderIds = previousOrderIds.filter((id) => !orderIds.includes(id));
 
     await Promise.all(
-      orderIds.map((orderId) =>
-        SupabaseService.upsertInvoiceStatus(orderId, { invoice_issued: true })
-      )
+      orderIds.map((orderId) => InvoiceService.syncLegacyInvoiceStatus(orderId))
     );
 
     await Promise.all(
-      removedOrderIds.map((orderId) =>
-        SupabaseService.upsertInvoiceStatus(orderId, {
-          invoice_issued: false,
-          invoice_sent: false,
-        })
-      )
+      removedOrderIds.map((orderId) => InvoiceService.syncLegacyInvoiceStatus(orderId))
     );
 
     return invoice;
@@ -207,10 +346,7 @@ export class InvoiceService {
       .eq('order_id', orderId);
     if (delError) throw delError;
 
-    await SupabaseService.upsertInvoiceStatus(orderId, {
-      invoice_issued: false,
-      invoice_sent: false,
-    });
+    await InvoiceService.syncLegacyInvoiceStatus(orderId);
 
     const remainingLines = await this.getLinesForInvoice(invoiceId);
     if (remainingLines.length === 0) {
@@ -268,14 +404,7 @@ export class InvoiceService {
     const { error } = await supabase.from('invoices').delete().eq('id', id);
     if (error) throw error;
 
-    await Promise.all(
-      orderIds.map((orderId) =>
-        SupabaseService.upsertInvoiceStatus(orderId, {
-          invoice_issued: false,
-          invoice_sent: false,
-        })
-      )
-    );
+    await Promise.all(orderIds.map((orderId) => InvoiceService.syncLegacyInvoiceStatus(orderId)));
   }
 
   static async getAllForDateRange(startDate: string, endDate: string): Promise<Invoice[]> {

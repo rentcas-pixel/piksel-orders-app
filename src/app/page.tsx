@@ -37,6 +37,7 @@ import { BankDashboardPanel } from '@/components/BankDashboardPanel';
 import { BankSubTabsNav } from '@/components/BankSubTabsNav';
 import { ReceivedInvoiceService } from '@/lib/received-invoice-service';
 import { InvoiceService } from '@/lib/invoice-service';
+import { resolveListMonthYear } from '@/lib/orders-filters';
 import type { CombinedInvoiceCandidate } from '@/lib/combined-invoice';
 import { BankImportProgressToast } from '@/components/BankImportProgressToast';
 import { ReminderNotifications } from '@/components/ReminderNotifications';
@@ -147,7 +148,11 @@ export default function Home() {
   };
 
   const handleGenerateInvoice = async (order: Order) => {
-    const existing = await InvoiceService.getLatestForOrder(order.id);
+    const { month, year } = resolveListMonthYear(filters.month, filters.year);
+    const existing =
+      month && year
+        ? await InvoiceService.getForOrderBillingMonth(order.id, month, year)
+        : await InvoiceService.getLatestForOrder(order.id);
     if (existing && (await InvoiceService.hasInvoiceLines(existing.id))) {
       setCombinedInvoice(existing);
       return;
@@ -420,6 +425,8 @@ export default function Home() {
         isOpen={!!invoicingOrder}
         onClose={() => setInvoicingOrder(null)}
         onSaved={handleInvoiceSaved}
+        billingMonth={filters.month}
+        billingYear={filters.year}
         onOpenCombined={(invoice) => {
           setInvoicingOrder(null);
           setCombinedInvoice(invoice);

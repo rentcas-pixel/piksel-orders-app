@@ -48,7 +48,8 @@ export function OrdersCalendar({ searchQuery, filters, onEditOrder }: OrdersCale
         let items = (result.items || []).filter((o) => o.from && o.to);
 
         if (filters.invoice_sent) {
-          const statusMap = await SupabaseService.getInvoiceStatuses(items.map((o) => o.id));
+          const billingContext = { month: String(month).padStart(2, '0'), year: String(year) };
+          const statusMap = await SupabaseService.getMonthInvoiceStatuses(items, billingContext);
           items = items.filter((order) => {
             const issued = statusMap[order.id]?.invoice_issued ?? !!order.invoice_sent;
             return filters.invoice_sent === 'true' ? issued : !issued;

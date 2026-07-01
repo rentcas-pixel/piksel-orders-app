@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { ArrowDownTrayIcon, DocumentTextIcon, PaperAirplaneIcon, PlusCircleIcon } from '@heroicons/react/24/outline';
 import { ChatBubbleLeftEllipsisIcon } from '@heroicons/react/24/solid';
 import { Order, OrderInvoiceStatus } from '@/types';
@@ -11,6 +11,7 @@ import { downloadExcel } from '@/lib/export-excel';
 import type { TableTheme } from '@/lib/order-design-variants';
 import { getTableTheme } from '@/lib/table-theme';
 import { buildOrdersListFilter, resolveListMonthYear, type OrdersListFilters, type OrdersPeriodTab } from '@/lib/orders-filters';
+import { isMultiMonthOrder } from '@/lib/invoice-utils';
 import { StatusIconButton } from '@/components/StatusIconButton';
 
 interface OrdersTableProps {
@@ -63,6 +64,13 @@ export function OrdersTable({
     }
   };
 
+  const billingContext = useMemo(() => {
+    const resolvedBilling = resolveListMonthYear(filters.month, filters.year);
+    return resolvedBilling.month && resolvedBilling.year
+      ? { month: resolvedBilling.month, year: resolvedBilling.year }
+      : null;
+  }, [filters.month, filters.year]);
+
   const getInvoiceStatus = useCallback(
     (orderId: string) => invoiceStatuses[orderId] ?? null,
     [invoiceStatuses]
@@ -91,11 +99,39 @@ export function OrdersTable({
     field: 'invoice_issued' | 'invoice_sent',
     value: boolean
   ) => {
+    if (field === 'invoice_issued' && isMultiMonthOrder(order)) {
+      return;
+    }
+
     const previousStatus = invoiceStatuses[order.id];
-    // Use the same fallbacks as getInvoiceIssued/getInvoiceSent so toggling one field
-    // does not reset the other when no Supabase row exists yet.
     const currentIssued = previousStatus?.invoice_issued ?? !!order.invoice_sent;
     const currentSent = previousStatus?.invoice_sent ?? false;
+
+    if (field === 'invoice_sent' && isMultiMonthOrder(order) && billingContext) {
+      const optimisticStatus: OrderInvoiceStatus = {
+        order_id: order.id,
+        invoice_issued: currentIssued,
+        invoice_sent: value,
+        updated_at: new Date().toISOString(),
+      };
+      setInvoiceStatuses((prev) => ({
+        ...prev,
+        [order.id]: optimisticStatus,
+      }));
+      try {
+        await SupabaseService.upsertOrderInvoiceMonthSent(order.id, billingContext, value);
+      } catch (error) {
+        console.error('Error updating month invoice sent:', error);
+        setInvoiceStatuses((prev) => {
+          const next = { ...prev };
+          if (previousStatus) next[order.id] = previousStatus;
+          else delete next[order.id];
+          return next;
+        });
+      }
+      return;
+    }
+
     const optimisticStatus: OrderInvoiceStatus = {
       order_id: order.id,
       invoice_issued: currentIssued,
@@ -525,7 +561,7 @@ export function OrdersTable({
         filter: filterString,
       });
       const items = result.items || [];
-      const statusMap = await SupabaseService.getInvoiceStatuses(items.map(item => item.id));
+      const statusMap = await SupabaseService.getMonthInvoiceStatuses(items, billingContext);
       const invoiceFilteredItems = filters.invoice_sent
         ? items.filter(item => {
             const issued = statusMap[item.id]?.invoice_issued ?? !!item.invoice_sent;
@@ -593,7 +629,7 @@ export function OrdersTable({
         });
 
         const fetchedOrders = result.items || [];
-        const statusMap = await SupabaseService.getInvoiceStatuses(fetchedOrders.map(item => item.id));
+        const statusMap = await SupabaseService.getMonthInvoiceStatuses(fetchedOrders, billingContext);
         setInvoiceStatuses(statusMap);
         const activityMap = await SupabaseService.getOrderCommentOrScreenshotMap(fetchedOrders.map(item => item.id));
         setOrderActivityMap(activityMap);
@@ -656,7 +692,7 @@ export function OrdersTable({
     // Only depend on primitives to avoid infinite loops from object/function reference changes.
     // buildFilterString, filterMockOrders, sortOrders, calculateSumAsync are derived from these.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, searchQuery, filters.status, filters.month, filters.year, filters.client, filters.agency, filters.media_received, filters.invoice_sent, sortField, sortDirection, portalStyle, periodTab]);
+  }, [currentPage, searchQuery, filters.status, filters.month, filters.year, filters.client, filters.agency, filters.media_received, filters.invoice_sent, sortField, sortDirection, portalStyle, periodTab, billingContext?.month, billingContext?.year]);
 
 
 

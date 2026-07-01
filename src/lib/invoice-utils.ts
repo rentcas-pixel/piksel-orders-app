@@ -163,6 +163,62 @@ export function invoiceDateForBillingPeriod(month: string, year: string): string
   return defaultInvoiceDate();
 }
 
+export interface BillingMonthOption {
+  year: number;
+  month: number;
+  key: string;
+  amount: number;
+  invoiceDate: string;
+}
+
+export function billingMonthKey(year: number, month: number): string {
+  return `${year}-${String(month).padStart(2, '0')}`;
+}
+
+export function billingMonthKeyFromDate(date: string): string | null {
+  const parsed = parseDateOnlyLocal(date);
+  if (!parsed) return null;
+  return billingMonthKey(parsed.getFullYear(), parsed.getMonth() + 1);
+}
+
+export function getBillingMonthOptions(order: Order): BillingMonthOption[] {
+  if (!isMultiMonthOrder(order) || !order.from || !order.to || !order.final_price) return [];
+
+  return getMonthlyDistribution(order.from, order.to, order.final_price).map((entry) => ({
+    year: entry.year,
+    month: entry.month,
+    key: billingMonthKey(entry.year, entry.month),
+    amount: entry.amount,
+    invoiceDate: invoiceDateForBillingPeriod(String(entry.month), String(entry.year)),
+  }));
+}
+
+/** Numatytas sąskaitavimo mėnuo: filtras, ankstesnis kalendorinis, arba einamasis. */
+export function resolveDefaultBillingMonthKey(
+  order: Order,
+  billingMonth = '',
+  billingYear = ''
+): string | null {
+  const options = getBillingMonthOptions(order);
+  if (options.length === 0) return null;
+
+  if (billingMonth && billingYear) {
+    const filterKey = billingMonthKey(parseInt(billingYear, 10), parseInt(billingMonth, 10));
+    if (options.some((o) => o.key === filterKey)) return filterKey;
+  }
+
+  const now = new Date();
+  const prevMonth = now.getMonth() === 0 ? 12 : now.getMonth();
+  const prevYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+  const prevKey = billingMonthKey(prevYear, prevMonth);
+  if (options.some((o) => o.key === prevKey)) return prevKey;
+
+  const currentKey = billingMonthKeyFromDate(defaultInvoiceDate());
+  if (currentKey && options.some((o) => o.key === currentKey)) return currentKey;
+
+  return options[options.length - 1]?.key ?? null;
+}
+
 export function calculateMonthlyAmount(order: Order, invoiceDate: string): number {
   if (!isMultiMonthOrder(order)) return order.final_price ?? 0;
   if (!order.from || !order.to || !order.final_price) return order.final_price ?? 0;
