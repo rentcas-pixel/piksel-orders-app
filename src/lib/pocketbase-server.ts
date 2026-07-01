@@ -4,7 +4,6 @@ import type { Order } from '@/types';
 const POCKETBASE_URL = config.pocketbase.url;
 const COLLECTION = config.pocketbase.collection;
 const DEFAULT_REQUEST_TIMEOUT = 10000;
-const AGENCY_REQUEST_TIMEOUT = 30000;
 
 async function pocketBaseFetch(endpoint: string, timeoutMs = DEFAULT_REQUEST_TIMEOUT): Promise<unknown> {
   const url = `${POCKETBASE_URL}/api/collections/${COLLECTION}${endpoint}`;
