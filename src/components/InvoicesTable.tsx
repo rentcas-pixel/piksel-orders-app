@@ -69,18 +69,26 @@ export function InvoicesTable({
 }: InvoicesTableProps) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [zipping, setZipping] = useState(false);
   const [overdueSort, setOverdueSort] = useState<OverdueSortDirection | null>(null);
 
   const loadInvoices = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       if (portalMode) {
         setInvoices(await fetchAgencyInvoices());
       } else {
         setInvoices(await InvoiceService.getAll());
       }
+    } catch (error) {
+      console.error('Sąskaitos:', error);
+      setInvoices([]);
+      setLoadError(
+        error instanceof Error ? error.message : 'Nepavyko užkrauti sąskaitų.'
+      );
     } finally {
       setLoading(false);
     }
@@ -175,6 +183,7 @@ export function InvoicesTable({
     filtered.length === 1 ? '1 sąskaita' : `${filtered.length} sąskaitų`;
 
   const emptyTableMessage = useMemo(() => {
+    if (loadError) return loadError;
     if (portalMode && !loading && invoices.length === 0) {
       return 'Sąskaitų nerasta.';
     }
@@ -189,6 +198,7 @@ export function InvoicesTable({
     if (paymentFilter === 'overdue') return 'Šį mėnesį vėluojančių sąskaitų nerasta.';
     return 'Šį mėnesį neapmokėtų sąskaitų nerasta.';
   }, [
+    loadError,
     portalMode,
     loading,
     invoices.length,

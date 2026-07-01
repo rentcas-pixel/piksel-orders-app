@@ -1,6 +1,5 @@
 import type { AgencyRecord } from '@/lib/agency-auth';
 import { buildAgencyMatchClause } from '@/lib/agency-orders';
-import { agencyMatchesFilter } from '@/lib/agency-names';
 import { getOrdersServer } from '@/lib/pocketbase-server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { isCombinedInvoiceOrder, isStandaloneInvoiceOrder } from '@/lib/invoice-utils';
@@ -33,11 +32,6 @@ export function buildAgencyMatchValues(
   return [...new Set([agency.name, ...agency.pocketbase_values].map((v) => v.trim()).filter(Boolean))];
 }
 
-function orderMatchesAgency(orderAgency: string, matchValues: string[]): boolean {
-  if (matchValues.length === 0) return false;
-  return matchValues.some((value) => agencyMatchesFilter(orderAgency, value));
-}
-
 export async function fetchAgencyInvoiceMatchContext(
   agency: Pick<AgencyRecord, 'name' | 'pocketbase_values'>
 ): Promise<AgencyInvoiceMatchContext> {
@@ -52,13 +46,13 @@ export async function fetchAgencyInvoiceMatchContext(
     while (page <= totalPages) {
       const result = await getOrdersServer({
         page,
-        perPage: 200,
+        perPage: 500,
         filter,
         sort: '-updated',
+        timeoutMs: 30000,
       });
       totalPages = result.totalPages ?? 1;
       for (const order of result.items) {
-        if (!orderMatchesAgency(order.agency ?? '', matchValues)) continue;
         orderIds.add(order.id);
         const client = order.client?.trim();
         if (client) clientKeys.add(normalizeLabel(client));

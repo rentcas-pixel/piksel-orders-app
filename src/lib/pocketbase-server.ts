@@ -3,12 +3,13 @@ import type { Order } from '@/types';
 
 const POCKETBASE_URL = config.pocketbase.url;
 const COLLECTION = config.pocketbase.collection;
-const REQUEST_TIMEOUT = 10000;
+const DEFAULT_REQUEST_TIMEOUT = 10000;
+const AGENCY_REQUEST_TIMEOUT = 30000;
 
-async function pocketBaseFetch(endpoint: string): Promise<unknown> {
+async function pocketBaseFetch(endpoint: string, timeoutMs = DEFAULT_REQUEST_TIMEOUT): Promise<unknown> {
   const url = `${POCKETBASE_URL}/api/collections/${COLLECTION}${endpoint}`;
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(url, {
@@ -32,8 +33,9 @@ export async function getOrdersServer(params: {
   perPage?: number;
   sort?: string;
   filter?: string;
+  timeoutMs?: number;
 } = {}): Promise<{ items: Order[]; totalItems: number; totalPages: number }> {
-  const { page = 1, perPage = 25, sort = '-updated', filter = '' } = params;
+  const { page = 1, perPage = 25, sort = '-updated', filter = '', timeoutMs } = params;
   const queryParams = new URLSearchParams({
     page: page.toString(),
     perPage: perPage.toString(),
@@ -41,7 +43,7 @@ export async function getOrdersServer(params: {
     ...(filter && { filter }),
   });
 
-  const response = (await pocketBaseFetch(`/records?${queryParams}`)) as {
+  const response = (await pocketBaseFetch(`/records?${queryParams}`, timeoutMs)) as {
     items?: Order[];
     totalItems?: number;
     totalPages?: number;
