@@ -34,13 +34,14 @@ function AgencyPortalContent() {
   const router = useRouter();
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [agency, setAgency] = useState<string | null>(null);
+  const [agencySlug, setAgencySlug] = useState<string | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
   const [sessionError, setSessionError] = useState<string | null>(null);
 
   const [tab, setTab] = useState<AgencyPortalTab>('list');
   const photoProofUrl = useMemo(
-    () => (agency ? getPhotoProofUrl(agency, { embed: true }) : null),
-    [agency]
+    () => (agency ? getPhotoProofUrl(agency, { embed: true, agencySlug }) : null),
+    [agency, agencySlug]
   );
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -67,6 +68,7 @@ function AgencyPortalContent() {
         const me = await fetchAgencyMe();
         if (!cancelled) {
           setAgency(me.agency.name);
+          setAgencySlug(me.agency.slug);
           setSessionError(null);
           document.title = `${me.agency.name} — Piksel`;
           void fetchAgencyInvoices().catch(() => undefined);
