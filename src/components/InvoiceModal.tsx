@@ -48,6 +48,8 @@ import type { InvoicePartialPaymentFields } from '@/lib/invoice-payment-table';
 
 interface InvoiceModalProps {
   order: Order | null;
+  /** Atidaroma konkreti sąskaita (pvz. iš sąrašo), ne tik „paskutinė“ užsakymui */
+  initialInvoice?: Invoice | null;
   isOpen: boolean;
   onClose: () => void;
   onSaved?: () => void;
@@ -65,6 +67,7 @@ const emptyBuyer = (): BuyerFields => ({
 
 export function InvoiceModal({
   order,
+  initialInvoice = null,
   isOpen,
   onClose,
   onSaved,
@@ -177,7 +180,7 @@ export function InvoiceModal({
     []
   );
 
-  const initFromOrder = useCallback(async (o: Order) => {
+  const initFromOrder = useCallback(async (o: Order, invoiceHint: Invoice | null = null) => {
     setLoading(true);
     setOwexxDiscount50(false);
     setBaseAmount(0);
@@ -208,10 +211,16 @@ export function InvoiceModal({
         billingMonth,
         billingYear
       );
+      const existingFromHint =
+        invoiceHint &&
+        (invoiceHint.order_id === o.id || isStandaloneInvoiceOrder(o.id))
+          ? (await InvoiceService.getById(invoiceHint.id)) ?? invoiceHint
+          : null;
       const existing =
-        resolvedMonth && resolvedYear
+        existingFromHint ??
+        (resolvedMonth && resolvedYear
           ? await InvoiceService.getForOrderBillingMonth(o.id, resolvedMonth, resolvedYear)
-          : await InvoiceService.getLatestForOrder(o.id);
+          : await InvoiceService.getLatestForOrder(o.id));
 
       if (existing && (await InvoiceService.hasInvoiceLines(existing.id))) {
         onOpenCombined?.(existing);
@@ -380,9 +389,9 @@ export function InvoiceModal({
 
   useEffect(() => {
     if (isOpen && order) {
-      void initFromOrderRef.current(order);
+      void initFromOrderRef.current(order, initialInvoice);
     }
-  }, [isOpen, order?.id, billingMonth, billingYear]);
+  }, [isOpen, order?.id, billingMonth, billingYear, initialInvoice?.id]);
 
   useEffect(() => {
     if (!companySearch.trim()) {
@@ -517,7 +526,7 @@ export function InvoiceModal({
       }
       setSavedInvoiceId(null);
       onSaved?.();
-      await initFromOrder(order);
+      await initFromOrder(order, initialInvoice);
     } catch (error) {
       console.error('delete invoice:', error);
       alert('Nepavyko ištrinti sąskaitos.');
@@ -584,6 +593,16 @@ export function InvoiceModal({
             )}
           </div>
           <div className="flex items-center gap-2">
+            {savedInvoiceId && (
+              <button
+                type="button"
+                onClick={() => void handleDelete()}
+                disabled={loading || isGenerating}
+                className={modalBtnDanger}
+              >
+                Ištrinti
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setIsEditing((v) => !v)}

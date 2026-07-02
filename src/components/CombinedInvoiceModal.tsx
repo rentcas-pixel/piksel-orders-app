@@ -474,10 +474,11 @@ export function CombinedInvoiceModal({
                 type="button"
                 onClick={() => void handleDelete()}
                 disabled={loading}
-                className={modalBtnDanger}
+                className={`${modalBtnDanger} inline-flex items-center gap-1.5`}
                 title="Ištrinti sąskaitą"
               >
                 <TrashIcon className="h-5 w-5" />
+                Ištrinti
               </button>
             )}
             <button

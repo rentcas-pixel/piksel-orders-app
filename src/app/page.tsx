@@ -60,6 +60,7 @@ export default function Home() {
   const [isWeekNumbersModalOpen, setIsWeekNumbersModalOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [invoicingOrder, setInvoicingOrder] = useState<Order | null>(null);
+  const [invoicingInvoice, setInvoicingInvoice] = useState<Invoice | null>(null);
   const [combinedInvoice, setCombinedInvoice] = useState<Invoice | null>(null);
   const [combinedCandidates, setCombinedCandidates] = useState<CombinedInvoiceCandidate[] | null>(
     null
@@ -154,9 +155,11 @@ export default function Home() {
         ? await InvoiceService.getForOrderBillingMonth(order.id, month, year)
         : await InvoiceService.getLatestForOrder(order.id);
     if (existing && (await InvoiceService.hasInvoiceLines(existing.id))) {
+      setInvoicingInvoice(null);
       setCombinedInvoice(existing);
       return;
     }
+    setInvoicingInvoice(existing);
     setInvoicingOrder(order);
   };
 
@@ -165,28 +168,34 @@ export default function Home() {
   };
 
   const handleNewStandaloneInvoice = () => {
+    setInvoicingInvoice(null);
     setInvoicingOrder(createStandaloneInvoiceOrder());
   };
 
   const handleOpenInvoice = async (invoice: Invoice) => {
     if (isCombinedInvoiceOrder(invoice.order_id)) {
+      setInvoicingInvoice(null);
       setCombinedInvoice(invoice);
       return;
     }
     if (await InvoiceService.hasInvoiceLines(invoice.id)) {
+      setInvoicingInvoice(null);
       setCombinedInvoice(invoice);
       return;
     }
     if (isStandaloneInvoiceOrder(invoice.order_id)) {
+      setInvoicingInvoice(invoice);
       setInvoicingOrder(createStandaloneInvoiceOrder(invoice.order_id));
       return;
     }
     try {
       const order = await PocketBaseService.getOrder(invoice.order_id);
+      setInvoicingInvoice(invoice);
       setInvoicingOrder(order);
     } catch (error) {
       console.error('Nepavyko užkrauti užsakymo sąskaitai:', error);
       alert('Užsakymas nerastas. Atidaroma tik sąskaitos informacija.');
+      setInvoicingInvoice(invoice);
       setInvoicingOrder(createStandaloneInvoiceOrder(invoice.order_id));
     }
   };
@@ -422,13 +431,18 @@ export default function Home() {
 
       <InvoiceModal
         order={invoicingOrder}
+        initialInvoice={invoicingInvoice}
         isOpen={!!invoicingOrder}
-        onClose={() => setInvoicingOrder(null)}
+        onClose={() => {
+          setInvoicingOrder(null);
+          setInvoicingInvoice(null);
+        }}
         onSaved={handleInvoiceSaved}
         billingMonth={filters.month}
         billingYear={filters.year}
         onOpenCombined={(invoice) => {
           setInvoicingOrder(null);
+          setInvoicingInvoice(null);
           setCombinedInvoice(invoice);
         }}
       />
