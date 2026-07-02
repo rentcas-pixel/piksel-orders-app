@@ -38,6 +38,18 @@ export class BillingCompanyService {
     const q = label.trim();
     if (!q) return null;
 
+    const { data: exact, error: exactError } = await supabase
+      .from('billing_companies')
+      .select('*')
+      .or(`name.ilike.${q},full_name.ilike.${q}`)
+      .limit(1)
+      .maybeSingle();
+
+    if (exactError) {
+      console.error('billing_companies findBestMatch exact:', exactError);
+    }
+    if (exact) return exact;
+
     const { data, error } = await supabase
       .from('billing_companies')
       .select('*')

@@ -102,7 +102,7 @@ export function InvoiceModal({
   );
 
   const applyAmountAndPeriod = useCallback(
-    (o: Order, date: string, mode: InvoiceAmountMode, buyerName = buyer.name) => {
+    (o: Order, date: string, mode: InvoiceAmountMode, buyerName = '') => {
       const resolved = resolveInvoiceAmountAndPeriod(o, date, mode);
       const locale = resolveInvoiceLocale({ buyerName, order: o });
       setBaseAmount(resolved.amount);
@@ -110,17 +110,17 @@ export function InvoiceModal({
       setPeriodTo(resolved.to);
       setLineDescription(buildLineDescription(o, resolved.from, resolved.to, locale));
     },
-    [buyer.name]
+    []
   );
 
   const applyBillingMonth = useCallback(
-    (o: Order, monthKey: string) => {
+    (o: Order, monthKey: string, buyerName = '') => {
       const option = getBillingMonthOptions(o).find((entry) => entry.key === monthKey);
       if (!option) return;
       setSelectedBillingMonthKey(monthKey);
       setInvoiceDate(option.invoiceDate);
       setDueDate(addDays(option.invoiceDate, 30));
-      applyAmountAndPeriod(o, option.invoiceDate, 'monthly');
+      applyAmountAndPeriod(o, option.invoiceDate, 'monthly', buyerName);
     },
     [applyAmountAndPeriod]
   );
@@ -294,7 +294,7 @@ export function InvoiceModal({
               setInvoiceDate(date);
               setDueDate(addDays(date, 30));
             }
-            applyAmountAndPeriod(o, date, mode);
+            applyAmountAndPeriod(o, date, mode, existing.buyer_name);
           }
         }
       } else if (isStandaloneInvoiceOrder(o.id)) {
@@ -323,12 +323,12 @@ export function InvoiceModal({
         setInvoiceNumber(await InvoiceService.getNextInvoiceNumber());
 
         setAmountMode('monthly');
-        applyAmountAndPeriod(o, invoiceDay, 'monthly');
 
         const defaultSource: BuyerSource = o.agency?.trim() ? 'agency' : 'client';
         setBuyerSource(defaultSource);
 
         const lookupLabel = defaultSource === 'agency' ? o.agency : o.client;
+        applyAmountAndPeriod(o, invoiceDay, 'monthly', lookupLabel || '');
         const match = await BillingCompanyService.findBestMatch(lookupLabel);
         if (match) {
           applyBuyerFromCompany(match);
@@ -375,11 +375,14 @@ export function InvoiceModal({
     return () => window.removeEventListener('keydown', handler, true);
   }, [isOpen, onClose]);
 
+  const initFromOrderRef = useRef(initFromOrder);
+  initFromOrderRef.current = initFromOrder;
+
   useEffect(() => {
     if (isOpen && order) {
-      void initFromOrder(order);
+      void initFromOrderRef.current(order);
     }
-  }, [isOpen, order, initFromOrder]);
+  }, [isOpen, order?.id, billingMonth, billingYear]);
 
   useEffect(() => {
     if (!companySearch.trim()) {
@@ -404,6 +407,8 @@ export function InvoiceModal({
       const match = await BillingCompanyService.findBestMatch(order.client);
       if (match) applyBuyerFromCompany(match);
       else setBuyer({ name: order.client || '', company_code: '', vat_code: '', address: '' });
+    } else if (source === 'manual') {
+      setBuyer(emptyBuyer());
     }
   };
 
@@ -414,11 +419,11 @@ export function InvoiceModal({
       const key =
         selectedBillingMonthKey ?? resolveDefaultBillingMonthKey(order, billingMonth, billingYear);
       if (key) {
-        applyBillingMonth(order, key);
+        applyBillingMonth(order, key, buyer.name);
         return;
       }
     }
-    applyAmountAndPeriod(order, invoiceDate, mode);
+    applyAmountAndPeriod(order, invoiceDate, mode, buyer.name);
   };
 
   const persistInvoice = async () => {
@@ -771,7 +776,7 @@ export function InvoiceModal({
                           }
                           onChange={() => {
                             setAmountMode('monthly');
-                            applyBillingMonth(order, option.key);
+                            applyBillingMonth(order, option.key, buyer.name);
                           }}
                           className="mt-0.5"
                         />
@@ -860,7 +865,7 @@ export function InvoiceModal({
                       ) {
                         setSelectedBillingMonthKey(key);
                       }
-                      applyAmountAndPeriod(order, formatted, 'monthly');
+                      applyAmountAndPeriod(order, formatted, 'monthly', buyer.name);
                     }
                   }}
                   onDueDateChange={(next) => setDueDate(formatDateOnly(next))}
