@@ -1153,7 +1153,7 @@ export function EditOrderModal({
                           <span className="text-xs text-gray-500">…</span>
                         )}
                       </button>
-                      {campaignEnded && (
+                      {!isAgency && campaignEnded && (
                         <button
                           type="button"
                           disabled={
