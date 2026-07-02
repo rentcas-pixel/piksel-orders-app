@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   XMarkIcon,
   ClipboardDocumentIcon,
@@ -15,8 +15,10 @@ import {
 import {
   downloadReklamosPlanas,
   downloadReklamosPlanasCombined,
+  downloadReklamosPlanasPostCampaign,
   downloadReklamosPlanasZip,
 } from '@/lib/export-reklamos-planas';
+import { isCampaignEnded } from '@/lib/reklamos-planas-post-campaign';
 import {
   toCampaignOrderInput,
   toCampaignScreen,
@@ -65,6 +67,10 @@ export function EditOrderModal({
   variant = 'internal',
 }: EditOrderModalProps) {
   const isAgency = variant === 'agency';
+  const campaignEnded = useMemo(
+    () => (order ? isCampaignEnded(order) : false),
+    [order]
+  );
   const collaborationScope = isAgency ? 'agency' : 'internal';
   const readOnlyFieldClass = isAgency
     ? 'read-only:opacity-100 read-only:cursor-default disabled:opacity-100'
@@ -87,6 +93,7 @@ export function EditOrderModal({
   const [exportPartnersLoading, setExportPartnersLoading] = useState(false);
   const [exportingPartnerId, setExportingPartnerId] = useState<string | null>(null);
   const [exportingCombined, setExportingCombined] = useState(false);
+  const [exportingPostCampaign, setExportingPostCampaign] = useState(false);
   const [exportingAllZip, setExportingAllZip] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [cityOtsRows, setCityOtsRows] = useState<CityOtsRow[]>([]);
@@ -741,6 +748,30 @@ export function EditOrderModal({
     }
   };
 
+  const handlePostCampaignPlanExcelExport = async () => {
+    if (!order) return;
+    setExportError(null);
+    setExportingPostCampaign(true);
+    try {
+      const { campaignOrder, screens, bundles } = await loadCampaignExportData(
+        order.id
+      );
+      await downloadReklamosPlanasPostCampaign({
+        order: campaignOrder,
+        screens,
+        bundles,
+      });
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'Nepavyko sugeneruoti ataskaitos Excel failo';
+      setExportError(message);
+    } finally {
+      setExportingPostCampaign(false);
+    }
+  };
+
   const handleAllPartnersZipExport = async () => {
     if (!order || exportPartners.length === 0) return;
     setExportError(null);
@@ -1062,7 +1093,7 @@ export function EditOrderModal({
 
                   {exportPartnersLoading && !isAgency ? (
                     <p className="text-sm text-gray-500 dark:text-gray-400">Kraunami partneriai…</p>
-                  ) : !isAgency && exportPartners.length === 0 ? (
+                  ) : !isAgency && exportPartners.length === 0 && !campaignEnded ? (
                     <p className="text-sm text-gray-500 dark:text-gray-400">
                       Šiame užsakyme nėra ekranų — partnerių eksportui nerasta.
                     </p>
@@ -1078,6 +1109,7 @@ export function EditOrderModal({
                             disabled={
                               !!exportingPartnerId ||
                               exportingCombined ||
+                              exportingPostCampaign ||
                               exportingAllZip
                             }
                             onClick={() => handlePartnerPlanExcelExport(partner)}
@@ -1104,6 +1136,7 @@ export function EditOrderModal({
                         disabled={
                           !!exportingPartnerId ||
                           exportingCombined ||
+                          exportingPostCampaign ||
                           exportingAllZip
                         }
                         onClick={handleCombinedPlanExcelExport}
@@ -1120,12 +1153,37 @@ export function EditOrderModal({
                           <span className="text-xs text-gray-500">…</span>
                         )}
                       </button>
+                      {campaignEnded && (
+                        <button
+                          type="button"
+                          disabled={
+                            !!exportingPartnerId ||
+                            exportingCombined ||
+                            exportingPostCampaign ||
+                            exportingAllZip
+                          }
+                          onClick={handlePostCampaignPlanExcelExport}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200/90 bg-white px-3 py-1.5 text-sm font-medium text-amber-900 transition-colors hover:bg-amber-50 disabled:opacity-50 dark:border-amber-800 dark:bg-gray-800 dark:text-amber-200 dark:hover:bg-amber-950/30"
+                          title="Parodymų ataskaita po kampanijos — visi tiekėjai viename faile"
+                        >
+                          {exportingPostCampaign ? (
+                            <span className="h-4 w-4 shrink-0 animate-pulse rounded-full bg-amber-400" />
+                          ) : (
+                            <ArrowDownTrayIcon className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                          )}
+                          Ataskaita
+                          {exportingPostCampaign && (
+                            <span className="text-xs text-gray-500">…</span>
+                          )}
+                        </button>
+                      )}
                       {!isAgency && (
                       <button
                         type="button"
                         disabled={
                           !!exportingPartnerId ||
                           exportingCombined ||
+                          exportingPostCampaign ||
                           exportingAllZip ||
                           exportPartners.length === 0
                         }

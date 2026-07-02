@@ -1,3 +1,4 @@
+import { resolveListMonthYear } from '@/lib/orders-filters';
 import { isMultiMonthOrder } from '@/lib/invoice-utils';
 import type { Order, OrderInvoiceStatus } from '@/types';
 
@@ -44,6 +45,33 @@ export function periodsOverlap(
 ): boolean {
   if (!aFrom || !aTo) return false;
   return aFrom <= bTo && aTo >= bFrom;
+}
+
+export function invoiceMatchesBillingMonth(
+  invoice: {
+    invoice_date: string;
+    period_from?: string | null;
+    period_to?: string | null;
+  },
+  month: string,
+  year: string
+): boolean {
+  const { month: resolvedMonth, year: resolvedYear } = resolveListMonthYear(month, year);
+  if (!resolvedYear) return true;
+
+  if (!resolvedMonth) {
+    if (invoice.invoice_date.startsWith(`${resolvedYear}-`)) return true;
+    const yearStart = `${resolvedYear}-01-01`;
+    const yearEnd = `${resolvedYear}-12-31`;
+    return periodsOverlap(invoice.period_from, invoice.period_to, yearStart, yearEnd);
+  }
+
+  return periodCoversBillingMonth(
+    invoice.period_from,
+    invoice.period_to,
+    invoice.invoice_date,
+    { month: resolvedMonth, year: resolvedYear }
+  );
 }
 
 export function periodCoversBillingMonth(

@@ -24,6 +24,7 @@ import {
   applyPercentDiscount,
   OWEXX_CLIENT_DISCOUNT_PERCENT,
   getBillingMonthOptions,
+  invoiceDateForBillingPeriod,
   billingMonthKeyFromDate,
   resolveDefaultBillingMonthKey,
   type InvoiceAmountMode,
@@ -183,6 +184,13 @@ export function InvoiceModal({
     setSelectedBillingMonthKey(null);
 
     const pickMonthlyInvoiceDay = (target: Order): string => {
+      const { month: resolvedMonth, year: resolvedYear } = resolveListMonthYear(
+        billingMonth,
+        billingYear
+      );
+      if (resolvedMonth && resolvedYear) {
+        return invoiceDateForBillingPeriod(resolvedMonth, resolvedYear);
+      }
       if (!isMultiMonthOrder(target)) return defaultInvoiceDate();
       const defaultKey = resolveDefaultBillingMonthKey(target, billingMonth, billingYear);
       const option = defaultKey

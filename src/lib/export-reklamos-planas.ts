@@ -15,12 +15,19 @@ import {
   getCampaignGridHourLabel,
 } from '@/lib/reklamos-planas-grid';
 import { resolveCampaignIntensityLabel } from '@/lib/campaign-intensity';
-import { buildReklamosPlanasFilename } from '@/lib/reklamos-planas-data';
+import { buildReklamosPlanasFilename, buildPostCampaignSheetName } from '@/lib/reklamos-planas-data';
+import {
+  computePostCampaignDifference,
+  computePostCampaignShownViews,
+  POST_CAMPAIGN_EXPORT_LABEL,
+} from '@/lib/reklamos-planas-post-campaign';
 import {
   applyFreezePanesInXlsx,
   downloadXlsxBuffer,
   embedLogoInXlsx,
 } from '@/lib/xlsx-embed-logo';
+
+export type ReklamosPlanasExportMode = 'standard' | 'post-campaign';
 
 const PIKSEL_LOGO_PATH = '/Piksel-Logotipas-juodas-RGB.jpg';
 const SHEET_NAME = 'Piksel ekranų kainynas';
@@ -73,6 +80,11 @@ for (let col = PADDING_FIRST_COL; col <= PADDING_LAST_COL; col++) {
 }
 
 const PIKSEL_ROW = 8;
+const POST_CAMPAIGN_PIKSEL_ROW = 5;
+const POST_CAMPAIGN_LOGO_SIZE_INCHES = {
+  width: 1.56,
+  height: 0.57,
+} as const;
 const PIKSEL_ROW_HEIGHT = 42;
 const TOP_WHITE_LAST_ROW = 8;
 const FOOTER_WHITE_FIRST_ROW = 106;
@@ -98,7 +110,7 @@ const GRID_FIRST_HOUR_ROW = 17;
 const GRID_NOTE_ROW = 35;
 
 /** Sujungimai kaip reference — ne H, U, X, AA */
-const MERGE_COLS = [
+const STANDARD_MERGE_COLS = [
   COL.A,
   COL.B,
   COL.C,
@@ -118,6 +130,26 @@ const MERGE_COLS = [
   COL.AA,
   COL.AB,
 ];
+
+const POST_CAMPAIGN_MERGE_COLS = [
+  COL.A,
+  COL.B,
+  COL.C,
+  COL.D,
+  COL.E,
+  COL.F,
+  COL.G,
+  COL.H,
+  COL.I,
+  COL.J,
+  COL.U,
+  COL.V,
+  COL.W,
+];
+
+function getMergeCols(mode: ReklamosPlanasExportMode): number[] {
+  return mode === 'post-campaign' ? POST_CAMPAIGN_MERGE_COLS : STANDARD_MERGE_COLS;
+}
 
 const COL_WIDTHS = [
   { wch: 6 },
@@ -226,9 +258,31 @@ function applyWhiteColumnStyle(cell: Cell, col: number): Cell {
   return { ...cell, s: style };
 }
 
-function applyWhiteColumns(sheet: XLSX.WorkSheet, lastRow: number) {
+function isPostCampaignPaddingColumn(
+  col: number,
+  mode: ReklamosPlanasExportMode
+): boolean {
+  return mode === 'post-campaign' && col >= COL.X && col <= COL.AB;
+}
+
+function shouldApplyWhiteColumn(
+  col: number,
+  mode: ReklamosPlanasExportMode
+): boolean {
+  if (mode === 'post-campaign' && col >= COL.K && col <= COL.T) return false;
+  if (mode === 'post-campaign' && col === COL.W) return false;
+  if (WHITE_COLUMNS.has(col)) return true;
+  return isPostCampaignPaddingColumn(col, mode);
+}
+
+function applyWhiteColumns(
+  sheet: XLSX.WorkSheet,
+  lastRow: number,
+  mode: ReklamosPlanasExportMode = 'standard'
+) {
   for (let row = 1; row <= lastRow; row++) {
-    for (const col of WHITE_COLUMNS) {
+    for (let col = 0; col <= PADDING_LAST_COL; col++) {
+      if (!shouldApplyWhiteColumn(col, mode)) continue;
       const addr = `${colLetter(col)}${row}`;
       const existing = sheet[addr];
       if (existing) {
@@ -462,7 +516,7 @@ function writeInfoBlock(
   });
 }
 
-function writeHeaderRow(sheet: XLSX.WorkSheet) {
+function writeHeaderRow(sheet: XLSX.WorkSheet, mode: ReklamosPlanasExportMode) {
   const r = HEADER_ROW;
   writeCell(sheet, r, COL.B, styledCell('Miestas', tableHeaderStyle));
   writeCell(sheet, r, COL.C, styledCell('Ekranas', tableHeaderStyle));
@@ -473,6 +527,13 @@ function writeHeaderRow(sheet: XLSX.WorkSheet) {
   writeCell(sheet, r, COL.I, styledCell('Pabaiga', tableHeaderStyle));
   writeCell(sheet, r, COL.J, styledCell('Dienų skaičius', tableHeaderStyle));
   writeCell(sheet, r, COL.U, styledCell('Parodymų sk.', tableHeaderStyle));
+
+  if (mode === 'post-campaign') {
+    writeCell(sheet, r, COL.V, styledCell('Parodyta', tableHeaderStyle));
+    writeCell(sheet, r, COL.W, styledCell('Skirtumas', tableHeaderStyle));
+    return;
+  }
+
   writeCell(sheet, r, COL.V, styledCell('OTS', tableHeaderStyle));
   writeCell(sheet, r, COL.X, styledCell('Klipo kaina', tableHeaderStyle));
   writeCell(sheet, r, COL.Y, styledCell('CPT', tableHeaderStyle));
@@ -490,6 +551,15 @@ function writePikselLogoArea(sheet: XLSX.WorkSheet) {
   writeCell(sheet, PIKSEL_ROW, COL.N, blankCell(tableItemStyle));
   if (!sheet['!rows']) sheet['!rows'] = [];
   sheet['!rows'][PIKSEL_ROW - 1] = { hpt: PIKSEL_ROW_HEIGHT };
+}
+
+function writePostCampaignPikselLogoArea(sheet: XLSX.WorkSheet) {
+  if (!sheet['!merges']) sheet['!merges'] = [];
+  sheet['!merges'].push({
+    s: { r: POST_CAMPAIGN_PIKSEL_ROW - 1, c: COL.V },
+    e: { r: POST_CAMPAIGN_PIKSEL_ROW - 1, c: COL.W },
+  });
+  writeCell(sheet, POST_CAMPAIGN_PIKSEL_ROW, COL.V, blankCell(tableItemStyle));
 }
 
 /** Ekrano nuolaida kaip dalis (0–1) — iš PB screenPrices, jei yra */
@@ -513,7 +583,8 @@ function writeScreenPair(
   order: CampaignOrderInput,
   calc: CampaignCalculator,
   screen: CampaignScreen,
-  pairIndex: number
+  pairIndex: number,
+  mode: ReklamosPlanasExportMode
 ) {
   const dataRow = DATA_START_ROW + pairIndex * 2;
   const spacerRow = dataRow + 1;
@@ -553,91 +624,141 @@ function writeScreenPair(
       styledCell(calc.days, item, { t: 'n', z: '##0' })
     );
 
-    const savedPrice = order.details_screen_prices?.[screen.id];
-    const useSavedPrice =
-      savedPrice != null && !Number.isNaN(savedPrice);
-    const discountFrac = screenRowDiscountFraction(order, calc, screen);
-
+    const plannedViews = Math.round(calc.views(screen));
     writeCell(
       sheet,
       dataRow,
       COL.U,
-      styledCell(Math.round(calc.views(screen)), item, {
+      styledCell(plannedViews, item, {
         t: 'n',
         z: '### ##0',
       })
     );
-    writeCell(
-      sheet,
-      dataRow,
-      COL.V,
-      styledCell(calc.ots(screen), item, { t: 'n', z: '### ##0' })
-    );
-    writeCell(
-      sheet,
-      dataRow,
-      COL.X,
-      styledCell(calc.clipPrice(screen), item, { t: 'n', z: '0.000' })
-    );
-    writeCell(
-      sheet,
-      dataRow,
-      COL.Y,
-      styledCell(calc.cpt(screen), item, { t: 'n', z: '0.00' })
-    );
-    writeCell(
-      sheet,
-      dataRow,
-      COL.Z,
-      styledCell(calc.totalPrice(screen), item, { t: 'n', z: '## ###.#0' })
-    );
-    writeCell(
-      sheet,
-      dataRow,
-      COL.AA,
-      styledCell(discountFrac, item, {
-        t: 'n',
-        z: '#0%',
-      })
-    );
-    if (useSavedPrice) {
+
+    if (mode === 'post-campaign') {
+      const shownViews = computePostCampaignShownViews(
+        plannedViews,
+        order.id,
+        screen.id,
+        order.from,
+        order.to
+      );
+      const difference = computePostCampaignDifference(plannedViews, shownViews);
       writeCell(
         sheet,
         dataRow,
-        COL.AB,
-        styledCell(savedPrice, item, { t: 'n', z: '## ###.#0' })
+        COL.V,
+        styledCell(shownViews, item, {
+          t: 'n',
+          z: '### ##0',
+        })
+      );
+      writeCell(
+        sheet,
+        dataRow,
+        COL.W,
+        styledCell(difference, item, {
+          t: 'n',
+          z: '### ##0',
+        })
       );
     } else {
-      const zAddr = `${colLetter(COL.Z)}${dataRow}`;
-      const aaAddr = `${colLetter(COL.AA)}${dataRow}`;
-      writeCell(sheet, dataRow, COL.AB, {
-        t: 'n',
-        s: clone(item),
-        z: '## ###.#0',
-        f: `${zAddr}*(1-${aaAddr})`,
-      });
+      const savedPrice = order.details_screen_prices?.[screen.id];
+      const useSavedPrice =
+        savedPrice != null && !Number.isNaN(savedPrice);
+      const discountFrac = screenRowDiscountFraction(order, calc, screen);
+
+      writeCell(
+        sheet,
+        dataRow,
+        COL.V,
+        styledCell(calc.ots(screen), item, { t: 'n', z: '### ##0' })
+      );
+      writeCell(
+        sheet,
+        dataRow,
+        COL.X,
+        styledCell(calc.clipPrice(screen), item, { t: 'n', z: '0.000' })
+      );
+      writeCell(
+        sheet,
+        dataRow,
+        COL.Y,
+        styledCell(calc.cpt(screen), item, { t: 'n', z: '0.00' })
+      );
+      writeCell(
+        sheet,
+        dataRow,
+        COL.Z,
+        styledCell(calc.totalPrice(screen), item, { t: 'n', z: '## ###.#0' })
+      );
+      writeCell(
+        sheet,
+        dataRow,
+        COL.AA,
+        styledCell(discountFrac, item, {
+          t: 'n',
+          z: '#0%',
+        })
+      );
+      if (useSavedPrice) {
+        writeCell(
+          sheet,
+          dataRow,
+          COL.AB,
+          styledCell(savedPrice, item, { t: 'n', z: '## ###.#0' })
+        );
+      } else {
+        const zAddr = `${colLetter(COL.Z)}${dataRow}`;
+        const aaAddr = `${colLetter(COL.AA)}${dataRow}`;
+        writeCell(sheet, dataRow, COL.AB, {
+          t: 'n',
+          s: clone(item),
+          z: '## ###.#0',
+          f: `${zAddr}*(1-${aaAddr})`,
+        });
+      }
     }
   }
 
-  for (const col of [
-    COL.A,
-    COL.B,
-    COL.C,
-    COL.D,
-    COL.E,
-    COL.F,
-    COL.G,
-    COL.H,
-    COL.I,
-    COL.J,
-    COL.U,
-    COL.V,
-    COL.X,
-    COL.Y,
-    COL.Z,
-    COL.AA,
-    COL.AB,
-  ]) {
+  const spacerCols =
+    mode === 'post-campaign'
+      ? [
+          COL.A,
+          COL.B,
+          COL.C,
+          COL.D,
+          COL.E,
+          COL.F,
+          COL.G,
+          COL.H,
+          COL.I,
+          COL.J,
+          COL.U,
+          COL.V,
+          COL.W,
+        ]
+      : [
+          COL.A,
+          COL.B,
+          COL.C,
+          COL.D,
+          COL.E,
+          COL.F,
+          COL.G,
+          COL.H,
+          COL.I,
+          COL.J,
+          COL.U,
+          COL.V,
+          COL.X,
+          COL.Y,
+          COL.Z,
+          COL.AA,
+          COL.AB,
+        ];
+
+  for (const col of spacerCols) {
     writeCell(sheet, spacerRow, col, blankCell());
   }
 }
@@ -710,12 +831,17 @@ function writeLayoutGrid(
   });
 }
 
-function addScreenMerges(sheet: XLSX.WorkSheet, screenCount: number) {
+function addScreenMerges(
+  sheet: XLSX.WorkSheet,
+  screenCount: number,
+  mode: ReklamosPlanasExportMode
+) {
   if (!sheet['!merges']) sheet['!merges'] = [];
+  const mergeCols = getMergeCols(mode);
   for (let i = 0; i < screenCount; i++) {
     const start = DATA_START_ROW - 1 + i * 2;
     const end = start + 1;
-    for (const c of MERGE_COLS) {
+    for (const c of mergeCols) {
       sheet['!merges'].push({ s: { r: start, c }, e: { r: end, c } });
     }
   }
@@ -911,63 +1037,168 @@ function writeTotals(
   });
 }
 
+function writePostCampaignTotals(
+  sheet: XLSX.WorkSheet,
+  screenPairCount: number
+) {
+  const firstData = DATA_START_ROW;
+  const lastData = firstData + screenPairCount * 2 - 1;
+  const totalsRow = lastData + 1;
+  const totalsSpacerRow = totalsRow + 1;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const footerStyle: any = clone(tableHeaderStyle);
+
+  const sum = (col: number) =>
+    `SUM(${colLetter(col)}${firstData}:${colLetter(col)}${lastData})`;
+  const uAddr = `${colLetter(COL.U)}${totalsRow}`;
+  const vAddr = `${colLetter(COL.V)}${totalsRow}`;
+
+  writeCell(sheet, totalsRow, COL.J, styledCell('Viso:', footerStyle));
+  writeCell(sheet, totalsRow, COL.U, {
+    t: 'n',
+    s: clone(footerStyle),
+    f: sum(COL.U),
+    z: '### ##0',
+  });
+  writeCell(sheet, totalsRow, COL.V, {
+    t: 'n',
+    s: clone(footerStyle),
+    f: sum(COL.V),
+    z: '### ##0',
+  });
+  writeCell(sheet, totalsRow, COL.W, {
+    t: 'n',
+    s: clone(footerStyle),
+    z: '### ##0',
+    f: `${vAddr}-${uAddr}`,
+  });
+
+  const mergeCols = [COL.J, COL.U, COL.V, COL.W];
+  for (const col of mergeCols) {
+    writeCell(sheet, totalsSpacerRow, col, blankCell(footerStyle));
+  }
+  if (!sheet['!merges']) sheet['!merges'] = [];
+  for (const col of mergeCols) {
+    sheet['!merges'].push({
+      s: { r: totalsRow - 1, c: col },
+      e: { r: totalsSpacerRow - 1, c: col },
+    });
+  }
+}
+
+function hideColumnsKToT(colWidths: { wch: number; hidden?: boolean }[]) {
+  for (let col = COL.K; col <= COL.T; col++) {
+    colWidths[col] = { wch: 0, hidden: true };
+  }
+}
+
+function buildExportColWidths(
+  mode: ReklamosPlanasExportMode
+): { wch: number; hidden?: boolean }[] {
+  const colWidths = COL_WIDTHS.map((col) => ({ ...col }));
+  if (mode === 'post-campaign') {
+    colWidths[COL.V] = { ...colWidths[COL.U] };
+    colWidths[COL.W] = { ...colWidths[COL.U] };
+    hideColumnsKToT(colWidths);
+    applyPostCampaignPaddingColumnWidths(colWidths);
+  }
+  return colWidths;
+}
+
+function applyPostCampaignPaddingColumnWidths(
+  colWidths: { wch: number; hidden?: boolean }[]
+) {
+  for (let col = COL.X; col <= COL.AB; col++) {
+    colWidths[col] = { wch: 8.43 };
+  }
+}
+
 function buildWorksheet(
   calc: CampaignCalculator,
-  order: CampaignOrderInput
+  order: CampaignOrderInput,
+  mode: ReklamosPlanasExportMode = 'standard'
 ): XLSX.WorkSheet {
   const sheet: XLSX.WorkSheet = {};
 
   writeInfoBlock(sheet, calc, order);
-  writeHeaderRow(sheet);
-  writePikselLogoArea(sheet);
+  writeHeaderRow(sheet, mode);
+  if (mode === 'post-campaign') {
+    writePostCampaignPikselLogoArea(sheet);
+  } else {
+    writePikselLogoArea(sheet);
+  }
 
   const exportScreens = calc.orderedCatalogScreens.filter(
     (s) => !order.hidden_screens?.includes(s.id)
   );
 
   exportScreens.forEach((screen, index) => {
-    writeScreenPair(sheet, order, calc, screen, index);
+    writeScreenPair(sheet, order, calc, screen, index, mode);
   });
 
-  addScreenMerges(sheet, exportScreens.length);
-  writeLayoutGrid(sheet, order, calc.getViewsPerHour());
+  addScreenMerges(sheet, exportScreens.length, mode);
+  if (mode !== 'post-campaign') {
+    writeLayoutGrid(sheet, order, calc.getViewsPerHour());
+  }
 
   const lastDataRow = DATA_START_ROW + exportScreens.length * 2 - 1;
   ensureRangeBorders(sheet, HEADER_ROW, lastDataRow, COL.B, COL.F);
   ensureRangeBorders(sheet, HEADER_ROW, lastDataRow, COL.H, COL.J);
-  ensureRangeBorders(sheet, HEADER_ROW, lastDataRow, COL.U, COL.V);
-  ensureRangeBorders(sheet, HEADER_ROW, lastDataRow, COL.X, COL.AB);
+  if (mode === 'post-campaign') {
+    ensureRangeBorders(sheet, HEADER_ROW, lastDataRow, COL.U, COL.W);
+  } else {
+    ensureRangeBorders(sheet, HEADER_ROW, lastDataRow, COL.U, COL.V);
+    ensureRangeBorders(sheet, HEADER_ROW, lastDataRow, COL.X, COL.AB);
+  }
 
-  writeTotals(sheet, order, calc, exportScreens.length);
+  if (mode === 'post-campaign') {
+    writePostCampaignTotals(sheet, exportScreens.length);
+  } else {
+    writeTotals(sheet, order, calc, exportScreens.length);
+  }
 
-  const contentLastRow = DATA_START_ROW + exportScreens.length * 2 + 8;
+  const contentLastRow =
+    mode === 'post-campaign'
+      ? DATA_START_ROW + exportScreens.length * 2 + 2
+      : DATA_START_ROW + exportScreens.length * 2 + 8;
   const lastRow = Math.max(contentLastRow, FOOTER_WHITE_LAST_ROW);
-  applyWhiteColumns(sheet, lastRow);
+  applyWhiteColumns(sheet, lastRow, mode);
   applyWhiteRows(sheet, 1, TOP_WHITE_LAST_ROW);
-  applyWhiteRange(sheet, HEADER_ROW, GRID_TITLE_ROW, COL.K, COL.T);
-  applyWhiteRange(sheet, MID_WHITE_FIRST_ROW, MID_WHITE_LAST_ROW, COL.K, COL.T);
+  if (mode !== 'post-campaign') {
+    applyWhiteRange(sheet, HEADER_ROW, GRID_TITLE_ROW, COL.K, COL.T);
+    applyWhiteRange(sheet, MID_WHITE_FIRST_ROW, MID_WHITE_LAST_ROW, COL.K, COL.T);
+    ensureRangeBorders(sheet, GRID_TITLE_ROW, GRID_TITLE_ROW, COL.M, COL.S);
+  }
   applyWhiteRows(sheet, FOOTER_WHITE_FIRST_ROW, FOOTER_WHITE_LAST_ROW);
-
-  ensureRangeBorders(sheet, GRID_TITLE_ROW, GRID_TITLE_ROW, COL.M, COL.S);
 
   const totalsRow = lastDataRow + 1;
   const totalsSpacerRow = totalsRow + 1;
-  const footerLastRow = lastDataRow + 8;
-  applyTotalsDarkStyle(sheet, totalsRow, totalsSpacerRow);
-  applyRowBottomBorder(sheet, totalsSpacerRow, COL.T, COL.AB);
-  for (const spacerRow of [
-    lastDataRow + 4,
-    lastDataRow + 6,
-    lastDataRow + 8,
-  ]) {
-    applyRowBottomBorder(sheet, spacerRow, COL.Z, COL.AB);
+  const footerLastRow =
+    mode === 'post-campaign' ? lastDataRow + 2 : lastDataRow + 8;
+  if (mode !== 'post-campaign') {
+    applyTotalsDarkStyle(sheet, totalsRow, totalsSpacerRow);
+  }
+  if (mode === 'post-campaign') {
+    applyRowBottomBorder(sheet, totalsSpacerRow, COL.J, COL.W);
+  } else {
+    applyRowBottomBorder(sheet, totalsSpacerRow, COL.T, COL.AB);
+    for (const spacerRow of [
+      lastDataRow + 4,
+      lastDataRow + 6,
+      lastDataRow + 8,
+    ]) {
+      applyRowBottomBorder(sheet, spacerRow, COL.Z, COL.AB);
+    }
   }
 
   if (!sheet['!rows']) sheet['!rows'] = [];
-  const pikselRowHeight = sheet['!rows'][PIKSEL_ROW - 1];
   applyScreenPairRowHeights(sheet, DATA_START_ROW, footerLastRow);
-  if (pikselRowHeight) {
-    sheet['!rows'][PIKSEL_ROW - 1] = pikselRowHeight;
+  if (mode !== 'post-campaign') {
+    const pikselRowHeight = sheet['!rows'][PIKSEL_ROW - 1];
+    if (pikselRowHeight) {
+      sheet['!rows'][PIKSEL_ROW - 1] = pikselRowHeight;
+    }
   }
   sheet['!rows'][HEADER_ROW - 1] = {
     hpt: HEADER_ROW_HEIGHT,
@@ -975,8 +1206,9 @@ function buildWorksheet(
   } as XLSX.RowInfo;
 
   sheet['!ref'] = `A1:${colLetter(PADDING_LAST_COL)}${lastRow}`;
+  const colWidths = buildExportColWidths(mode);
   sheet['!cols'] = [
-    ...COL_WIDTHS,
+    ...colWidths,
     ...Array.from({ length: PADDING_LAST_COL - PADDING_FIRST_COL + 1 }, () => ({
       wch: 8.43,
     })),
@@ -993,6 +1225,7 @@ export interface ExportReklamosPlanasParams {
   partnerName?: string;
   screens: CampaignScreen[];
   bundles: CampaignBundle[];
+  mode?: ReklamosPlanasExportMode;
 }
 
 export function buildReklamosPlanasXlsxFilename(
@@ -1011,16 +1244,19 @@ export function buildReklamosPlanasXlsxFilename(
 export async function buildReklamosPlanasXlsxBuffer(
   params: ExportReklamosPlanasParams
 ): Promise<{ buffer: ArrayBuffer; filename: string }> {
-  const { order, partnerId, partnerName, screens, bundles } = params;
+  const { order, partnerId, partnerName, screens, bundles, mode = 'standard' } =
+    params;
   const calc = createCampaignCalculator(order, screens, bundles, partnerId);
 
   if (calc.hasViaductScreens) {
     throw new Error('Viadukų užsakymų eksportas dar neįdiegtas — naudokite skaičiuoklę.');
   }
 
-  const sheet = buildWorksheet(calc, order);
+  const sheet = buildWorksheet(calc, order, mode);
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, sheet, SHEET_NAME);
+  const sheetName =
+    mode === 'post-campaign' ? buildPostCampaignSheetName(order) : SHEET_NAME;
+  XLSX.utils.book_append_sheet(workbook, sheet, sheetName);
   const filename = buildReklamosPlanasXlsxFilename(order, calc, partnerName);
 
   const xlsxBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
@@ -1029,8 +1265,25 @@ export async function buildReklamosPlanasXlsxBuffer(
     throw new Error('Nepavyko užkrauti Piksel logotipo');
   }
   const logoBuffer = await logoResponse.arrayBuffer();
-  const buffer = await applyFreezePanesInXlsx(
-    await embedLogoInXlsx(xlsxBuffer, logoBuffer, {
+  let buffer: ArrayBuffer = xlsxBuffer;
+  if (mode === 'post-campaign') {
+    buffer = await embedLogoInXlsx(xlsxBuffer, logoBuffer, {
+      fromCol: 0,
+      fromRow: 0,
+      toCol: 1,
+      toRow: POST_CAMPAIGN_PIKSEL_ROW,
+      rowHeightPt: SCREEN_PAIR_ROW_HEIGHT,
+      centerExcelRow: POST_CAMPAIGN_PIKSEL_ROW,
+      alignCenterToCol: COL.W,
+      sheetColWidthsFromA: buildExportColWidths('post-campaign').map((col) => col.wch),
+      fixedSizeInches: {
+        width: POST_CAMPAIGN_LOGO_SIZE_INCHES.width,
+        height: POST_CAMPAIGN_LOGO_SIZE_INCHES.height,
+      },
+      placeholderCell: `${colLetter(COL.V)}${POST_CAMPAIGN_PIKSEL_ROW}`,
+    });
+  } else {
+    buffer = await embedLogoInXlsx(xlsxBuffer, logoBuffer, {
       fromCol: COL.N,
       fromRow: PIKSEL_ROW - 1,
       toCol: COL.R + 1,
@@ -1038,9 +1291,9 @@ export async function buildReklamosPlanasXlsxBuffer(
       colWidths: COL_WIDTHS.slice(COL.N, COL.R + 1).map((col) => col.wch),
       rowHeightPt: PIKSEL_ROW_HEIGHT,
       placeholderCell: `${colLetter(COL.N)}${PIKSEL_ROW}`,
-    }),
-    HEADER_ROW
-  );
+    });
+  }
+  buffer = await applyFreezePanesInXlsx(buffer, HEADER_ROW);
 
   return { buffer, filename };
 }
@@ -1057,6 +1310,17 @@ export async function downloadReklamosPlanasCombined(
     ...params,
     partnerId: null,
     partnerName: COMBINED_EXPORT_PARTNER_LABEL,
+  });
+}
+
+export async function downloadReklamosPlanasPostCampaign(
+  params: Omit<ExportReklamosPlanasParams, 'partnerId' | 'partnerName' | 'mode'>
+) {
+  await downloadReklamosPlanas({
+    ...params,
+    partnerId: null,
+    partnerName: `${COMBINED_EXPORT_PARTNER_LABEL}-${POST_CAMPAIGN_EXPORT_LABEL}`,
+    mode: 'post-campaign',
   });
 }
 

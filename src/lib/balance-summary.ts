@@ -1,3 +1,4 @@
+import { invoiceMatchesBillingMonth } from '@/lib/invoice-month-status';
 import { resolveListMonthYear } from '@/lib/orders-filters';
 import type { Invoice, ReceivedInvoice } from '@/types';
 
@@ -80,9 +81,7 @@ export function computeBalanceSummary(
   month: string,
   year: string
 ): BalanceSummary {
-  const periodInvoices = invoices.filter((inv) =>
-    invoiceMatchesPeriod(inv.invoice_date, month, year)
-  );
+  const periodInvoices = invoices.filter((inv) => invoiceMatchesBillingMonth(inv, month, year));
   const periodReceived = received.filter((inv) =>
     invoiceMatchesPeriod(inv.invoice_date, month, year)
   );

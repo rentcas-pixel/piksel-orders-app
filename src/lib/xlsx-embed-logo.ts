@@ -7,6 +7,7 @@ const DRAWING_CONTENT_TYPE =
 
 const EMU_PER_POINT = 12700;
 const EMU_PER_PIXEL = 9525;
+const EMU_PER_INCH = 914400;
 const MAX_DIGIT_WIDTH = 7;
 /** Excel stulpelių EMU konversija šiek tiek suspaudžia — kompensuojame vertikaliai */
 const LOGO_VERTICAL_SCALE = 1.3608;
@@ -20,8 +21,30 @@ export interface LogoAnchor {
   colWidths?: number[];
   /** Eilutės aukštis punktais */
   rowHeightPt?: number;
+  /** Vertikalus mastelis (numatyta — kompensacija stulpelių EMU) */
+  verticalScale?: number;
   /** Langelis, kurį pašalinti prieš įterpiant paveikslėlį (pvz. N8) */
   placeholderCell?: string;
+  /** Centruoti logotipą šios eilutės viduryje */
+  centerExcelRow?: number;
+  /** Horizontalus lygiavimas nuo fromCol iki toCol-1 */
+  horizontalAlign?: 'center' | 'right';
+  /** Dešinysis kraštas lygiuojamas su šio stulpelio dešiniu kraštu (0-based) */
+  alignRightToCol?: number;
+  /** Centruoti horizontaliai su šio stulpelio centru (0-based) */
+  alignCenterToCol?: number;
+  /** Stulpelių plotis (wch) nuo A stulpelio — absoliučiam lygiavimui */
+  sheetColWidthsFromA?: number[];
+  /** Fiksuotas logotipo dydis colių (cx) ir eilučių (cy) EMU */
+  fixedSizeInches?: { width: number; height: number };
+  /** Absoliuti pozicija coliais nuo lapo kairės / viršaus */
+  fixedPositionInches?: { left: number; top?: number };
+  /** Dydžio ir proporcijų etalonas (pvz. standartinis N–R, 42 pt) */
+  sizeReference?: {
+    colWidths: number[];
+    rowHeightPt: number;
+    verticalScale?: number;
+  };
 }
 
 interface AnchorPoint {
@@ -33,7 +56,10 @@ interface AnchorPoint {
 
 interface LogoPlacement {
   from: AnchorPoint;
-  to: AnchorPoint;
+  to?: AnchorPoint;
+  /** oneCellAnchor dydis EMU — tikslūs coliai */
+  extCx?: number;
+  extCy?: number;
 }
 
 function nextRelationshipId(relsXml: string): string {
@@ -122,17 +148,17 @@ function resolveAnchorPoint(
   return { col: startCol, colOff: 0, row, rowOff };
 }
 
-function computeLogoPlacement(
-  anchor: LogoAnchor,
-  imageWidth: number,
-  imageHeight: number
-): LogoPlacement {
-  const colCount = Math.max(0, anchor.toCol - anchor.fromCol);
-  const colWidths =
-    anchor.colWidths ??
-    Array.from({ length: colCount }, () => 8.43);
-  const rowHeightPt = anchor.rowHeightPt ?? 15;
+function inchesToEMU(inches: number): number {
+  return Math.round(inches * EMU_PER_INCH);
+}
 
+function computeLogoSize(
+  imageWidth: number,
+  imageHeight: number,
+  colWidths: number[],
+  rowHeightPt: number,
+  verticalScale = LOGO_VERTICAL_SCALE
+): { cx: number; cy: number } {
   const containerWidthEMU = colWidths.reduce(
     (sum, wch) => sum + columnWidthToEMU(wch),
     0
@@ -150,7 +176,233 @@ function computeLogoPlacement(
     cy = Math.round(cx / imageAspect);
   }
 
-  cy = Math.round(cy * LOGO_VERTICAL_SCALE);
+  cy = Math.round(cy * verticalScale);
+  return { cx, cy };
+}
+
+function extendedColWidthsForSpan(
+  baseWidths: number[],
+  requiredSpanEMU: number
+): number[] {
+  const widths = [...baseWidths];
+  while (
+    widths.reduce((sum, wch) => sum + columnWidthToEMU(wch), 0) < requiredSpanEMU
+  ) {
+    widths.push(8.43);
+  }
+  return widths;
+}
+
+function sumColWidthsEMU(widths: number[], endColInclusive: number): number {
+  return widths
+    .slice(0, endColInclusive + 1)
+    .reduce((sum, wch) => sum + columnWidthToEMU(wch), 0);
+}
+
+function colCenterEMU(widths: number[], colIndex: number): number {
+  const leftEdge =
+    colIndex > 0 ? sumColWidthsEMU(widths, colIndex - 1) : 0;
+  return leftEdge + columnWidthToEMU(widths[colIndex]) / 2;
+}
+
+function absoluteLogoPlacement(
+  anchor: LogoAnchor,
+  rowHeightPt: number,
+  leftX: number,
+  yEMU: number,
+  cx: number,
+  cy: number
+): LogoPlacement {
+  const baseWidths =
+    anchor.sheetColWidthsFromA ??
+    Array.from({ length: 28 }, () => 8.43);
+  const spanColWidths = extendedColWidthsForSpan(baseWidths, leftX + cx);
+  const from = resolveAnchorPoint(0, 0, spanColWidths, rowHeightPt, leftX, yEMU);
+
+  if (anchor.fixedSizeInches) {
+    return { from, extCx: cx, extCy: cy };
+  }
+
+  return {
+    from,
+    to: resolveAnchorPoint(
+      0,
+      0,
+      spanColWidths,
+      rowHeightPt,
+      leftX + cx,
+      yEMU + cy
+    ),
+  };
+}
+
+function computeCenteredLogoPlacement(
+  anchor: LogoAnchor,
+  imageWidth: number,
+  imageHeight: number
+): LogoPlacement {
+  if (anchor.centerExcelRow == null) {
+    throw new Error('Centruotam logotipui reikia centerExcelRow');
+  }
+
+  const centerColCount = Math.max(0, anchor.toCol - anchor.fromCol);
+  const centerColWidths =
+    anchor.colWidths ??
+    Array.from({ length: centerColCount }, () => 8.43);
+  const rowHeightPt = anchor.rowHeightPt ?? 15;
+
+  let cx: number;
+  let cy: number;
+  if (anchor.fixedSizeInches) {
+    cx = inchesToEMU(anchor.fixedSizeInches.width);
+    cy = inchesToEMU(anchor.fixedSizeInches.height);
+  } else if (anchor.sizeReference) {
+    ({ cx, cy } = computeLogoSize(
+      imageWidth,
+      imageHeight,
+      anchor.sizeReference.colWidths,
+      anchor.sizeReference.rowHeightPt,
+      anchor.sizeReference.verticalScale ?? LOGO_VERTICAL_SCALE
+    ));
+  } else {
+    throw new Error('Centruotam logotipui reikia fixedSizeInches arba sizeReference');
+  }
+
+  const centerRowIndex = anchor.centerExcelRow - 1;
+  const centerYEMU = ptToEMU(
+    centerRowIndex * rowHeightPt + rowHeightPt / 2
+  );
+  const rowOff = Math.round(centerYEMU - cy / 2);
+
+  if (anchor.fixedPositionInches) {
+    const leftX = inchesToEMU(anchor.fixedPositionInches.left);
+    const yEMU =
+      anchor.fixedPositionInches.top != null
+        ? inchesToEMU(anchor.fixedPositionInches.top)
+        : rowOff;
+    return absoluteLogoPlacement(anchor, rowHeightPt, leftX, yEMU, cx, cy);
+  }
+
+  if (anchor.alignCenterToCol != null && anchor.sheetColWidthsFromA) {
+    const centerX = colCenterEMU(
+      anchor.sheetColWidthsFromA,
+      anchor.alignCenterToCol
+    );
+    const leftX = Math.round(centerX - cx / 2);
+    return absoluteLogoPlacement(anchor, rowHeightPt, leftX, rowOff, cx, cy);
+  }
+
+  if (
+    anchor.horizontalAlign === 'right' &&
+    anchor.alignRightToCol != null &&
+    anchor.sheetColWidthsFromA
+  ) {
+    const rightEdgeEMU = sumColWidthsEMU(
+      anchor.sheetColWidthsFromA,
+      anchor.alignRightToCol
+    );
+    const leftX = rightEdgeEMU - cx;
+    const spanColWidths = extendedColWidthsForSpan(
+      anchor.sheetColWidthsFromA.slice(0, anchor.alignRightToCol + 1),
+      rightEdgeEMU
+    );
+    const from = resolveAnchorPoint(
+      0,
+      0,
+      spanColWidths,
+      rowHeightPt,
+      leftX,
+      rowOff
+    );
+
+    if (anchor.fixedSizeInches) {
+      return { from, extCx: cx, extCy: cy };
+    }
+
+    return {
+      from,
+      to: resolveAnchorPoint(
+        0,
+        0,
+        spanColWidths,
+        rowHeightPt,
+        rightEdgeEMU,
+        rowOff + cy
+      ),
+    };
+  }
+
+  const centerWidthEMU = centerColWidths.reduce(
+    (sum, wch) => sum + columnWidthToEMU(wch),
+    0
+  );
+
+  const colOff =
+    anchor.horizontalAlign === 'right'
+      ? Math.round(centerWidthEMU - cx)
+      : Math.round(centerWidthEMU / 2 - cx / 2);
+  const spanColWidths = extendedColWidthsForSpan(
+    centerColWidths,
+    Math.max(0, colOff) + cx
+  );
+
+  const from = resolveAnchorPoint(
+    anchor.fromCol,
+    0,
+    spanColWidths,
+    rowHeightPt,
+    Math.max(0, colOff),
+    rowOff
+  );
+
+  if (anchor.fixedSizeInches) {
+    return { from, extCx: cx, extCy: cy };
+  }
+
+  return {
+    from,
+    to: resolveAnchorPoint(
+      anchor.fromCol,
+      0,
+      spanColWidths,
+      rowHeightPt,
+      Math.max(0, colOff) + cx,
+      rowOff + cy
+    ),
+  };
+}
+
+function computeLogoPlacement(
+  anchor: LogoAnchor,
+  imageWidth: number,
+  imageHeight: number
+): LogoPlacement {
+  if (
+    anchor.centerExcelRow != null &&
+    (anchor.fixedSizeInches || anchor.sizeReference)
+  ) {
+    return computeCenteredLogoPlacement(anchor, imageWidth, imageHeight);
+  }
+
+  const colCount = Math.max(0, anchor.toCol - anchor.fromCol);
+  const colWidths =
+    anchor.colWidths ??
+    Array.from({ length: colCount }, () => 8.43);
+  const rowHeightPt = anchor.rowHeightPt ?? 15;
+
+  const { cx, cy } = computeLogoSize(
+    imageWidth,
+    imageHeight,
+    colWidths,
+    rowHeightPt,
+    anchor.verticalScale ?? LOGO_VERTICAL_SCALE
+  );
+
+  const containerWidthEMU = colWidths.reduce(
+    (sum, wch) => sum + columnWidthToEMU(wch),
+    0
+  );
+  const containerHeightEMU = ptToEMU(rowHeightPt);
 
   const colOff = Math.max(0, Math.round((containerWidthEMU - cx) / 2));
   const rowOff = Math.max(0, Math.round((containerHeightEMU - cy) / 2));
@@ -176,7 +428,42 @@ function computeLogoPlacement(
 }
 
 function buildDrawingXml(placement: LogoPlacement): string {
-  const { from, to } = placement;
+  const { from, to, extCx, extCy } = placement;
+
+  if (extCx != null && extCy != null) {
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <xdr:oneCellAnchor>
+    <xdr:from>
+      <xdr:col>${from.col}</xdr:col>
+      <xdr:colOff>${from.colOff}</xdr:colOff>
+      <xdr:row>${from.row}</xdr:row>
+      <xdr:rowOff>${from.rowOff}</xdr:rowOff>
+    </xdr:from>
+    <xdr:ext cx="${extCx}" cy="${extCy}"/>
+    <xdr:pic>
+      <xdr:nvPicPr>
+        <xdr:cNvPr id="1" name="Piksel logo"/>
+        <xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr>
+      </xdr:nvPicPr>
+      <xdr:blipFill>
+        <a:blip r:embed="rId1"/>
+        <a:stretch><a:fillRect/></a:stretch>
+      </xdr:blipFill>
+      <xdr:spPr>
+        <a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></a:xfrm>
+        <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+      </xdr:spPr>
+    </xdr:pic>
+    <xdr:clientData/>
+  </xdr:oneCellAnchor>
+</xdr:wsDr>`;
+  }
+
+  if (!to) {
+    throw new Error('twoCellAnchor reikalauja to taško');
+  }
+
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <xdr:twoCellAnchor editAs="oneCell">

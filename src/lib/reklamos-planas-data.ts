@@ -88,6 +88,18 @@ function formatExportDate(date = new Date()): string {
   return `${year}-${month}-${day}`;
 }
 
+const EXCEL_SHEET_NAME_MAX_LENGTH = 31;
+
+/** Ataskaita lapo pavadinimas: Ataskaita_orderNo_data_klientas */
+export function buildPostCampaignSheetName(order: CampaignOrderInput): string {
+  const orderNo = String(order.invoice_id);
+  const date = formatExportDate();
+  const client = sanitizeFilenamePart(order.client).replace(/\s+/g, '_');
+  const prefix = `Ataskaita_${orderNo}_${date}_`;
+  const clientMax = Math.max(1, EXCEL_SHEET_NAME_MAX_LENGTH - prefix.length);
+  return `${prefix}${client.slice(0, clientMax)}`;
+}
+
 export function buildReklamosPlanasFilename(
   order: CampaignOrderInput,
   invoicePrefix: string,

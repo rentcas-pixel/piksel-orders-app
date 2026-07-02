@@ -13,6 +13,7 @@ import { formatEuro, sumInvoiceAmountBreakdowns } from '@/lib/invoice-utils';
 import {
   issuedToPaymentRow,
 } from '@/lib/payment-tracking';
+import { invoiceMatchesBillingMonth } from '@/lib/invoice-month-status';
 import { resolveListMonthYear } from '@/lib/orders-filters';
 import {
   matchesIssuedInvoicePaymentFilter,
@@ -126,16 +127,9 @@ export function InvoicesTable({
   );
 
   const periodInvoices = useMemo(() => {
-    const periodPrefix = resolvedMonth
-      ? `${resolvedYear}-${resolvedMonth}`
-      : resolvedYear
-        ? `${resolvedYear}-`
-        : '';
-
-    return invoices.filter(
-      (inv) => !periodPrefix || inv.invoice_date.startsWith(periodPrefix)
-    );
-  }, [invoices, resolvedMonth, resolvedYear]);
+    if (!resolvedYear) return invoices;
+    return invoices.filter((inv) => invoiceMatchesBillingMonth(inv, month, year));
+  }, [invoices, month, year, resolvedYear]);
 
   const filtered = useMemo(() => {
     return periodInvoices.filter((inv) => {
