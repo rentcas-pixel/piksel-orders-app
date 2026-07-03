@@ -3,7 +3,7 @@ import {
   billingMonthDateRange,
   buildMonthStatusMap,
   invoiceMatchesBillingMonth,
-  monthSentFlagKey,
+  monthFlagKey,
   periodCoversBillingMonth,
   periodsOverlap,
 } from '@/lib/invoice-month-status';
@@ -107,7 +107,7 @@ describe('buildMonthStatusMap — multi-month orders', () => {
   const billingJan = { month: '1', year: '2026' };
 
   it('uses month coverage for invoice_issued and per-month sent flag', () => {
-    const sentKeyFeb = monthSentFlagKey(order.id, '2026', '2');
+    const febKey = monthFlagKey(order.id, '2026', '2');
     const statusMap = buildMonthStatusMap({
       orderIds: [order.id],
       ordersById: { [order.id]: order },
@@ -124,12 +124,33 @@ describe('buildMonthStatusMap — multi-month orders', () => {
       legacyStatuses: {
         [order.id]: makeLegacyStatus(order.id, { invoice_sent: true }),
       },
-      monthSentFlags: { [sentKeyFeb]: true },
+      monthFlags: {
+        [febKey]: { invoice_issued: false, invoice_sent: true },
+      },
     });
 
     expect(statusMap[order.id]).toEqual({
       invoice_issued: true,
       invoice_sent: true,
+    });
+  });
+
+  it('honors manual invoice_issued per month without invoice coverage', () => {
+    const janKey = monthFlagKey(order.id, '2026', '1');
+    const statusMap = buildMonthStatusMap({
+      orderIds: [order.id],
+      ordersById: { [order.id]: order },
+      billing: billingJan,
+      coverages: [],
+      legacyStatuses: {},
+      monthFlags: {
+        [janKey]: { invoice_issued: true, invoice_sent: false },
+      },
+    });
+
+    expect(statusMap[order.id]).toEqual({
+      invoice_issued: true,
+      invoice_sent: false,
     });
   });
 
@@ -148,7 +169,7 @@ describe('buildMonthStatusMap — multi-month orders', () => {
         },
       ],
       legacyStatuses: {},
-      monthSentFlags: {},
+      monthFlags: {},
     });
 
     expect(statusMap[order.id]?.invoice_sent).toBe(false);
@@ -171,13 +192,14 @@ describe('buildMonthStatusMap — multi-month orders', () => {
       legacyStatuses: {
         [order.id]: makeLegacyStatus(order.id, { invoice_sent: true }),
       },
-      monthSentFlags: {},
+      monthFlags: {},
     });
 
     expect(statusMap[order.id]?.invoice_sent).toBe(false);
   });
 
   it('marks issued and sent false when billing month has no invoice coverage', () => {
+    const janKey = monthFlagKey(order.id, '2026', '1');
     const statusMap = buildMonthStatusMap({
       orderIds: [order.id],
       ordersById: { [order.id]: order },
@@ -194,7 +216,9 @@ describe('buildMonthStatusMap — multi-month orders', () => {
       legacyStatuses: {
         [order.id]: makeLegacyStatus(order.id, { invoice_sent: true }),
       },
-      monthSentFlags: { [monthSentFlagKey(order.id, '2026', '1')]: true },
+      monthFlags: {
+        [janKey]: { invoice_issued: false, invoice_sent: true },
+      },
     });
 
     expect(statusMap[order.id]).toEqual({
@@ -204,8 +228,8 @@ describe('buildMonthStatusMap — multi-month orders', () => {
   });
 
   it('allows different sent flags per billing month', () => {
-    const janKey = monthSentFlagKey(order.id, '2026', '1');
-    const febKey = monthSentFlagKey(order.id, '2026', '2');
+    const janKey = monthFlagKey(order.id, '2026', '1');
+    const febKey = monthFlagKey(order.id, '2026', '2');
 
     const janStatus = buildMonthStatusMap({
       orderIds: [order.id],
@@ -221,7 +245,10 @@ describe('buildMonthStatusMap — multi-month orders', () => {
         },
       ],
       legacyStatuses: {},
-      monthSentFlags: { [janKey]: true, [febKey]: false },
+      monthFlags: {
+        [janKey]: { invoice_issued: false, invoice_sent: true },
+        [febKey]: { invoice_issued: false, invoice_sent: false },
+      },
     });
 
     const febStatus = buildMonthStatusMap({
@@ -238,7 +265,10 @@ describe('buildMonthStatusMap — multi-month orders', () => {
         },
       ],
       legacyStatuses: {},
-      monthSentFlags: { [janKey]: true, [febKey]: false },
+      monthFlags: {
+        [janKey]: { invoice_issued: false, invoice_sent: true },
+        [febKey]: { invoice_issued: false, invoice_sent: false },
+      },
     });
 
     expect(janStatus[order.id]?.invoice_sent).toBe(true);
@@ -266,9 +296,45 @@ describe('buildMonthStatusMap — single-month orders', () => {
       legacyStatuses: {
         [order.id]: makeLegacyStatus(order.id, { invoice_sent: true }),
       },
-      monthSentFlags: {},
+      monthFlags: {},
     });
 
     expect(statusMap[order.id]?.invoice_sent).toBe(true);
+  });
+
+  it('honors manual invoice_issued when billing month has no invoice yet', () => {
+    const statusMap = buildMonthStatusMap({
+      orderIds: [order.id],
+      ordersById: { [order.id]: order },
+      billing: { month: '2', year: '2026' },
+      coverages: [],
+      legacyStatuses: {
+        [order.id]: makeLegacyStatus(order.id, { invoice_issued: true }),
+      },
+      monthFlags: {},
+    });
+
+    expect(statusMap[order.id]?.invoice_issued).toBe(true);
+  });
+
+  it('keeps invoice_issued true when month has invoice coverage', () => {
+    const statusMap = buildMonthStatusMap({
+      orderIds: [order.id],
+      ordersById: { [order.id]: order },
+      billing: { month: '2', year: '2026' },
+      coverages: [
+        {
+          orderId: order.id,
+          invoiceId: 'inv-1',
+          periodFrom: '2026-02-01',
+          periodTo: '2026-02-28',
+          invoiceDate: '2026-02-15',
+        },
+      ],
+      legacyStatuses: {},
+      monthFlags: {},
+    });
+
+    expect(statusMap[order.id]?.invoice_issued).toBe(true);
   });
 });

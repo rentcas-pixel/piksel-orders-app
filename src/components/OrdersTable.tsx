@@ -112,19 +112,18 @@ export function OrdersTable({
     field: 'invoice_issued' | 'invoice_sent',
     value: boolean
   ) => {
-    if (field === 'invoice_issued' && isMultiMonthOrder(order)) {
-      return;
-    }
-
     const previousStatus = invoiceStatuses[order.id];
     const currentIssued = previousStatus?.invoice_issued ?? !!order.invoice_sent;
     const currentSent = previousStatus?.invoice_sent ?? false;
 
-    if (field === 'invoice_sent' && isMultiMonthOrder(order) && billingContext) {
+    if (isMultiMonthOrder(order) && billingContext) {
+      const nextIssued = field === 'invoice_issued' ? value : currentIssued;
+      const nextSent =
+        field === 'invoice_sent' ? value : field === 'invoice_issued' && !value ? false : currentSent;
       const optimisticStatus: OrderInvoiceStatus = {
         order_id: order.id,
-        invoice_issued: currentIssued,
-        invoice_sent: value,
+        invoice_issued: nextIssued,
+        invoice_sent: nextSent,
         updated_at: new Date().toISOString(),
       };
       setInvoiceStatuses((prev) => ({
@@ -132,9 +131,12 @@ export function OrdersTable({
         [order.id]: optimisticStatus,
       }));
       try {
-        await SupabaseService.upsertOrderInvoiceMonthSent(order.id, billingContext, value);
+        await SupabaseService.upsertOrderInvoiceMonthFlags(order.id, billingContext, {
+          invoice_issued: nextIssued,
+          invoice_sent: nextSent,
+        });
       } catch (error) {
-        console.error('Error updating month invoice sent:', error);
+        console.error('Error updating month invoice flags:', error);
         setInvoiceStatuses((prev) => {
           const next = { ...prev };
           if (previousStatus) next[order.id] = previousStatus;

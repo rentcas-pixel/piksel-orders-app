@@ -343,6 +343,40 @@ export function EditOrderModal({
     }));
   };
 
+  const handleToggleInvoiceStatus = async (
+    field: 'invoice_issued' | 'invoice_sent',
+    value: boolean
+  ) => {
+    if (!order) return;
+
+    const previousStatus = { ...invoiceStatus };
+    const nextIssued =
+      field === 'invoice_issued' ? value : invoiceStatus.invoice_issued;
+    const nextSent =
+      field === 'invoice_sent'
+        ? value
+        : field === 'invoice_issued' && !value
+          ? false
+          : invoiceStatus.invoice_sent;
+    const nextStatus = {
+      invoice_issued: nextIssued,
+      invoice_sent: nextSent,
+    };
+    setInvoiceStatus(nextStatus);
+
+    try {
+      if (multiMonthOrder && billingContext) {
+        await SupabaseService.upsertOrderInvoiceMonthFlags(order.id, billingContext, nextStatus);
+        return;
+      }
+
+      await SupabaseService.upsertInvoiceStatus(order.id, nextStatus);
+    } catch (error) {
+      console.error('Error updating invoice status:', error);
+      setInvoiceStatus(previousStatus);
+    }
+  };
+
   const handleSave = async () => {
     if (!order) return;
     
@@ -357,10 +391,10 @@ export function EditOrderModal({
 
       try {
         if (multiMonthOrder && billingContext) {
-          await SupabaseService.upsertOrderInvoiceMonthSent(
+          await SupabaseService.upsertOrderInvoiceMonthFlags(
             order.id,
             billingContext,
-            invoiceStatus.invoice_sent
+            invoiceStatus
           );
         } else {
           await SupabaseService.upsertInvoiceStatus(order.id, {
@@ -897,9 +931,12 @@ export function EditOrderModal({
                       : 'Sąskaita neišrašyta'
                   }
                   icon={DocumentTextIcon}
-                  disabled={isAgency || (multiMonthOrder && !!billingContext)}
+                  disabled={isAgency}
                   onClick={() =>
-                    setInvoiceStatus((prev) => ({ ...prev, invoice_issued: !prev.invoice_issued }))
+                    void handleToggleInvoiceStatus(
+                      'invoice_issued',
+                      !invoiceStatus.invoice_issued
+                    )
                   }
                 />
                 {onGenerateInvoice && formData.approved && !isAgency && order && (
@@ -928,7 +965,7 @@ export function EditOrderModal({
                 }
                 icon={PaperAirplaneIcon}
                 onClick={() =>
-                  setInvoiceStatus((prev) => ({ ...prev, invoice_sent: !prev.invoice_sent }))
+                  void handleToggleInvoiceStatus('invoice_sent', !invoiceStatus.invoice_sent)
                 }
               />
             </div>

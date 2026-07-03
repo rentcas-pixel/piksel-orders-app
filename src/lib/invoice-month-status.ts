@@ -95,9 +95,22 @@ export function periodCoversBillingMonth(
   return false;
 }
 
-export function monthSentFlagKey(orderId: string, year: string, month: string): string {
+export interface BillingMonthInvoiceFlags {
+  invoice_issued: boolean;
+  invoice_sent: boolean;
+}
+
+export const emptyBillingMonthInvoiceFlags = (): BillingMonthInvoiceFlags => ({
+  invoice_issued: false,
+  invoice_sent: false,
+});
+
+export function monthFlagKey(orderId: string, year: string, month: string): string {
   return `${orderId}:${year}:${parseInt(month, 10)}`;
 }
+
+/** @deprecated use monthFlagKey */
+export const monthSentFlagKey = monthFlagKey;
 
 export function buildMonthStatusMap(params: {
   orderIds: string[];
@@ -105,9 +118,9 @@ export function buildMonthStatusMap(params: {
   billing: BillingMonthContext | null;
   coverages: OrderInvoiceCoverage[];
   legacyStatuses: Record<string, OrderInvoiceStatus>;
-  monthSentFlags: Record<string, boolean>;
+  monthFlags: Record<string, BillingMonthInvoiceFlags>;
 }): Record<string, MonthInvoiceStatus> {
-  const { orderIds, ordersById, billing, coverages, legacyStatuses, monthSentFlags } = params;
+  const { orderIds, ordersById, billing, coverages, legacyStatuses, monthFlags } = params;
   const result: Record<string, MonthInvoiceStatus> = {};
 
   for (const orderId of orderIds) {
@@ -130,16 +143,18 @@ export function buildMonthStatusMap(params: {
     );
 
     if (order && isMultiMonthOrder(order)) {
-      const sentKey = monthSentFlagKey(orderId, billing.year, billing.month);
+      const flagKey = monthFlagKey(orderId, billing.year, billing.month);
+      const flags = monthFlags[flagKey] ?? emptyBillingMonthInvoiceFlags();
+      const issued = monthCoverage || flags.invoice_issued;
       result[orderId] = {
-        invoice_issued: monthCoverage,
-        invoice_sent: monthCoverage ? (monthSentFlags[sentKey] ?? false) : false,
+        invoice_issued: issued,
+        invoice_sent: issued ? flags.invoice_sent : false,
       };
       continue;
     }
 
     result[orderId] = {
-      invoice_issued: monthCoverage,
+      invoice_issued: monthCoverage || legacy?.invoice_issued === true,
       invoice_sent: legacy?.invoice_sent ?? false,
     };
   }
