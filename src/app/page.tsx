@@ -150,12 +150,15 @@ export default function Home() {
   };
 
   const handleGenerateInvoice = async (order: Order) => {
-    const { month, year } = resolveListMonthYear(filters.month, filters.year);
-    const existing =
-      month && year
-        ? await InvoiceService.getForOrderBillingMonth(order.id, month, year)
-        : await InvoiceService.getLatestForOrder(order.id);
-    if (existing && (await InvoiceService.hasInvoiceLines(existing.id))) {
+    const existing = await InvoiceService.resolveExistingOrderInvoice(order, {
+      billingMonth: filters.month,
+      billingYear: filters.year,
+    });
+    if (
+      existing &&
+      (await InvoiceService.hasInvoiceLines(existing.id)) &&
+      !isStandaloneInvoiceOrder(order.id)
+    ) {
       setInvoicingInvoice(null);
       setCombinedInvoice(existing);
       return;
@@ -179,7 +182,10 @@ export default function Home() {
       setCombinedInvoice(invoice);
       return;
     }
-    if (await InvoiceService.hasInvoiceLines(invoice.id)) {
+    if (
+      (await InvoiceService.hasInvoiceLines(invoice.id)) &&
+      !isStandaloneInvoiceOrder(invoice.order_id)
+    ) {
       setInvoicingInvoice(null);
       setCombinedInvoice(invoice);
       return;

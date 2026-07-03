@@ -9,16 +9,16 @@ import { fetchAgencyInvoices } from '@/lib/agency-portal-api';
 import { downloadIssuedInvoicePdf, downloadInvoicesZip } from '@/lib/invoice-pdf-batch';
 import { formatInvoiceListDescription } from '@/components/InvoiceLineDescription';
 import { InvoiceListTotalsSummary } from '@/components/InvoiceListTotalsSummary';
-import { formatEuro, sumInvoiceAmountBreakdowns } from '@/lib/invoice-utils';
+import { formatEuro, sumInvoiceAmountBreakdowns, compareInvoiceNumbers } from '@/lib/invoice-utils';
 import {
   issuedToPaymentRow,
 } from '@/lib/payment-tracking';
-import { invoiceMatchesBillingMonth } from '@/lib/invoice-month-status';
-import { resolveListMonthYear } from '@/lib/orders-filters';
 import {
   matchesIssuedInvoicePaymentFilter,
   type IssuedInvoicePaymentFilter,
 } from '@/lib/issued-invoice-filters';
+import { invoiceMatchesPeriod } from '@/lib/balance-summary';
+import { resolveListMonthYear } from '@/lib/orders-filters';
 import {
   portalCardClass,
   portalExportBtnClass,
@@ -80,6 +80,7 @@ export function InvoicesTable({
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [zipping, setZipping] = useState(false);
   const [overdueSort, setOverdueSort] = useState<OverdueSortDirection | null>(null);
+  const [numberSort, setNumberSort] = useState<OverdueSortDirection | null>(null);
 
   const loadInvoices = useCallback(async () => {
     setLoading(true);
@@ -107,6 +108,7 @@ export function InvoicesTable({
 
   useEffect(() => {
     if (paymentFilter === 'overdue') {
+      setNumberSort(null);
       setOverdueSort('desc');
     } else {
       setOverdueSort(null);
@@ -134,7 +136,7 @@ export function InvoicesTable({
 
   const periodInvoices = useMemo(() => {
     if (!resolvedYear) return invoices;
-    return invoices.filter((inv) => invoiceMatchesBillingMonth(inv, month, year));
+    return invoices.filter((inv) => invoiceMatchesPeriod(inv.invoice_date, month, year));
   }, [invoices, month, year, resolvedYear]);
 
   const filtered = useMemo(() => {
@@ -170,12 +172,22 @@ export function InvoicesTable({
       });
     }
 
+    if (numberSort) {
+      return [...filtered].sort((a, b) => {
+        const cmp = compareInvoiceNumbers(a.invoice_number, b.invoice_number);
+        if (cmp !== 0) {
+          return numberSort === 'desc' ? -cmp : cmp;
+        }
+        return b.invoice_date.localeCompare(a.invoice_date);
+      });
+    }
+
     return [...filtered].sort((a, b) => {
       const amountDiff = Number(b.amount) - Number(a.amount);
       if (amountDiff !== 0) return amountDiff;
       return b.invoice_date.localeCompare(a.invoice_date);
     });
-  }, [filtered, overdueSort]);
+  }, [filtered, overdueSort, numberSort]);
 
   const totals = useMemo(() => sumInvoiceAmountBreakdowns(filtered), [filtered]);
 
@@ -289,12 +301,37 @@ export function InvoicesTable({
             <tr>
               <th className={`${portalStickyThClass} whitespace-nowrap`}>Data</th>
               <th className={portalStickyThClass}>Pirkėjas</th>
-              <th className={portalStickyThClass}>Nr.</th>
+              <th className={portalStickyThClass}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOverdueSort(null);
+                    setNumberSort((current) => nextOverdueSort(current));
+                  }}
+                  className={`inline-flex items-center gap-1 uppercase tracking-wider transition-colors hover:text-gray-800 dark:hover:text-gray-200 ${
+                    numberSort
+                      ? 'font-semibold text-blue-700 dark:text-blue-300'
+                      : 'text-gray-500 dark:text-gray-400'
+                  }`}
+                  title={
+                    numberSort === 'desc'
+                      ? 'Rūšiuojama: didžiausias numeris. Spauskite — mažiausias'
+                      : numberSort === 'asc'
+                        ? 'Rūšiuojama: mažiausias numeris. Spauskite — numatytasis'
+                        : 'Rūšiuoti pagal sąskaitos numerį'
+                  }
+                >
+                  Nr.
+                  <span className="normal-case text-gray-400 dark:text-gray-500">
+                    {numberSort === 'desc' ? '↓' : numberSort === 'asc' ? '↑' : '↕'}
+                  </span>
+                </button>
+              </th>
               <th className={portalStickyThClass}>Aprašymas</th>
               <th className={`${portalStickyThClass} text-right`}>
                 <span className="inline-flex items-center gap-1">
                   Suma
-                  {!portalMode && !overdueSort ? (
+                  {!portalMode && !overdueSort && !numberSort ? (
                     <span className="normal-case font-semibold text-blue-700 dark:text-blue-300">
                       ↓
                     </span>
@@ -307,7 +344,10 @@ export function InvoicesTable({
                   <th className={`${portalStickyThClass} text-right`}>
                     <button
                       type="button"
-                      onClick={() => setOverdueSort((current) => nextOverdueSort(current))}
+                      onClick={() => {
+                        setNumberSort(null);
+                        setOverdueSort((current) => nextOverdueSort(current));
+                      }}
                       className={`inline-flex items-center gap-1 uppercase tracking-wider transition-colors hover:text-gray-800 dark:hover:text-gray-200 ${
                         overdueSort
                           ? 'font-semibold text-blue-700 dark:text-blue-300'

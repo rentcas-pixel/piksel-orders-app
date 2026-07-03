@@ -71,6 +71,7 @@ export function periodsOverlap(
   return aFrom <= bTo && aTo >= bFrom;
 }
 
+/** Užsakymų „išrašyta“ būsenai — pagal sąskaitos periodą. Sąskaitų sąrašui naudokite invoiceMatchesPeriod. */
 export function invoiceMatchesBillingMonth(
   invoice: {
     invoice_date: string;

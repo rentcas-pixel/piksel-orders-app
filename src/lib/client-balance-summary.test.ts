@@ -76,6 +76,21 @@ describe('computeClientBalances', () => {
 
     expect(rows).toHaveLength(0);
   });
+
+  it('groups issued invoices by issue date, not advertising period', () => {
+    const invoice = makeIssued({
+      invoice_number: 'PIK 3842',
+      invoice_date: '2026-06-30',
+      period_from: '2026-06-16',
+      period_to: '2026-07-17',
+    });
+
+    const juneRows = computeClientBalances([invoice], [], '6', '2026');
+    const julyRows = computeClientBalances([invoice], [], '7', '2026');
+
+    expect(juneRows).toHaveLength(1);
+    expect(julyRows).toHaveLength(0);
+  });
 });
 
 describe('computeClientBalanceTotals', () => {

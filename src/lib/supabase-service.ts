@@ -287,7 +287,7 @@ export class SupabaseService {
     if (error) throw error;
   }
 
-  static async upsertOrderInvoiceMonthSent(
+  static async persistInvoiceStatusToggle(
     order: Order,
     billing: BillingMonthContext | null,
     flags: BillingMonthInvoiceFlags

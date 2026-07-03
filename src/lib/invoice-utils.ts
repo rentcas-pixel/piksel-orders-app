@@ -64,6 +64,34 @@ export function applyPercentDiscount(amount: number, discountPercent: number): n
   return Math.round(amount * (1 - discountPercent / 100) * 100) / 100;
 }
 
+/** Ar išsaugota suma sutampa su automatiškai apskaičiuota (įskaitant Owexx nuolaidą). */
+export function invoiceSavedAmountMatchesCalculated(
+  savedAmount: number,
+  autoCalculatedBase: number,
+  owexxDiscountApplied = false
+): boolean {
+  if (savedAmount <= 0) return true;
+  const expected = owexxDiscountApplied
+    ? applyPercentDiscount(autoCalculatedBase, OWEXX_CLIENT_DISCOUNT_PERCENT)
+    : autoCalculatedBase;
+  return Math.abs(savedAmount - expected) < 0.05;
+}
+
+/** Užkraunant išsaugotą sąskaitą – išlaikyti rankinę sumą, neperrašyti iš užsakymo. */
+export function resolveSavedInvoiceBaseAmount(
+  savedAmount: number,
+  autoCalculatedBase: number,
+  owexxDiscountApplied = false
+): number {
+  if (invoiceSavedAmountMatchesCalculated(savedAmount, autoCalculatedBase, owexxDiscountApplied)) {
+    return autoCalculatedBase;
+  }
+  if (owexxDiscountApplied) {
+    return Math.round((savedAmount / (1 - OWEXX_CLIENT_DISCOUNT_PERCENT / 100)) * 100) / 100;
+  }
+  return savedAmount;
+}
+
 export function formatInvoiceDate(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -243,6 +271,32 @@ export function calculateMonthlyAmount(order: Order, invoiceDate: string): numbe
 
 export type InvoiceAmountMode = 'monthly' | 'full';
 
+export function isFullCampaignInvoice(
+  invoice: {
+    period_from?: string | null;
+    period_to?: string | null;
+  },
+  order: Order
+): boolean {
+  if (!isMultiMonthOrder(order)) return false;
+
+  const full = getFullOrderPeriod(order);
+  return (
+    formatDateOnly(invoice.period_from ?? '') === full.from &&
+    formatDateOnly(invoice.period_to ?? '') === full.to
+  );
+}
+
+export function resolveInvoiceAmountMode(
+  invoice: {
+    period_from?: string | null;
+    period_to?: string | null;
+  },
+  order: Order
+): InvoiceAmountMode {
+  return isFullCampaignInvoice(invoice, order) ? 'full' : 'monthly';
+}
+
 export function getFullOrderPeriod(order: Order): { from: string; to: string } {
   return {
     from: formatDateOnly(order.from),
@@ -373,6 +427,14 @@ export function numberToWordsWithCurrency(num: number): string {
 export function parseInvoiceNumber(value: string): number {
   const match = value.match(/(\d+)\s*$/);
   return match ? parseInt(match[1], 10) : 0;
+}
+
+/** Rūšiavimui: PIK skaitinė dalis, tada tekstinis numeris. */
+export function compareInvoiceNumbers(a: string, b: string): number {
+  const numA = parseInvoiceNumber(a);
+  const numB = parseInvoiceNumber(b);
+  if (numA !== numB) return numA - numB;
+  return a.localeCompare(b, 'lt');
 }
 
 export function formatPikNumber(seq: number): string {

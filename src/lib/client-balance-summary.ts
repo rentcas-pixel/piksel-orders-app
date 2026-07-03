@@ -6,7 +6,6 @@ import {
   invoiceMatchesPeriod,
 } from '@/lib/balance-summary';
 import { companyNameMatches, foldSearchText } from '@/lib/company-name-match';
-import { invoiceMatchesBillingMonth } from '@/lib/invoice-month-status';
 import { counterpartyKey } from '@/lib/payment-allocation';
 import type { Invoice, ReceivedInvoice } from '@/types';
 
@@ -165,7 +164,9 @@ export function computeClientBalances(
   month: string,
   year: string
 ): ClientBalanceRow[] {
-  const periodInvoices = invoices.filter((inv) => invoiceMatchesBillingMonth(inv, month, year));
+  const periodInvoices = invoices.filter((inv) =>
+    invoiceMatchesPeriod(inv.invoice_date, month, year)
+  );
   const periodReceived = received.filter((inv) =>
     invoiceMatchesPeriod(inv.invoice_date, month, year)
   );
@@ -227,7 +228,7 @@ export function getInvoicesForClientRow(
   const issued = invoices
     .filter(
       (invoice) =>
-        invoiceMatchesBillingMonth(invoice, month, year) &&
+        invoiceMatchesPeriod(invoice.invoice_date, month, year) &&
         invoiceMatchesClientRow(row, invoice.buyer_name ?? '', invoice.buyer_company_code)
     )
     .sort((a, b) => b.invoice_date.localeCompare(a.invoice_date));

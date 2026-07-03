@@ -9,9 +9,10 @@ import {
   computeInvoiceTotals,
   getInvoiceVatRate,
   isCombinedInvoiceOrder,
+  isFullCampaignInvoice,
   isStandaloneInvoiceOrder,
 } from '@/lib/invoice-utils';
-import type { Invoice, InvoiceLine, InvoiceLineInput, InvoiceSaveInput } from '@/types';
+import type { Invoice, InvoiceLine, InvoiceLineInput, InvoiceSaveInput, Order } from '@/types';
 import {
   DEFAULT_INVOICE_SEQUENCE,
   formatPikNumber,
@@ -22,6 +23,7 @@ import {
 import { SupabaseService } from '@/lib/supabase-service';
 import { PocketBaseService } from '@/lib/pocketbase';
 import { isMultiMonthOrder } from '@/lib/invoice-utils';
+import { resolveListMonthYear } from '@/lib/orders-filters';
 
 export class InvoiceService {
   static async getLastInvoiceSequence(): Promise<number> {
@@ -149,6 +151,35 @@ export class InvoiceService {
     }
 
     return null;
+  }
+
+  static async resolveExistingOrderInvoice(
+    order: Order,
+    options: {
+      invoiceHint?: Invoice | null;
+      billingMonth?: string;
+      billingYear?: string;
+    } = {}
+  ): Promise<Invoice | null> {
+    const { invoiceHint = null, billingMonth = '', billingYear = '' } = options;
+    const { month: resolvedMonth, year: resolvedYear } = resolveListMonthYear(
+      billingMonth,
+      billingYear
+    );
+
+    const fromHint =
+      invoiceHint &&
+      (invoiceHint.order_id === order.id || isStandaloneInvoiceOrder(order.id))
+        ? (await this.getById(invoiceHint.id)) ?? invoiceHint
+        : null;
+
+    const latest = fromHint ?? (await this.getLatestForOrder(order.id));
+    if (!latest || isStandaloneInvoiceOrder(order.id)) return latest;
+    if (!resolvedMonth || !resolvedYear) return latest;
+    if (isFullCampaignInvoice(latest, order)) return latest;
+
+    const monthInvoice = await this.getForOrderBillingMonth(order.id, resolvedMonth, resolvedYear);
+    return monthInvoice ?? latest;
   }
 
   static async getOrderInvoiceCoverages(orderIds: string[]): Promise<OrderInvoiceCoverage[]> {
