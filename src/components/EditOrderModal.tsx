@@ -30,6 +30,7 @@ import { SupabaseService } from '@/lib/supabase-service';
 import { formatDateInputValue, parseDateOnlyLocal } from '@/lib/date-utils';
 import { isMultiMonthOrder } from '@/lib/invoice-utils';
 import {
+  nextInvoiceStatusOnToggle,
   resolveBillingContext,
   type BillingMonthContext,
 } from '@/lib/invoice-month-status';
@@ -349,18 +350,7 @@ export function EditOrderModal({
     if (!order) return;
 
     const previousStatus = { ...invoiceStatus };
-    const nextIssued =
-      field === 'invoice_issued' ? value : invoiceStatus.invoice_issued;
-    const nextSent =
-      field === 'invoice_sent'
-        ? value
-        : field === 'invoice_issued' && !value
-          ? false
-          : invoiceStatus.invoice_sent;
-    const nextStatus = {
-      invoice_issued: nextIssued,
-      invoice_sent: nextSent,
-    };
+    const nextStatus = nextInvoiceStatusOnToggle(invoiceStatus, field, value);
     setInvoiceStatus(nextStatus);
 
     try {

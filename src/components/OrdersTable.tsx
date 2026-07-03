@@ -12,7 +12,7 @@ import type { TableTheme } from '@/lib/order-design-variants';
 import { getTableTheme } from '@/lib/table-theme';
 import { buildOrdersListFilter, resolveListMonthYear, type OrdersListFilters, type OrdersPeriodTab } from '@/lib/orders-filters';
 import { isMultiMonthOrder } from '@/lib/invoice-utils';
-import { resolveBillingContext } from '@/lib/invoice-month-status';
+import { resolveBillingContext, nextInvoiceStatusOnToggle } from '@/lib/invoice-month-status';
 import { StatusIconButton } from '@/components/StatusIconButton';
 import {
   portalExportBtnClass,
@@ -116,13 +116,15 @@ export function OrdersTable({
     const currentSent = previousStatus?.invoice_sent ?? false;
 
     if (isMultiMonthOrder(order) && billingContext) {
-      const nextIssued = field === 'invoice_issued' ? value : currentIssued;
-      const nextSent =
-        field === 'invoice_sent' ? value : field === 'invoice_issued' && !value ? false : currentSent;
+      const nextStatus = nextInvoiceStatusOnToggle(
+        { invoice_issued: currentIssued, invoice_sent: currentSent },
+        field,
+        value
+      );
       const optimisticStatus: OrderInvoiceStatus = {
         order_id: order.id,
-        invoice_issued: nextIssued,
-        invoice_sent: nextSent,
+        invoice_issued: nextStatus.invoice_issued,
+        invoice_sent: nextStatus.invoice_sent,
         updated_at: new Date().toISOString(),
       };
       setInvoiceStatuses((prev) => ({
@@ -131,19 +133,10 @@ export function OrdersTable({
       }));
       try {
         if (billingContext.month) {
-          await SupabaseService.upsertOrderInvoiceMonthFlags(order.id, billingContext, {
-            invoice_issued: nextIssued,
-            invoice_sent: nextSent,
-          });
+          await SupabaseService.upsertOrderInvoiceMonthFlags(order.id, billingContext, nextStatus);
         } else {
-          await SupabaseService.upsertOrderInvoiceMonthFlagsForOrderYear(order, billingContext.year, {
-            invoice_issued: nextIssued,
-            invoice_sent: nextSent,
-          });
-          await SupabaseService.upsertInvoiceStatus(order.id, {
-            invoice_issued: nextIssued,
-            invoice_sent: nextSent,
-          });
+          await SupabaseService.upsertOrderInvoiceMonthFlagsForOrderYear(order, billingContext.year, nextStatus);
+          await SupabaseService.upsertInvoiceStatus(order.id, nextStatus);
         }
       } catch (error) {
         console.error('Error updating month invoice flags:', error);

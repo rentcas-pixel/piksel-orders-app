@@ -105,6 +105,26 @@ export const emptyBillingMonthInvoiceFlags = (): BillingMonthInvoiceFlags => ({
   invoice_sent: false,
 });
 
+export function nextInvoiceStatusOnToggle(
+  current: BillingMonthInvoiceFlags,
+  field: 'invoice_issued' | 'invoice_sent',
+  value: boolean
+): BillingMonthInvoiceFlags {
+  let invoice_issued = field === 'invoice_issued' ? value : current.invoice_issued;
+  let invoice_sent =
+    field === 'invoice_sent'
+      ? value
+      : field === 'invoice_issued' && !value
+        ? false
+        : current.invoice_sent;
+
+  if (field === 'invoice_sent' && value) {
+    invoice_issued = true;
+  }
+
+  return { invoice_issued, invoice_sent };
+}
+
 export function monthFlagKey(orderId: string, year: string, month: string): string {
   return `${orderId}:${year}:${parseInt(month, 10)}`;
 }
@@ -192,11 +212,12 @@ export function buildMonthStatusMap(params: {
       if (order && isMultiMonthOrder(order)) {
         const anyMonthFlagIssued = yearMonthFlags.some((flags) => flags.invoice_issued);
         const anyMonthFlagSent = yearMonthFlags.some((flags) => flags.invoice_sent);
+        const sent = anyMonthFlagSent || legacy?.invoice_sent === true;
         const issued =
-          yearCoverage || anyMonthFlagIssued || legacy?.invoice_issued === true;
+          yearCoverage || anyMonthFlagIssued || sent || legacy?.invoice_issued === true;
         result[orderId] = {
           invoice_issued: issued,
-          invoice_sent: anyMonthFlagSent,
+          invoice_sent: sent,
         };
       } else {
         result[orderId] = {
@@ -215,13 +236,16 @@ export function buildMonthStatusMap(params: {
       const flagKey = monthFlagKey(orderId, billing.year, billing.month);
       const hasExplicitFlag = Object.prototype.hasOwnProperty.call(monthFlags, flagKey);
       const flags = monthFlags[flagKey] ?? emptyBillingMonthInvoiceFlags();
+      const sent =
+        flags.invoice_sent || (!hasExplicitFlag && legacy?.invoice_sent === true);
       const issued =
         monthCoverage ||
         flags.invoice_issued ||
+        sent ||
         (!hasExplicitFlag && legacy?.invoice_issued === true);
       result[orderId] = {
         invoice_issued: issued,
-        invoice_sent: issued ? flags.invoice_sent : false,
+        invoice_sent: sent,
       };
       continue;
     }

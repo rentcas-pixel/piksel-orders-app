@@ -4,6 +4,7 @@ import {
   buildMonthStatusMap,
   invoiceMatchesBillingMonth,
   monthFlagKey,
+  nextInvoiceStatusOnToggle,
   periodCoversBillingMonth,
   periodsOverlap,
 } from '@/lib/invoice-month-status';
@@ -242,7 +243,7 @@ describe('buildMonthStatusMap — multi-month orders', () => {
     expect(statusMap[order.id]?.invoice_sent).toBe(false);
   });
 
-  it('does not inherit legacy invoice_sent for multi-month orders', () => {
+  it('inherits legacy invoice_sent when no explicit per-month flag exists', () => {
     const statusMap = buildMonthStatusMap({
       orderIds: [order.id],
       ordersById: { [order.id]: order },
@@ -262,7 +263,29 @@ describe('buildMonthStatusMap — multi-month orders', () => {
       monthFlags: {},
     });
 
-    expect(statusMap[order.id]?.invoice_sent).toBe(false);
+    expect(statusMap[order.id]?.invoice_sent).toBe(true);
+  });
+
+  it('inherits legacy invoice_sent for a month without an explicit per-month flag', () => {
+    const orderMayJune = makeOrder({ from: '2026-05-28', to: '2026-06-24' });
+    const statusMap = buildMonthStatusMap({
+      orderIds: [orderMayJune.id],
+      ordersById: { [orderMayJune.id]: orderMayJune },
+      billing: { month: '6', year: '2026' },
+      coverages: [],
+      legacyStatuses: {
+        [orderMayJune.id]: makeLegacyStatus(orderMayJune.id, {
+          invoice_issued: true,
+          invoice_sent: true,
+        }),
+      },
+      monthFlags: {},
+    });
+
+    expect(statusMap[orderMayJune.id]).toEqual({
+      invoice_issued: true,
+      invoice_sent: true,
+    });
   });
 
   it('marks issued and sent false when billing month has no invoice coverage', () => {
@@ -284,7 +307,7 @@ describe('buildMonthStatusMap — multi-month orders', () => {
         [order.id]: makeLegacyStatus(order.id, { invoice_sent: true }),
       },
       monthFlags: {
-        [janKey]: { invoice_issued: false, invoice_sent: true },
+        [janKey]: { invoice_issued: false, invoice_sent: false },
       },
     });
 
@@ -340,6 +363,28 @@ describe('buildMonthStatusMap — multi-month orders', () => {
 
     expect(janStatus[order.id]?.invoice_sent).toBe(true);
     expect(febStatus[order.id]?.invoice_sent).toBe(false);
+  });
+});
+
+describe('nextInvoiceStatusOnToggle', () => {
+  it('marks issued when sent is toggled on', () => {
+    expect(
+      nextInvoiceStatusOnToggle(
+        { invoice_issued: false, invoice_sent: false },
+        'invoice_sent',
+        true
+      )
+    ).toEqual({ invoice_issued: true, invoice_sent: true });
+  });
+
+  it('clears sent when issued is toggled off', () => {
+    expect(
+      nextInvoiceStatusOnToggle(
+        { invoice_issued: true, invoice_sent: true },
+        'invoice_issued',
+        false
+      )
+    ).toEqual({ invoice_issued: false, invoice_sent: false });
   });
 });
 
