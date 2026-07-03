@@ -6,6 +6,7 @@ import {
   resolveInvoiceAmountAndPeriod,
 } from '@/lib/invoice-utils';
 import { resolveListMonthYear } from '@/lib/orders-filters';
+import { resolveBillingContext } from '@/lib/invoice-month-status';
 import { SupabaseService } from '@/lib/supabase-service';
 import type { InvoiceLineInput, Order } from '@/types';
 
@@ -83,8 +84,7 @@ export async function fetchCombinedInvoiceCandidates(params: {
 
   const orders = result.items ?? [];
   const { month: resolvedMonth, year: resolvedYear } = resolveListMonthYear(params.month, params.year);
-  const billingContext =
-    resolvedMonth && resolvedYear ? { month: resolvedMonth, year: resolvedYear } : null;
+  const billingContext = resolveBillingContext(params.month, params.year);
   const statusMap = await SupabaseService.getMonthInvoiceStatuses(orders, billingContext);
   const invoiceDay = invoiceDateForBillingPeriod(resolvedMonth, resolvedYear);
 

@@ -5,6 +5,7 @@ import {
   buildMonthStatusMap,
   emptyBillingMonthInvoiceFlags,
   monthFlagKey,
+  orderBillingMonthsInYear,
   toOrderInvoiceStatus,
   type BillingMonthContext,
   type BillingMonthInvoiceFlags,
@@ -224,19 +225,25 @@ export class SupabaseService {
     orderIds: string[],
     billing: BillingMonthContext | null
   ): Promise<Record<string, BillingMonthInvoiceFlags>> {
-    if (!billing?.month || !billing?.year || orderIds.length === 0) return {};
+    if (!billing?.year || orderIds.length === 0) return {};
 
     const uniqueOrderIds = [...new Set(orderIds.filter(Boolean))];
     const year = parseInt(billing.year, 10);
-    const month = parseInt(billing.month, 10);
-    if (Number.isNaN(year) || Number.isNaN(month)) return {};
+    if (Number.isNaN(year)) return {};
 
-    const { data, error } = await supabase
+    let query = supabase
       .from('order_invoice_month_flags')
-      .select('order_id, invoice_issued, invoice_sent')
+      .select('order_id, billing_year, billing_month, invoice_issued, invoice_sent')
       .in('order_id', uniqueOrderIds)
-      .eq('billing_year', year)
-      .eq('billing_month', month);
+      .eq('billing_year', year);
+
+    if (billing.month) {
+      const month = parseInt(billing.month, 10);
+      if (Number.isNaN(month)) return {};
+      query = query.eq('billing_month', month);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error('getOrderInvoiceMonthFlags:', error);
@@ -245,7 +252,7 @@ export class SupabaseService {
 
     const flags: Record<string, BillingMonthInvoiceFlags> = {};
     for (const row of data ?? []) {
-      flags[monthFlagKey(row.order_id, billing.year, billing.month)] = {
+      flags[monthFlagKey(row.order_id, String(row.billing_year), String(row.billing_month))] = {
         invoice_issued: !!row.invoice_issued,
         invoice_sent: !!row.invoice_sent,
       };
@@ -275,6 +282,17 @@ export class SupabaseService {
     );
 
     if (error) throw error;
+  }
+
+  static async upsertOrderInvoiceMonthFlagsForOrderYear(
+    order: Order,
+    year: string,
+    flags: BillingMonthInvoiceFlags
+  ): Promise<void> {
+    const months = orderBillingMonthsInYear(order, year);
+    await Promise.all(
+      months.map((billing) => this.upsertOrderInvoiceMonthFlags(order.id, billing, flags))
+    );
   }
 
   static async upsertOrderInvoiceMonthSent(

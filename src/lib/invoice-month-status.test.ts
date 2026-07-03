@@ -154,6 +154,73 @@ describe('buildMonthStatusMap — multi-month orders', () => {
     });
   });
 
+  it('inherits legacy invoice_issued for a month without an explicit per-month flag', () => {
+    const orderMayJune = makeOrder({ from: '2026-05-28', to: '2026-06-24' });
+    const statusMap = buildMonthStatusMap({
+      orderIds: [orderMayJune.id],
+      ordersById: { [orderMayJune.id]: orderMayJune },
+      billing: { month: '6', year: '2026' },
+      coverages: [
+        {
+          orderId: orderMayJune.id,
+          invoiceId: 'inv-may',
+          periodFrom: '2026-05-28',
+          periodTo: '2026-05-31',
+          invoiceDate: '2026-05-31',
+        },
+      ],
+      legacyStatuses: {
+        [orderMayJune.id]: makeLegacyStatus(orderMayJune.id, { invoice_issued: true }),
+      },
+      monthFlags: {},
+    });
+
+    expect(statusMap[orderMayJune.id]?.invoice_issued).toBe(true);
+  });
+
+  it('respects an explicit per-month issued=false flag over legacy', () => {
+    const orderMayJune = makeOrder({ from: '2026-05-28', to: '2026-06-24' });
+    const juneKey = monthFlagKey(orderMayJune.id, '2026', '6');
+    const statusMap = buildMonthStatusMap({
+      orderIds: [orderMayJune.id],
+      ordersById: { [orderMayJune.id]: orderMayJune },
+      billing: { month: '6', year: '2026' },
+      coverages: [],
+      legacyStatuses: {
+        [orderMayJune.id]: makeLegacyStatus(orderMayJune.id, { invoice_issued: true }),
+      },
+      monthFlags: {
+        [juneKey]: { invoice_issued: false, invoice_sent: false },
+      },
+    });
+
+    expect(statusMap[orderMayJune.id]?.invoice_issued).toBe(false);
+  });
+
+  it('uses year-scoped coverage and legacy for year-only billing', () => {
+    const orderMayJune = makeOrder({ from: '2026-05-28', to: '2026-06-24' });
+    const statusMap = buildMonthStatusMap({
+      orderIds: [orderMayJune.id],
+      ordersById: { [orderMayJune.id]: orderMayJune },
+      billing: { month: '', year: '2026' },
+      coverages: [
+        {
+          orderId: orderMayJune.id,
+          invoiceId: 'inv-may',
+          periodFrom: '2026-05-28',
+          periodTo: '2026-05-31',
+          invoiceDate: '2026-05-31',
+        },
+      ],
+      legacyStatuses: {
+        [orderMayJune.id]: makeLegacyStatus(orderMayJune.id, { invoice_issued: true }),
+      },
+      monthFlags: {},
+    });
+
+    expect(statusMap[orderMayJune.id]?.invoice_issued).toBe(true);
+  });
+
   it('keeps invoice_sent false when month has coverage but sent flag is off', () => {
     const statusMap = buildMonthStatusMap({
       orderIds: [order.id],

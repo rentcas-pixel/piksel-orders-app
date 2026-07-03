@@ -30,6 +30,7 @@ import { SupabaseService } from '@/lib/supabase-service';
 import { formatDateInputValue, parseDateOnlyLocal } from '@/lib/date-utils';
 import { isMultiMonthOrder } from '@/lib/invoice-utils';
 import {
+  resolveBillingContext,
   type BillingMonthContext,
 } from '@/lib/invoice-month-status';
 import { resolveListMonthYear } from '@/lib/orders-filters';
@@ -76,12 +77,10 @@ export function EditOrderModal({
   billingYear = '',
 }: EditOrderModalProps) {
   const isAgency = variant === 'agency';
-  const billingContext = useMemo((): BillingMonthContext | null => {
-    const resolved = resolveListMonthYear(billingMonth, billingYear);
-    return resolved.month && resolved.year
-      ? { month: resolved.month, year: resolved.year }
-      : null;
-  }, [billingMonth, billingYear]);
+  const billingContext = useMemo(
+    (): BillingMonthContext | null => resolveBillingContext(billingMonth, billingYear),
+    [billingMonth, billingYear]
+  );
   const multiMonthOrder = useMemo(
     () => (order ? isMultiMonthOrder(order) : false),
     [order]
@@ -366,7 +365,16 @@ export function EditOrderModal({
 
     try {
       if (multiMonthOrder && billingContext) {
-        await SupabaseService.upsertOrderInvoiceMonthFlags(order.id, billingContext, nextStatus);
+        if (billingContext.month) {
+          await SupabaseService.upsertOrderInvoiceMonthFlags(order.id, billingContext, nextStatus);
+        } else {
+          await SupabaseService.upsertOrderInvoiceMonthFlagsForOrderYear(
+            order,
+            billingContext.year,
+            nextStatus
+          );
+          await SupabaseService.upsertInvoiceStatus(order.id, nextStatus);
+        }
         return;
       }
 
@@ -391,11 +399,23 @@ export function EditOrderModal({
 
       try {
         if (multiMonthOrder && billingContext) {
-          await SupabaseService.upsertOrderInvoiceMonthFlags(
-            order.id,
-            billingContext,
-            invoiceStatus
-          );
+          if (billingContext.month) {
+            await SupabaseService.upsertOrderInvoiceMonthFlags(
+              order.id,
+              billingContext,
+              invoiceStatus
+            );
+          } else {
+            await SupabaseService.upsertOrderInvoiceMonthFlagsForOrderYear(
+              order,
+              billingContext.year,
+              invoiceStatus
+            );
+            await SupabaseService.upsertInvoiceStatus(order.id, {
+              invoice_issued: invoiceStatus.invoice_issued,
+              invoice_sent: invoiceStatus.invoice_sent,
+            });
+          }
         } else {
           await SupabaseService.upsertInvoiceStatus(order.id, {
             invoice_issued: invoiceStatus.invoice_issued,

@@ -12,6 +12,7 @@ import type { TableTheme } from '@/lib/order-design-variants';
 import { getTableTheme } from '@/lib/table-theme';
 import { buildOrdersListFilter, resolveListMonthYear, type OrdersListFilters, type OrdersPeriodTab } from '@/lib/orders-filters';
 import { isMultiMonthOrder } from '@/lib/invoice-utils';
+import { resolveBillingContext } from '@/lib/invoice-month-status';
 import { StatusIconButton } from '@/components/StatusIconButton';
 import {
   portalExportBtnClass,
@@ -77,12 +78,10 @@ export function OrdersTable({
     }
   };
 
-  const billingContext = useMemo(() => {
-    const resolvedBilling = resolveListMonthYear(filters.month, filters.year);
-    return resolvedBilling.month && resolvedBilling.year
-      ? { month: resolvedBilling.month, year: resolvedBilling.year }
-      : null;
-  }, [filters.month, filters.year]);
+  const billingContext = useMemo(
+    () => resolveBillingContext(filters.month, filters.year),
+    [filters.month, filters.year]
+  );
 
   const getInvoiceStatus = useCallback(
     (orderId: string) => invoiceStatuses[orderId] ?? null,
@@ -131,10 +130,21 @@ export function OrdersTable({
         [order.id]: optimisticStatus,
       }));
       try {
-        await SupabaseService.upsertOrderInvoiceMonthFlags(order.id, billingContext, {
-          invoice_issued: nextIssued,
-          invoice_sent: nextSent,
-        });
+        if (billingContext.month) {
+          await SupabaseService.upsertOrderInvoiceMonthFlags(order.id, billingContext, {
+            invoice_issued: nextIssued,
+            invoice_sent: nextSent,
+          });
+        } else {
+          await SupabaseService.upsertOrderInvoiceMonthFlagsForOrderYear(order, billingContext.year, {
+            invoice_issued: nextIssued,
+            invoice_sent: nextSent,
+          });
+          await SupabaseService.upsertInvoiceStatus(order.id, {
+            invoice_issued: nextIssued,
+            invoice_sent: nextSent,
+          });
+        }
       } catch (error) {
         console.error('Error updating month invoice flags:', error);
         setInvoiceStatuses((prev) => {

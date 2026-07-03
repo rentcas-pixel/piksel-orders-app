@@ -7,6 +7,7 @@ import { PocketBaseService } from '@/lib/pocketbase';
 import { SupabaseService } from '@/lib/supabase-service';
 import { getDaysInMonth, getDaysInRange } from '@/lib/screen-revenue';
 import { resolveListMonthYear } from '@/lib/orders-filters';
+import { resolveBillingContext } from '@/lib/invoice-month-status';
 import {
   portalStickyThBgClass,
   portalStickyTheadClass,
@@ -128,10 +129,10 @@ export function OrderAnalyticsDashboard({ filters, onEditOrder, refreshKey }: Or
     [filters.month, filters.year]
   );
 
-  const billingContext = useMemo(() => {
-    const { month, year } = resolveListMonthYear(filters.month, filters.year);
-    return month && year ? { month, year } : null;
-  }, [filters.month, filters.year]);
+  const billingContext = useMemo(
+    () => resolveBillingContext(filters.month, filters.year),
+    [filters.month, filters.year]
+  );
 
   const fetchData = useCallback(async () => {
     const cacheKey = periodFilter || 'all';

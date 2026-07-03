@@ -1,5 +1,5 @@
 import { resolveListMonthYear } from '@/lib/orders-filters';
-import { isMultiMonthOrder } from '@/lib/invoice-utils';
+import { getMonthlyDistribution, isMultiMonthOrder } from '@/lib/invoice-utils';
 import type { Order, OrderInvoiceStatus } from '@/types';
 
 export interface BillingMonthContext {
@@ -112,6 +112,51 @@ export function monthFlagKey(orderId: string, year: string, month: string): stri
 /** @deprecated use monthFlagKey */
 export const monthSentFlagKey = monthFlagKey;
 
+export function resolveBillingContext(
+  month: string,
+  year: string
+): BillingMonthContext | null {
+  const resolved = resolveListMonthYear(month, year);
+  if (!resolved.year) return null;
+  return { month: resolved.month, year: resolved.year };
+}
+
+export function orderBillingMonthsInYear(order: Order, year: string): BillingMonthContext[] {
+  if (!order.from || !order.to) return [];
+  const yearNum = parseInt(year, 10);
+  if (Number.isNaN(yearNum)) return [];
+
+  return getMonthlyDistribution(order.from, order.to, order.final_price ?? 1)
+    .filter((entry) => entry.year === yearNum)
+    .map((entry) => ({
+      month: String(entry.month).padStart(2, '0'),
+      year: String(yearNum),
+    }));
+}
+
+function coverageMatchesYear(coverage: OrderInvoiceCoverage, year: string): boolean {
+  return invoiceMatchesBillingMonth(
+    {
+      invoice_date: coverage.invoiceDate,
+      period_from: coverage.periodFrom,
+      period_to: coverage.periodTo,
+    },
+    '',
+    year
+  );
+}
+
+function monthFlagsForOrderInYear(
+  orderId: string,
+  year: string,
+  monthFlags: Record<string, BillingMonthInvoiceFlags>
+): BillingMonthInvoiceFlags[] {
+  const prefix = `${orderId}:${parseInt(year, 10)}:`;
+  return Object.entries(monthFlags)
+    .filter(([key]) => key.startsWith(prefix))
+    .map(([, flags]) => flags);
+}
+
 export function buildMonthStatusMap(params: {
   orderIds: string[];
   ordersById: Record<string, Order | undefined>;
@@ -128,7 +173,7 @@ export function buildMonthStatusMap(params: {
     const legacy = legacyStatuses[orderId];
     const orderCoverages = coverages.filter((entry) => entry.orderId === orderId);
 
-    if (!billing?.month || !billing?.year) {
+    if (!billing?.year) {
       const issued =
         orderCoverages.length > 0 || legacy?.invoice_issued === true || !!order?.invoice_sent;
       result[orderId] = {
@@ -138,14 +183,42 @@ export function buildMonthStatusMap(params: {
       continue;
     }
 
+    if (!billing.month) {
+      const yearCoverage = orderCoverages.some((entry) =>
+        coverageMatchesYear(entry, billing.year)
+      );
+      const yearMonthFlags = monthFlagsForOrderInYear(orderId, billing.year, monthFlags);
+
+      if (order && isMultiMonthOrder(order)) {
+        const anyMonthFlagIssued = yearMonthFlags.some((flags) => flags.invoice_issued);
+        const anyMonthFlagSent = yearMonthFlags.some((flags) => flags.invoice_sent);
+        const issued =
+          yearCoverage || anyMonthFlagIssued || legacy?.invoice_issued === true;
+        result[orderId] = {
+          invoice_issued: issued,
+          invoice_sent: anyMonthFlagSent,
+        };
+      } else {
+        result[orderId] = {
+          invoice_issued: yearCoverage || legacy?.invoice_issued === true,
+          invoice_sent: legacy?.invoice_sent ?? false,
+        };
+      }
+      continue;
+    }
+
     const monthCoverage = orderCoverages.some((entry) =>
       periodCoversBillingMonth(entry.periodFrom, entry.periodTo, entry.invoiceDate, billing)
     );
 
     if (order && isMultiMonthOrder(order)) {
       const flagKey = monthFlagKey(orderId, billing.year, billing.month);
+      const hasExplicitFlag = Object.prototype.hasOwnProperty.call(monthFlags, flagKey);
       const flags = monthFlags[flagKey] ?? emptyBillingMonthInvoiceFlags();
-      const issued = monthCoverage || flags.invoice_issued;
+      const issued =
+        monthCoverage ||
+        flags.invoice_issued ||
+        (!hasExplicitFlag && legacy?.invoice_issued === true);
       result[orderId] = {
         invoice_issued: issued,
         invoice_sent: issued ? flags.invoice_sent : false,
