@@ -126,7 +126,7 @@ export function nextInvoiceStatusOnToggle(
   value: boolean
 ): BillingMonthInvoiceFlags {
   let invoice_issued = field === 'invoice_issued' ? value : current.invoice_issued;
-  let invoice_sent =
+  const invoice_sent =
     field === 'invoice_sent'
       ? value
       : field === 'invoice_issued' && !value
