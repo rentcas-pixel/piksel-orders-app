@@ -183,6 +183,21 @@ function prepareDbPayload(
 }
 
 export class ReceivedInvoiceService {
+  static async getAllForDateRange(startDate: string, endDate: string): Promise<ReceivedInvoice[]> {
+    const { data, error } = await supabase
+      .from('received_invoices')
+      .select('*')
+      .gte('invoice_date', startDate)
+      .lte('invoice_date', endDate)
+      .order('invoice_date', { ascending: false });
+
+    if (error) {
+      console.error('received_invoices getAllForDateRange:', error);
+      return [];
+    }
+    return (data ?? []).map(decodeCurrency);
+  }
+
   static async getAll(): Promise<ReceivedInvoice[]> {
     const { data, error } = await supabase
       .from('received_invoices')

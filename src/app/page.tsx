@@ -318,6 +318,10 @@ export default function Home() {
               year={filters.year}
               onMonthYearChange={(month, year) => setFilters((prev) => ({ ...prev, month, year }))}
               refreshKey={refreshKey}
+              onOpenIssuedInvoice={(invoice) => void handleOpenInvoice(invoice)}
+              onOpenReceivedInvoice={(invoice) =>
+                setReceivedInvoiceModal({ invoice, isNew: false })
+              }
             />
           )}
 
@@ -440,6 +444,8 @@ export default function Home() {
         onClose={() => setEditingOrder(null)}
         onOrderUpdated={handleOrderUpdated}
         onGenerateInvoice={handleGenerateInvoice}
+        billingMonth={filters.month}
+        billingYear={filters.year}
       />
 
       <InvoiceModal

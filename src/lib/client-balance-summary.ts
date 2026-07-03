@@ -207,6 +207,42 @@ export function filterClientBalanceRows(
   });
 }
 
+function invoiceMatchesClientRow(
+  row: ClientBalanceRow,
+  name: string,
+  companyCode: string | null | undefined
+): boolean {
+  const code = normalizeCompanyCode(companyCode);
+  if (row.companyCode && code && row.companyCode === code) return true;
+  return companyNameMatches(row.displayName, name);
+}
+
+export function getInvoicesForClientRow(
+  row: ClientBalanceRow,
+  invoices: Invoice[],
+  received: ReceivedInvoice[],
+  month: string,
+  year: string
+): { issued: Invoice[]; received: ReceivedInvoice[] } {
+  const issued = invoices
+    .filter(
+      (invoice) =>
+        invoiceMatchesBillingMonth(invoice, month, year) &&
+        invoiceMatchesClientRow(row, invoice.buyer_name ?? '', invoice.buyer_company_code)
+    )
+    .sort((a, b) => b.invoice_date.localeCompare(a.invoice_date));
+
+  const receivedInvoices = received
+    .filter(
+      (invoice) =>
+        invoiceMatchesPeriod(invoice.invoice_date, month, year) &&
+        invoiceMatchesClientRow(row, invoice.seller_name ?? '', invoice.seller_company_code)
+    )
+    .sort((a, b) => b.invoice_date.localeCompare(a.invoice_date));
+
+  return { issued, received: receivedInvoices };
+}
+
 export function getClientBalanceFetchRange(month: string, year: string): { start: string; end: string } {
   return getPeriodDateRange(month, year);
 }

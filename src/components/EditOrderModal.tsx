@@ -28,6 +28,11 @@ import { Order, Comment, Reminder, FileAttachment } from '@/types';
 import { PocketBaseService } from '@/lib/pocketbase';
 import { SupabaseService } from '@/lib/supabase-service';
 import { formatDateInputValue, parseDateOnlyLocal } from '@/lib/date-utils';
+import { isMultiMonthOrder } from '@/lib/invoice-utils';
+import {
+  type BillingMonthContext,
+} from '@/lib/invoice-month-status';
+import { resolveListMonthYear } from '@/lib/orders-filters';
 import {
   computeCityOtsBreakdown,
   formatOts,
@@ -49,6 +54,8 @@ interface EditOrderModalProps {
   onOrderUpdated?: (order: Order) => void;
   onGenerateInvoice?: (order: Order) => void;
   variant?: 'internal' | 'agency';
+  billingMonth?: string;
+  billingYear?: string;
 }
 
 type OrderExportPartner = {
@@ -65,8 +72,20 @@ export function EditOrderModal({
   onOrderUpdated,
   onGenerateInvoice,
   variant = 'internal',
+  billingMonth = '',
+  billingYear = '',
 }: EditOrderModalProps) {
   const isAgency = variant === 'agency';
+  const billingContext = useMemo((): BillingMonthContext | null => {
+    const resolved = resolveListMonthYear(billingMonth, billingYear);
+    return resolved.month && resolved.year
+      ? { month: resolved.month, year: resolved.year }
+      : null;
+  }, [billingMonth, billingYear]);
+  const multiMonthOrder = useMemo(
+    () => (order ? isMultiMonthOrder(order) : false),
+    [order]
+  );
   const campaignEnded = useMemo(
     () => (order ? isCampaignEnded(order) : false),
     [order]
@@ -222,6 +241,16 @@ export function EditOrderModal({
     if (!order) return;
 
     try {
+      if (billingContext) {
+        const statusMap = await SupabaseService.getMonthInvoiceStatuses([order], billingContext);
+        const status = statusMap[order.id];
+        setInvoiceStatus({
+          invoice_issued: status?.invoice_issued ?? !!order.invoice_sent,
+          invoice_sent: status?.invoice_sent ?? false,
+        });
+        return;
+      }
+
       const statusMap = await SupabaseService.getInvoiceStatuses([order.id]);
       const status = statusMap[order.id];
       setInvoiceStatus({
@@ -232,7 +261,7 @@ export function EditOrderModal({
       console.error('Error loading invoice status:', error);
       setInvoiceStatus({ invoice_issued: !!order.invoice_sent, invoice_sent: false });
     }
-  }, [order]);
+  }, [order, billingContext]);
 
   useEffect(() => {
     if (isOpen) {
@@ -296,7 +325,7 @@ export function EditOrderModal({
 
       return () => clearTimeout(timer);
     }
-  }, [order, isOpen, isAgency, loadComments, loadReminders, loadPrintScreens, loadInvoiceStatus]);
+  }, [order, isOpen, isAgency, loadComments, loadReminders, loadPrintScreens, loadInvoiceStatus, billingContext]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -327,10 +356,18 @@ export function EditOrderModal({
       const updatedOrder = await PocketBaseService.updateOrder(order.id, orderPayload);
 
       try {
-        await SupabaseService.upsertInvoiceStatus(order.id, {
-          invoice_issued: invoiceStatus.invoice_issued,
-          invoice_sent: invoiceStatus.invoice_sent,
-        });
+        if (multiMonthOrder && billingContext) {
+          await SupabaseService.upsertOrderInvoiceMonthSent(
+            order.id,
+            billingContext,
+            invoiceStatus.invoice_sent
+          );
+        } else {
+          await SupabaseService.upsertInvoiceStatus(order.id, {
+            invoice_issued: invoiceStatus.invoice_issued,
+            invoice_sent: invoiceStatus.invoice_sent,
+          });
+        }
       } catch (invoiceError) {
         // Do not block order save if Supabase invoice status is temporarily unavailable.
         console.error('Failed to save invoice status:', invoiceError);
@@ -860,7 +897,7 @@ export function EditOrderModal({
                       : 'Sąskaita neišrašyta'
                   }
                   icon={DocumentTextIcon}
-                  disabled={isAgency}
+                  disabled={isAgency || (multiMonthOrder && !!billingContext)}
                   onClick={() =>
                     setInvoiceStatus((prev) => ({ ...prev, invoice_issued: !prev.invoice_issued }))
                   }
