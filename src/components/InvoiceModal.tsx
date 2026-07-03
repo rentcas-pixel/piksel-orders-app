@@ -7,6 +7,8 @@ import { BillingCompanyService } from '@/lib/billing-company-service';
 import { InvoiceService } from '@/lib/invoice-service';
 import { downloadIssuedInvoicePdfFromElement } from '@/lib/invoice-pdf-batch';
 import { PocketBaseService } from '@/lib/pocketbase';
+import { SupabaseService } from '@/lib/supabase-service';
+import type { OrderBillingPeriod } from '@/types';
 import { resolveListMonthYear } from '@/lib/orders-filters';
 import {
   addDays,
@@ -122,33 +124,35 @@ export function InvoiceModal({
     null
   );
   const [standaloneLines, setStandaloneLines] = useState<StandaloneLine[]>([createStandaloneLine()]);
+  const [billingPeriods, setBillingPeriods] = useState<OrderBillingPeriod[]>([]);
 
   const applyAmountAndPeriod = useCallback(
-    (o: Order, date: string, mode: InvoiceAmountMode, buyerName = '') => {
-      const resolved = resolveInvoiceAmountAndPeriod(o, date, mode);
+    (o: Order, date: string, mode: InvoiceAmountMode, buyerName = '', periods?: OrderBillingPeriod[] | null) => {
+      const resolved = resolveInvoiceAmountAndPeriod(o, date, mode, periods ?? billingPeriods);
       const locale = resolveInvoiceLocale({ buyerName, order: o });
       setBaseAmount(resolved.amount);
       setPeriodFrom(resolved.from);
       setPeriodTo(resolved.to);
       setLineDescription(buildLineDescription(o, resolved.from, resolved.to, locale));
     },
-    []
+    [billingPeriods]
   );
 
   const applyBillingMonth = useCallback(
-    (o: Order, monthKey: string, buyerName = '') => {
-      const option = getBillingMonthOptions(o).find((entry) => entry.key === monthKey);
+    (o: Order, monthKey: string, buyerName = '', periods?: OrderBillingPeriod[] | null) => {
+      const periodList = periods ?? billingPeriods;
+      const option = getBillingMonthOptions(o, periodList).find((entry) => entry.key === monthKey);
       if (!option) return;
       setSelectedBillingMonthKey(monthKey);
       setInvoiceDate(option.invoiceDate);
       setDueDate(addDays(option.invoiceDate, 30));
-      applyAmountAndPeriod(o, option.invoiceDate, 'monthly', buyerName);
+      applyAmountAndPeriod(o, option.invoiceDate, 'monthly', buyerName, periodList);
     },
-    [applyAmountAndPeriod]
+    [applyAmountAndPeriod, billingPeriods]
   );
 
   const billingMonthOptions =
-    order && isMultiMonthOrder(order) ? getBillingMonthOptions(order) : [];
+    order && isMultiMonthOrder(order) ? getBillingMonthOptions(order, billingPeriods) : [];
   const billingScopeLocked = Boolean(savedInvoiceId && !isEditing);
   const standalone = order ? isStandaloneInvoiceOrder(order.id) : false;
   const standaloneLinesEditable = standalone && (!savedInvoiceId || isEditing);
@@ -244,6 +248,9 @@ export function InvoiceModal({
     setBaseAmount(0);
     setSelectedBillingMonthKey(null);
 
+    const periods = await SupabaseService.getOrderBillingPeriod(o.id);
+    setBillingPeriods(periods);
+
     const pickMonthlyInvoiceDay = (target: Order): string => {
       const { month: resolvedMonth, year: resolvedYear } = resolveListMonthYear(
         billingMonth,
@@ -253,9 +260,9 @@ export function InvoiceModal({
         return invoiceDateForBillingPeriod(resolvedMonth, resolvedYear);
       }
       if (!isMultiMonthOrder(target)) return defaultInvoiceDate();
-      const defaultKey = resolveDefaultBillingMonthKey(target, billingMonth, billingYear);
+      const defaultKey = resolveDefaultBillingMonthKey(target, billingMonth, billingYear, periods);
       const option = defaultKey
-        ? getBillingMonthOptions(target).find((entry) => entry.key === defaultKey)
+        ? getBillingMonthOptions(target, periods).find((entry) => entry.key === defaultKey)
         : undefined;
       if (defaultKey && option) {
         setSelectedBillingMonthKey(defaultKey);
@@ -342,7 +349,8 @@ export function InvoiceModal({
           const resolvedBase = resolveInvoiceAmountAndPeriod(
             o,
             existing.invoice_date,
-            mode
+            mode,
+            periods
           ).amount;
           const hadDiscount =
             isOwexxOrder(o) &&
@@ -359,8 +367,8 @@ export function InvoiceModal({
           if (mode === 'monthly' && isMultiMonthOrder(o)) {
             const key =
               billingMonthKeyFromDate(existing.invoice_date) ??
-              resolveDefaultBillingMonthKey(o, billingMonth, billingYear);
-            if (key && getBillingMonthOptions(o).some((entry) => entry.key === key)) {
+              resolveDefaultBillingMonthKey(o, billingMonth, billingYear, periods);
+            if (key && getBillingMonthOptions(o, periods).some((entry) => entry.key === key)) {
               setSelectedBillingMonthKey(key);
             }
           }
@@ -375,7 +383,7 @@ export function InvoiceModal({
               setInvoiceDate(date);
               setDueDate(addDays(date, 30));
             }
-            applyAmountAndPeriod(o, date, mode, existing.buyer_name);
+            applyAmountAndPeriod(o, date, mode, existing.buyer_name, periods);
           }
         }
       } else if (isStandaloneInvoiceOrder(o.id)) {
@@ -410,7 +418,7 @@ export function InvoiceModal({
         setBuyerSource(defaultSource);
 
         const lookupLabel = defaultSource === 'agency' ? o.agency : o.client;
-        applyAmountAndPeriod(o, invoiceDay, 'monthly', lookupLabel || '');
+        applyAmountAndPeriod(o, invoiceDay, 'monthly', lookupLabel || '', periods);
         const match = await BillingCompanyService.findBestMatch(lookupLabel);
         if (match) {
           applyBuyerFromCompany(match);
@@ -499,7 +507,7 @@ export function InvoiceModal({
     setAmountMode(mode);
     if (mode === 'monthly' && isMultiMonthOrder(order)) {
       const key =
-        selectedBillingMonthKey ?? resolveDefaultBillingMonthKey(order, billingMonth, billingYear);
+        selectedBillingMonthKey ?? resolveDefaultBillingMonthKey(order, billingMonth, billingYear, billingPeriods);
       if (key) {
         applyBillingMonth(order, key, buyer.name);
         return;
@@ -1045,7 +1053,7 @@ export function InvoiceModal({
                       const key = billingMonthKeyFromDate(formatted);
                       if (
                         key &&
-                        getBillingMonthOptions(order).some((entry) => entry.key === key)
+                        getBillingMonthOptions(order, billingPeriods).some((entry) => entry.key === key)
                       ) {
                         setSelectedBillingMonthKey(key);
                       }

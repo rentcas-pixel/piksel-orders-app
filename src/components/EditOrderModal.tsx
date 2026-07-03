@@ -29,6 +29,9 @@ import { PocketBaseService } from '@/lib/pocketbase';
 import { SupabaseService } from '@/lib/supabase-service';
 import { formatDateInputValue, parseDateOnlyLocal } from '@/lib/date-utils';
 import { isMultiMonthOrder } from '@/lib/invoice-utils';
+import { validateBillingPeriods } from '@/lib/order-billing-periods';
+import { OrderBillingPeriodsSection } from '@/components/OrderBillingPeriodsSection';
+import type { OrderBillingPeriod } from '@/types';
 import {
   invoiceToggleRequiresBillingMonth,
   nextInvoiceStatusOnToggle,
@@ -119,7 +122,19 @@ export function EditOrderModal({
   const [exportError, setExportError] = useState<string | null>(null);
   const [cityOtsRows, setCityOtsRows] = useState<CityOtsRow[]>([]);
   const [otsLoading, setOtsLoading] = useState(false);
+  const [customBillingPeriodsEnabled, setCustomBillingPeriodsEnabled] = useState(false);
+  const [billingPeriods, setBillingPeriods] = useState<OrderBillingPeriod[]>([]);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
+
+  const scheduleOrder = useMemo((): Order | null => {
+    if (!order) return null;
+    return {
+      ...order,
+      from: formData.from ?? order.from,
+      to: formData.to ?? order.to,
+      final_price: formData.final_price ?? order.final_price,
+    };
+  }, [order, formData.from, formData.to, formData.final_price]);
 
   const loadQuote = useCallback(async () => {
     if (!order) return;
@@ -150,6 +165,10 @@ export function EditOrderModal({
       });
       
       loadQuote();
+      void SupabaseService.getOrderBillingPeriod(order.id).then((entries) => {
+        setBillingPeriods(entries);
+        setCustomBillingPeriodsEnabled(entries.length > 0);
+      });
     }
   }, [order, loadQuote]);
 
@@ -359,17 +378,23 @@ export function EditOrderModal({
   ) => {
     if (!order) return;
 
+    if (invoiceToggleRequiresBillingMonth(order, billingContext)) {
+      return;
+    }
+
     const previousStatus = { ...invoiceStatus };
     const nextStatus = nextInvoiceStatusOnToggle(invoiceStatus, field, value);
     setInvoiceStatus(nextStatus);
 
     try {
-      if (multiMonthOrder && billingContext) {
+      if (multiMonthOrder && billingContext?.month && billingContext.year) {
         await SupabaseService.persistInvoiceStatusToggle(order, billingContext, nextStatus);
         return;
       }
 
-      await SupabaseService.upsertInvoiceStatus(order.id, nextStatus);
+      if (!multiMonthOrder) {
+        await SupabaseService.upsertInvoiceStatus(order.id, nextStatus);
+      }
     } catch (error) {
       console.error('Error updating invoice status:', error);
       setInvoiceStatus(previousStatus);
@@ -378,6 +403,18 @@ export function EditOrderModal({
 
   const handleSave = async () => {
     if (!order) return;
+
+    if (customBillingPeriodsEnabled && billingPeriods.length > 0) {
+      const periodError = validateBillingPeriods(
+        billingPeriods,
+        formData.from ?? order.from,
+        formData.to ?? order.to
+      );
+      if (periodError) {
+        alert(periodError);
+        return;
+      }
+    }
     
     setLoading(true);
     try {
@@ -389,9 +426,9 @@ export function EditOrderModal({
       const updatedOrder = await PocketBaseService.updateOrder(order.id, orderPayload);
 
       try {
-        if (multiMonthOrder && billingContext) {
+        if (multiMonthOrder && billingContext?.month && billingContext.year) {
           await SupabaseService.persistInvoiceStatusToggle(order, billingContext, invoiceStatus);
-        } else {
+        } else if (!multiMonthOrder) {
           await SupabaseService.upsertInvoiceStatus(order.id, {
             invoice_issued: invoiceStatus.invoice_issued,
             invoice_sent: invoiceStatus.invoice_sent,
@@ -400,6 +437,17 @@ export function EditOrderModal({
       } catch (invoiceError) {
         // Do not block order save if Supabase invoice status is temporarily unavailable.
         console.error('Failed to save invoice status:', invoiceError);
+      }
+
+      if (!isAgency) {
+        try {
+          await SupabaseService.replaceOrderBillingPeriods(
+            order.id,
+            customBillingPeriodsEnabled ? billingPeriods : []
+          );
+        } catch (periodError) {
+          console.error('Failed to save billing periods:', periodError);
+        }
       }
 
       // Track approval moment in Supabase when status changes from not approved to approved.
@@ -1068,7 +1116,7 @@ export function EditOrderModal({
               </div>
 
 
-                {formData.from && formData.to && formData.final_price && (
+                {formData.from && formData.to && formData.final_price && !customBillingPeriodsEnabled && (
             <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
                     <p className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-[5px]">
                       Sumų pasiskirstymas:
@@ -1101,6 +1149,16 @@ export function EditOrderModal({
                       </div>
                     </div>
                   </div>
+                )}
+
+                {scheduleOrder && !isAgency && (
+                  <OrderBillingPeriodsSection
+                    order={scheduleOrder}
+                    enabled={customBillingPeriodsEnabled}
+                    periods={billingPeriods}
+                    onEnabledChange={setCustomBillingPeriodsEnabled}
+                    onPeriodsChange={setBillingPeriods}
+                  />
                 )}
 
                 {isAgency && (

@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Comment, Reminder, FileAttachment, OrderApprovalEvent, OrderInvoiceStatus, CommentVisibility, type Order } from '@/types';
+import { Comment, Reminder, FileAttachment, OrderApprovalEvent, OrderInvoiceStatus, OrderBillingPeriod, CommentVisibility, type Order } from '@/types';
 import { InvoiceService } from '@/lib/invoice-service';
 import {
   buildMonthStatusMap,
@@ -305,6 +305,66 @@ export class SupabaseService {
     }
 
     await this.upsertInvoiceStatus(order.id, flags);
+  }
+
+  static async getOrderBillingPeriods(
+    orderIds: string[]
+  ): Promise<Record<string, OrderBillingPeriod[]>> {
+    const uniqueOrderIds = [...new Set(orderIds.filter(Boolean))];
+    if (uniqueOrderIds.length === 0) return {};
+
+    const { data, error } = await supabase
+      .from('order_billing_periods')
+      .select('id, order_id, active_from, active_to')
+      .in('order_id', uniqueOrderIds)
+      .order('active_from', { ascending: true });
+
+    if (error) {
+      console.error('getOrderBillingPeriods:', error);
+      return {};
+    }
+
+    const map: Record<string, OrderBillingPeriod[]> = {};
+    for (const row of data ?? []) {
+      const list = map[row.order_id] ?? [];
+      list.push({
+        id: row.id,
+        active_from: row.active_from,
+        active_to: row.active_to,
+      });
+      map[row.order_id] = list;
+    }
+    return map;
+  }
+
+  static async getOrderBillingPeriod(orderId: string): Promise<OrderBillingPeriod[]> {
+    const map = await this.getOrderBillingPeriods([orderId]);
+    return map[orderId] ?? [];
+  }
+
+  static async replaceOrderBillingPeriods(
+    orderId: string,
+    periods: OrderBillingPeriod[]
+  ): Promise<void> {
+    if (!orderId) return;
+
+    const { error: deleteError } = await supabase
+      .from('order_billing_periods')
+      .delete()
+      .eq('order_id', orderId);
+    if (deleteError) throw deleteError;
+
+    if (periods.length === 0) return;
+
+    const rows = periods.map((period) => ({
+      order_id: orderId,
+      active_from: period.active_from,
+      active_to: period.active_to,
+      updated_at: new Date().toISOString(),
+    }));
+
+    const { error } = await supabase.from('order_billing_periods').insert(rows);
+    if (error) throw error;
   }
 
   static async applyCoverageMonthFlags(

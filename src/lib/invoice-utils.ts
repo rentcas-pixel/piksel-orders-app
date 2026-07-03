@@ -1,6 +1,11 @@
-import type { Invoice, Order } from '@/types';
+import type { Invoice, Order, OrderBillingPeriod } from '@/types';
 import { daysInclusiveBetween, parseDateOnlyLocal } from '@/lib/date-utils';
 import { isDentsuLatviaOrder, matchesDentsuLatvia } from '@/lib/invoice-clients';
+import {
+  billablePeriodInMonth,
+  getBillableMonthlyDistribution,
+  hasActiveBillingPeriods,
+} from '@/lib/order-billing-periods';
 
 export const VAT_RATE = 0.21;
 
@@ -209,10 +214,24 @@ export function billingMonthKeyFromDate(date: string): string | null {
   return billingMonthKey(parsed.getFullYear(), parsed.getMonth() + 1);
 }
 
-export function getBillingMonthOptions(order: Order): BillingMonthOption[] {
+export function resolveOrderMonthlyDistribution(
+  order: Order,
+  periods?: OrderBillingPeriod[] | null
+): Array<{ month: number; year: number; days: number; amount: number }> {
+  if (!order.from || !order.to || !order.final_price) return [];
+  if (hasActiveBillingPeriods(periods)) {
+    return getBillableMonthlyDistribution(order.from, order.to, order.final_price, periods!);
+  }
+  return getMonthlyDistribution(order.from, order.to, order.final_price);
+}
+
+export function getBillingMonthOptions(
+  order: Order,
+  periods?: OrderBillingPeriod[] | null
+): BillingMonthOption[] {
   if (!isMultiMonthOrder(order) || !order.from || !order.to || !order.final_price) return [];
 
-  return getMonthlyDistribution(order.from, order.to, order.final_price).map((entry) => ({
+  return resolveOrderMonthlyDistribution(order, periods).map((entry) => ({
     year: entry.year,
     month: entry.month,
     key: billingMonthKey(entry.year, entry.month),
@@ -225,9 +244,10 @@ export function getBillingMonthOptions(order: Order): BillingMonthOption[] {
 export function resolveDefaultBillingMonthKey(
   order: Order,
   billingMonth = '',
-  billingYear = ''
+  billingYear = '',
+  periods?: OrderBillingPeriod[] | null
 ): string | null {
-  const options = getBillingMonthOptions(order);
+  const options = getBillingMonthOptions(order, periods);
   if (options.length === 0) return null;
 
   if (billingMonth && billingYear) {
@@ -247,15 +267,15 @@ export function resolveDefaultBillingMonthKey(
   return options[options.length - 1]?.key ?? null;
 }
 
-export function calculateMonthlyAmount(order: Order, invoiceDate: string): number {
+export function calculateMonthlyAmount(
+  order: Order,
+  invoiceDate: string,
+  periods?: OrderBillingPeriod[] | null
+): number {
   if (!isMultiMonthOrder(order)) return order.final_price ?? 0;
   if (!order.from || !order.to || !order.final_price) return order.final_price ?? 0;
 
-  const distribution = getMonthlyDistribution(
-    order.from,
-    order.to,
-    order.final_price
-  );
+  const distribution = resolveOrderMonthlyDistribution(order, periods);
   if (distribution.length === 0) return order.final_price ?? 0;
 
   const invoiceParsed = parseDateOnlyLocal(invoiceDate);
@@ -307,7 +327,8 @@ export function getFullOrderPeriod(order: Order): { from: string; to: string } {
 export function resolveInvoiceAmountAndPeriod(
   order: Order,
   invoiceDate: string,
-  mode: InvoiceAmountMode
+  mode: InvoiceAmountMode,
+  periods?: OrderBillingPeriod[] | null
 ): { amount: number; from: string; to: string } {
   if (mode === 'full' && isMultiMonthOrder(order)) {
     const period = getFullOrderPeriod(order);
@@ -318,9 +339,9 @@ export function resolveInvoiceAmountAndPeriod(
     };
   }
 
-  const period = calculateInvoicePeriod(order, invoiceDate);
+  const period = calculateInvoicePeriod(order, invoiceDate, periods);
   return {
-    amount: calculateMonthlyAmount(order, invoiceDate),
+    amount: calculateMonthlyAmount(order, invoiceDate, periods),
     from: period.from,
     to: period.to,
   };
@@ -328,7 +349,8 @@ export function resolveInvoiceAmountAndPeriod(
 
 export function calculateInvoicePeriod(
   order: Order,
-  invoiceDate: string
+  invoiceDate: string,
+  periods?: OrderBillingPeriod[] | null
 ): { from: string; to: string } {
   if (!order.from || !order.to) return { from: order.from, to: order.to };
   if (!isMultiMonthOrder(order)) {
@@ -345,6 +367,18 @@ export function calculateInvoicePeriod(
     const firstDay = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`;
     const lastDayNum = new Date(currentYear, currentMonth, 0).getDate();
     const lastDay = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${lastDayNum}`;
+
+    if (hasActiveBillingPeriods(periods)) {
+      const billable = billablePeriodInMonth(
+        order.from,
+        order.to,
+        currentYear,
+        currentMonth,
+        periods!
+      );
+      if (billable) return billable;
+      return { from: formatDateOnly(order.from), to: formatDateOnly(order.to) };
+    }
 
     const orderStart = parseDateOnlyLocal(order.from);
     const orderEnd = parseDateOnlyLocal(order.to);

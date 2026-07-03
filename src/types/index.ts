@@ -105,6 +105,12 @@ export interface OrderInvoiceStatus {
   updated_at: string;
 }
 
+export interface OrderBillingPeriod {
+  id?: string;
+  active_from: string;
+  active_to: string;
+}
+
 export interface BillingCompany {
   id: string;
   name: string;

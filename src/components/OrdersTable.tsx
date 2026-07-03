@@ -12,6 +12,7 @@ import type { TableTheme } from '@/lib/order-design-variants';
 import { getTableTheme } from '@/lib/table-theme';
 import { buildOrdersListFilter, resolveListMonthYear, type OrdersListFilters, type OrdersPeriodTab } from '@/lib/orders-filters';
 import { isMultiMonthOrder } from '@/lib/invoice-utils';
+import { orderMatchesBillingPeriodFilter } from '@/lib/order-billing-periods';
 import {
   invoiceToggleRequiresBillingMonth,
   nextInvoiceStatusOnToggle,
@@ -321,30 +322,15 @@ export function OrdersTable({
       }
     }
     
-    // Month and year filter
+    // Month and year filter (nestandartinis grafikas – kliento pusėje)
     const { month: resolvedMonth, year: resolvedYear } = resolveListMonthYear(
       filters.month,
       filters.year
     );
-    if (resolvedMonth && resolvedYear) {
-      filtered = filtered.filter(order => {
-        const filterYear = parseInt(resolvedYear, 10);
-        const filterMonth = parseInt(resolvedMonth, 10);
-        const orderFrom = new Date(order.from);
-        const orderTo = new Date(order.to);
-        const monthStart = new Date(filterYear, filterMonth - 1, 1);
-        const monthEnd = new Date(filterYear, filterMonth, 0);
-        return orderFrom <= monthEnd && orderTo >= monthStart;
-      });
-    } else if (resolvedYear) {
-      filtered = filtered.filter(order => {
-        const filterYear = parseInt(resolvedYear, 10);
-        const orderFrom = new Date(order.from);
-        const orderTo = new Date(order.to);
-        const yearStart = new Date(filterYear, 0, 1);
-        const yearEnd = new Date(filterYear, 11, 31);
-        return orderFrom <= yearEnd && orderTo >= yearStart;
-      });
+    if (resolvedYear) {
+      filtered = filtered.filter((order) =>
+        orderMatchesBillingPeriodFilter(order, resolvedMonth ?? '', resolvedYear)
+      );
     }
     
     return filtered;
@@ -586,13 +572,28 @@ export function OrdersTable({
       });
       const items = result.items || [];
       const statusMap = await SupabaseService.getMonthInvoiceStatuses(items, billingContext);
+      const { month: exportMonth, year: exportYear } = resolveListMonthYear(filters.month, filters.year);
+      let periodsMap: Awaited<ReturnType<typeof SupabaseService.getOrderBillingPeriods>> = {};
+      if (exportYear && items.length > 0) {
+        periodsMap = await SupabaseService.getOrderBillingPeriods(items.map((item) => item.id));
+      }
+      let exportItems = items;
+      if (exportYear) {
+        exportItems = exportItems.filter((order) =>
+          orderMatchesBillingPeriodFilter(
+            order,
+            exportMonth ?? '',
+            exportYear,
+            periodsMap[order.id]
+          )
+        );
+      }
       const invoiceFilteredItems = filters.invoice_sent
-        ? items.filter(item => {
+        ? exportItems.filter(item => {
             const issued = readInvoiceStatusField(item, statusMap[item.id], 'invoice_issued');
             return filters.invoice_sent === 'true' ? issued : !issued;
           })
-        : items;
-      const { month: exportMonth, year: exportYear } = resolveListMonthYear(filters.month, filters.year);
+        : exportItems;
       const monthName = exportMonth && exportYear
         ? `${['Sausis','Vasaris','Kovas','Balandis','Gegužė','Birželis','Liepa','Rugpjūtis','Rugsėjis','Spalis','Lapkritis','Gruodis'][parseInt(exportMonth, 10) - 1]}_${exportYear}`
         : 'visi';
@@ -643,11 +644,18 @@ export function OrdersTable({
         const filterString = buildFilterString();
         const invoiceSort = sortField === 'invoice_issued' || sortField === 'invoice_sent';
         const invoiceFilterActive = Boolean(filters.invoice_sent);
+        const { month: resolvedMonth, year: resolvedYear } = resolveListMonthYear(
+          filters.month,
+          filters.year
+        );
+        const billingPeriodFilterActive = Boolean(resolvedYear);
+        const needsExpandedFetch =
+          invoiceFilterActive || invoiceSort || Boolean(resolvedMonth && resolvedYear);
         const serverSortField = invoiceSort ? 'updated' : sortField;
 
         const result = await PocketBaseService.getOrders({
-          page: invoiceFilterActive || invoiceSort ? 1 : currentPage,
-          perPage: invoiceFilterActive || invoiceSort ? 500 : 20,
+          page: needsExpandedFetch ? 1 : currentPage,
+          perPage: needsExpandedFetch ? 500 : 20,
           sort: `${sortDirection === 'desc' ? '-' : ''}${serverSortField}`,
           filter: filterString
         });
@@ -658,7 +666,24 @@ export function OrdersTable({
         const activityMap = await SupabaseService.getOrderCommentOrScreenshotMap(fetchedOrders.map(item => item.id));
         setOrderActivityMap(activityMap);
 
+        let periodsMap: Awaited<ReturnType<typeof SupabaseService.getOrderBillingPeriods>> = {};
+        if (billingPeriodFilterActive && fetchedOrders.length > 0) {
+          periodsMap = await SupabaseService.getOrderBillingPeriods(
+            fetchedOrders.map((item) => item.id)
+          );
+        }
+
         let processedOrders = fetchedOrders;
+        if (billingPeriodFilterActive) {
+          processedOrders = processedOrders.filter((order) =>
+            orderMatchesBillingPeriodFilter(
+              order,
+              resolvedMonth ?? '',
+              resolvedYear!,
+              periodsMap[order.id]
+            )
+          );
+        }
         if (invoiceFilterActive) {
           processedOrders = processedOrders.filter(item => {
             const isIssued = readInvoiceStatusField(item, statusMap[item.id], 'invoice_issued');
@@ -677,7 +702,7 @@ export function OrdersTable({
           });
         }
 
-        if (invoiceFilterActive || invoiceSort) {
+        if (needsExpandedFetch) {
           const perPage = 20;
           const offset = (currentPage - 1) * perPage;
           const paginatedOrders = processedOrders.slice(offset, offset + perPage);
