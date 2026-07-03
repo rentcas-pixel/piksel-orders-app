@@ -484,13 +484,16 @@ function writeCell(
 function writeInfoBlock(
   sheet: XLSX.WorkSheet,
   calc: CampaignCalculator,
-  order: CampaignOrderInput
+  order: CampaignOrderInput,
+  mode: ReklamosPlanasExportMode = 'standard'
 ) {
   const boldRight = clone(normalStyle);
   boldRight.font.bold = true;
   boldRight.alignment = { horizontal: 'right', vertical: 'center' };
   const left = clone(normalStyle);
   left.alignment = { horizontal: 'left', vertical: 'center' };
+  const italicLeft = clone(left);
+  italicLeft.font = { ...italicLeft.font, italic: true };
   const period = calc.range ? `${calc.formatFrom} - ${calc.formatTo}` : '';
 
   const intensityLabel = resolveCampaignIntensityLabel(order);
@@ -501,17 +504,23 @@ function writeInfoBlock(
     ['Laikotarpis: ', period],
     ['Intensyvumas: ', intensityLabel],
     ['Plano Nr.: ', `${calc.invoicePrefix}-${order.invoice_id}`],
-    ['Klipo trukmė (s): ', order.clip_duration],
   ];
+  if (mode === 'post-campaign') {
+    rows.push(['Tipas: ', 'Parodymų ataskaita']);
+  } else {
+    rows.push(['Klipo trukmė (s): ', order.clip_duration]);
+  }
 
   rows.forEach(([label, value], index) => {
     const row = index + 2;
+    const valueStyle =
+      mode === 'post-campaign' && index === rows.length - 1 ? italicLeft : left;
     writeCell(sheet, row, COL.B, styledCell(label, boldRight));
     writeCell(
       sheet,
       row,
       COL.C,
-      styledCell(value, left, typeof value === 'number' ? { t: 'n' } : {})
+      styledCell(value, valueStyle, typeof value === 'number' ? { t: 'n' } : {})
     );
   });
 }
@@ -529,7 +538,18 @@ function writeHeaderRow(sheet: XLSX.WorkSheet, mode: ReklamosPlanasExportMode) {
   writeCell(sheet, r, COL.U, styledCell('Parodymų sk.', tableHeaderStyle));
 
   if (mode === 'post-campaign') {
-    writeCell(sheet, r, COL.V, styledCell('Parodyta', tableHeaderStyle));
+    const parodytaHeaderStyle = {
+      ...clone(tableHeaderStyle),
+      fill: {
+        patternType: 'solid',
+        fgColor: { rgb: 'DDD9C4' },
+      },
+      font: {
+        ...tableHeaderStyle.font,
+        color: { rgb: '000000' },
+      },
+    };
+    writeCell(sheet, r, COL.V, styledCell('Parodyta', parodytaHeaderStyle));
     writeCell(sheet, r, COL.W, styledCell('Skirtumas', tableHeaderStyle));
     return;
   }
@@ -1121,7 +1141,7 @@ function buildWorksheet(
 ): XLSX.WorkSheet {
   const sheet: XLSX.WorkSheet = {};
 
-  writeInfoBlock(sheet, calc, order);
+  writeInfoBlock(sheet, calc, order, mode);
   writeHeaderRow(sheet, mode);
   if (mode === 'post-campaign') {
     writePostCampaignPikselLogoArea(sheet);
