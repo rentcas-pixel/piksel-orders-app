@@ -13,8 +13,10 @@ import {
   portalCardClass,
   portalExportBtnClass,
   portalRowHoverClass,
-  portalTheadClass,
-  portalThClass,
+  portalStickyThBgClass,
+  portalStickyThClass,
+  portalStickyTheadClass,
+  portalTableScrollClass,
   portalToolbarClass,
 } from '@/lib/portal-ui';
 
@@ -178,15 +180,15 @@ export function PartnerRevenueAnalysis({ filters, onEditOrder, refreshKey }: Par
         </button>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className={portalTableScrollClass}>
         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-          <thead className={portalTheadClass}>
+          <thead className={portalStickyTheadClass}>
             <tr>
-              <th className={portalThClass}>Partneris</th>
-              <th className={portalThClass}>Dienų</th>
-              <th className={portalThClass}>Pajamos</th>
-              <th className={portalThClass}>Užsakymai</th>
-              <th className="px-4 py-3 w-10"></th>
+              <th className={portalStickyThClass}>Partneris</th>
+              <th className={portalStickyThClass}>Dienų</th>
+              <th className={portalStickyThClass}>Pajamos</th>
+              <th className={portalStickyThClass}>Užsakymai</th>
+              <th className={`${portalStickyThBgClass} px-4 py-3 w-10`}></th>
             </tr>
           </thead>
           <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">

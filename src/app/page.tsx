@@ -22,6 +22,7 @@ import { InvoiceModal } from '@/components/InvoiceModal';
 import { CombinedInvoiceBuilder } from '@/components/CombinedInvoiceBuilder';
 import { CombinedInvoiceModal } from '@/components/CombinedInvoiceModal';
 import { BalanceSummaryPanel } from '@/components/BalanceSummaryPanel';
+import { ClientBalanceSummaryPanel } from '@/components/ClientBalanceSummaryPanel';
 import { InvoicesSubTabsNav } from '@/components/InvoicesSubTabsNav';
 import { InvoicesFiltersBar } from '@/components/InvoicesFiltersBar';
 import { InvoicesTable } from '@/components/InvoicesTable';
@@ -227,6 +228,7 @@ export default function Home() {
               onSearchChange={setSearchQuery}
               filters={filters}
               onFiltersChange={setFilters}
+              showSearch={activeTab !== 'revenue'}
             />
           )}
 
@@ -247,6 +249,8 @@ export default function Home() {
                 <OrdersTable
                   key={refreshKey}
                   searchQuery={debouncedSearch}
+                  searchInput={searchQuery}
+                  onSearchInputChange={setSearchQuery}
                   filters={debouncedFilters}
                   portalStyle
                   onEditOrder={handleEditOrder}
@@ -308,10 +312,17 @@ export default function Home() {
             />
           )}
 
+          {activeTab === 'invoices' && invoicesSubTab === 'clients' && (
+            <ClientBalanceSummaryPanel
+              month={filters.month}
+              year={filters.year}
+              onMonthYearChange={(month, year) => setFilters((prev) => ({ ...prev, month, year }))}
+              refreshKey={refreshKey}
+            />
+          )}
+
           {activeTab === 'invoices' && invoicesSubTab === 'issued' && (
             <InvoicesFiltersBar
-              searchQuery={searchQuery}
-              onSearchChange={setSearchQuery}
               month={filters.month}
               year={filters.year}
               onMonthYearChange={(month, year) => setFilters((prev) => ({ ...prev, month, year }))}
@@ -334,6 +345,8 @@ export default function Home() {
             <InvoicesTable
               key={refreshKey}
               searchQuery={debouncedSearch}
+              searchInput={searchQuery}
+              onSearchInputChange={setSearchQuery}
               month={filters.month}
               year={filters.year}
               paymentFilter={issuedPaymentFilter}
@@ -346,8 +359,6 @@ export default function Home() {
 
           {activeTab === 'invoices' && invoicesSubTab === 'received' && (
             <ReceivedInvoicesFiltersBar
-              searchQuery={searchQuery}
-              onSearchChange={setSearchQuery}
               month={filters.month}
               year={filters.year}
               onMonthYearChange={(month, year) => setFilters((prev) => ({ ...prev, month, year }))}
@@ -360,6 +371,8 @@ export default function Home() {
             <ReceivedInvoicesTable
               key={refreshKey}
               searchQuery={debouncedSearch}
+              searchInput={searchQuery}
+              onSearchInputChange={setSearchQuery}
               month={filters.month}
               year={filters.year}
               statusFilter={expensesStatusFilter}

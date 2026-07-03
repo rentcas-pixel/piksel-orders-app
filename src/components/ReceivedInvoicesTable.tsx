@@ -34,13 +34,17 @@ import {
   portalExportBtnClass,
   portalRowHoverClass,
   portalTdClass,
-  portalThClass,
-  portalTheadClass,
+  portalStickyThClass,
+  portalStickyTheadClass,
+  portalTableScrollClass,
   portalToolbarClass,
 } from '@/lib/portal-ui';
+import { PortalSearchField } from '@/components/PortalSearchField';
 
 interface ReceivedInvoicesTableProps {
   searchQuery: string;
+  searchInput?: string;
+  onSearchInputChange?: (query: string) => void;
   month: string;
   year: string;
   statusFilter: IssuedInvoicePaymentFilter;
@@ -69,6 +73,8 @@ function formatReceivedListDescription(invoice: ReceivedInvoice): string {
 
 export function ReceivedInvoicesTable({
   searchQuery,
+  searchInput,
+  onSearchInputChange,
   month,
   year,
   statusFilter,
@@ -84,6 +90,7 @@ export function ReceivedInvoicesTable({
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [zipping, setZipping] = useState(false);
   const [overdueSort, setOverdueSort] = useState<OverdueSortDirection | null>(null);
+  const [dateSort, setDateSort] = useState<OverdueSortDirection | null>(null);
   const { previewInvoice, showPreview, hidePreview, keepPreview, releasePreview } =
     useReceivedInvoiceFilePreview();
 
@@ -118,6 +125,7 @@ export function ReceivedInvoicesTable({
   useEffect(() => {
     if (statusFilter === 'overdue') {
       setOverdueSort('desc');
+      setDateSort(null);
     } else {
       setOverdueSort(null);
     }
@@ -165,12 +173,22 @@ export function ReceivedInvoicesTable({
       });
     }
 
+    if (dateSort) {
+      return [...filtered].sort((a, b) => {
+        const dateDiff = a.invoice_date.localeCompare(b.invoice_date);
+        if (dateDiff !== 0) {
+          return dateSort === 'desc' ? -dateDiff : dateDiff;
+        }
+        return Number(b.amount) - Number(a.amount);
+      });
+    }
+
     return [...filtered].sort((a, b) => {
       const amountDiff = Number(b.amount) - Number(a.amount);
       if (amountDiff !== 0) return amountDiff;
       return b.invoice_date.localeCompare(a.invoice_date);
     });
-  }, [filtered, overdueSort]);
+  }, [filtered, overdueSort, dateSort]);
 
   const totals = useMemo(() => sumInvoiceAmountBreakdowns(filtered), [filtered]);
 
@@ -203,8 +221,8 @@ export function ReceivedInvoicesTable({
         onMouseLeave={releasePreview}
       />
 
-      <div className={`${portalToolbarClass} flex flex-wrap items-center justify-between gap-3`}>
-        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm text-gray-500 dark:text-gray-400">
+      <div className={`${portalToolbarClass} flex-wrap items-end gap-3`}>
+        <div className="min-w-0 flex-1 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm text-gray-500 dark:text-gray-400">
           {loading ? (
             <span>Kraunama…</span>
           ) : (
@@ -218,7 +236,15 @@ export function ReceivedInvoicesTable({
             />
           )}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:gap-3">
+          {onSearchInputChange && (
+            <PortalSearchField
+              value={searchInput ?? searchQuery}
+              onChange={onSearchInputChange}
+              placeholder="Ieškoti (tiekėjas, sąskaitos nr., aprašymas)…"
+              className="w-full sm:w-56 md:w-64"
+            />
+          )}
           <button
             type="button"
             onClick={() => void handleDownloadZip()}
@@ -247,29 +273,57 @@ export function ReceivedInvoicesTable({
         </div>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className={portalTableScrollClass}>
         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-          <thead className={portalTheadClass}>
+          <thead className={portalStickyTheadClass}>
             <tr>
-              <th className={`${portalThClass} whitespace-nowrap`}>Data</th>
-              <th className={portalThClass}>Tiekėjas</th>
-              <th className={portalThClass}>Nr.</th>
-              <th className={portalThClass}>Aprašymas</th>
-              <th className={`${portalThClass} text-right`}>
+              <th className={`${portalStickyThClass} whitespace-nowrap`}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOverdueSort(null);
+                    setDateSort((current) => nextOverdueSort(current));
+                  }}
+                  className={`inline-flex items-center gap-1 uppercase tracking-wider transition-colors hover:text-gray-800 dark:hover:text-gray-200 ${
+                    dateSort
+                      ? 'font-semibold text-blue-700 dark:text-blue-300'
+                      : 'text-gray-500 dark:text-gray-400'
+                  }`}
+                  title={
+                    dateSort === 'desc'
+                      ? 'Rūšiuojama: naujausios viršuje. Spauskite — seniausios'
+                      : dateSort === 'asc'
+                        ? 'Rūšiuojama: seniausios viršuje. Spauskite — numatytasis'
+                        : 'Rūšiuoti pagal datą'
+                  }
+                >
+                  Data
+                  <span className="normal-case text-gray-400 dark:text-gray-500">
+                    {dateSort === 'desc' ? '↓' : dateSort === 'asc' ? '↑' : '↕'}
+                  </span>
+                </button>
+              </th>
+              <th className={portalStickyThClass}>Tiekėjas</th>
+              <th className={portalStickyThClass}>Nr.</th>
+              <th className={portalStickyThClass}>Aprašymas</th>
+              <th className={`${portalStickyThClass} text-right`}>
                 <span className="inline-flex items-center gap-1">
                   Suma
-                  {!overdueSort ? (
+                  {!overdueSort && !dateSort ? (
                     <span className="normal-case font-semibold text-blue-700 dark:text-blue-300">
                       ↓
                     </span>
                   ) : null}
                 </span>
               </th>
-              <th className={portalThClass}>Statusas</th>
-              <th className={`${portalThClass} text-right`}>
+              <th className={portalStickyThClass}>Statusas</th>
+              <th className={`${portalStickyThClass} text-right`}>
                 <button
                   type="button"
-                  onClick={() => setOverdueSort((current) => nextOverdueSort(current))}
+                  onClick={() => {
+                    setDateSort(null);
+                    setOverdueSort((current) => nextOverdueSort(current));
+                  }}
                   className={`inline-flex items-center gap-1 uppercase tracking-wider transition-colors hover:text-gray-800 dark:hover:text-gray-200 ${
                     overdueSort
                       ? 'font-semibold text-blue-700 dark:text-blue-300'
@@ -289,7 +343,7 @@ export function ReceivedInvoicesTable({
                   </span>
                 </button>
               </th>
-              <th className={`${portalThClass} w-12 text-center`}>PDF</th>
+              <th className={`${portalStickyThClass} w-12 text-center`}>PDF</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-gray-800">

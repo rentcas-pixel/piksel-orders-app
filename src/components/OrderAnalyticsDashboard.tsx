@@ -7,6 +7,13 @@ import { PocketBaseService } from '@/lib/pocketbase';
 import { SupabaseService } from '@/lib/supabase-service';
 import { getDaysInMonth, getDaysInRange } from '@/lib/screen-revenue';
 import { resolveListMonthYear } from '@/lib/orders-filters';
+import {
+  portalStickyThBgClass,
+  portalStickyTheadClass,
+  portalTableScrollClass,
+} from '@/lib/portal-ui';
+
+const analyticsStickyThClass = `px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase ${portalStickyThBgClass}`;
 
 interface OrderAnalyticsDashboardProps {
   filters: { month: string; year: string; status: string };
@@ -812,15 +819,15 @@ export function OrderAnalyticsDashboard({ filters, onEditOrder, refreshKey }: Or
               Lygina pasirinktą mėnesį su prieš tai buvusiu mėnesiu pagal proporcingai paskirstytas pajamas.
             </p>
           </div>
-          <div className="overflow-x-auto">
+          <div className={portalTableScrollClass}>
             <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-              <thead className="bg-gray-50 dark:bg-gray-700">
+              <thead className={portalStickyTheadClass}>
                 <tr>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Owner</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Praėjęs mėn.</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Dabartinis mėn.</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Pokytis €</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Pokytis %</th>
+                  <th className={analyticsStickyThClass}>Owner</th>
+                  <th className={analyticsStickyThClass}>Praėjęs mėn.</th>
+                  <th className={analyticsStickyThClass}>Dabartinis mėn.</th>
+                  <th className={analyticsStickyThClass}>Pokytis €</th>
+                  <th className={analyticsStickyThClass}>Pokytis %</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">

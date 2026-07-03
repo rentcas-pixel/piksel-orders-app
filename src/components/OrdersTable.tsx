@@ -13,9 +13,20 @@ import { getTableTheme } from '@/lib/table-theme';
 import { buildOrdersListFilter, resolveListMonthYear, type OrdersListFilters, type OrdersPeriodTab } from '@/lib/orders-filters';
 import { isMultiMonthOrder } from '@/lib/invoice-utils';
 import { StatusIconButton } from '@/components/StatusIconButton';
+import {
+  portalExportBtnClass,
+  portalStickyThBgClass,
+  portalStickyThClass,
+  portalStickyTheadClass,
+  portalTableScrollClass,
+  portalToolbarClass,
+} from '@/lib/portal-ui';
+import { PortalSearchField } from '@/components/PortalSearchField';
 
 interface OrdersTableProps {
   searchQuery: string;
+  searchInput?: string;
+  onSearchInputChange?: (query: string) => void;
   filters: OrdersListFilters;
   onEditOrder: (order: Order) => void;
   onGenerateInvoice?: (order: Order) => void;
@@ -26,6 +37,8 @@ interface OrdersTableProps {
 
 export function OrdersTable({
   searchQuery,
+  searchInput,
+  onSearchInputChange,
   filters,
   onEditOrder,
   onGenerateInvoice,
@@ -805,14 +818,22 @@ export function OrdersTable({
 
     return (
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Kampanijos</h2>
-          <div className="flex items-center gap-3">
+        <div className={`${portalToolbarClass} flex-wrap items-end gap-3`}>
+          <h2 className="min-w-0 flex-1 text-lg font-semibold text-gray-900 dark:text-white">Kampanijos</h2>
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:gap-3">
+            {onSearchInputChange && (
+              <PortalSearchField
+                value={searchInput ?? searchQuery}
+                onChange={onSearchInputChange}
+                placeholder="Ieškoti pagal klientą, agentūrą, užsakymo nr..."
+                className="w-full sm:w-56 md:w-64"
+              />
+            )}
             <button
               type="button"
               onClick={handleExportExcel}
               disabled={exporting || totalItems === 0}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40"
+              className={portalExportBtnClass}
             >
               <ArrowDownTrayIcon className="w-4 h-4" />
               {exporting ? 'Eksportuojama...' : 'Excel'}
@@ -821,14 +842,14 @@ export function OrdersTable({
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className={portalTableScrollClass}>
           <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-            <thead className="bg-gray-50 dark:bg-gray-900">
+            <thead className={portalStickyTheadClass}>
               <tr>
                 {portalColumns.map(([field, label]) => (
                   <th
                     key={field}
-                    className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"
+                    className={`${portalStickyThClass} cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800`}
                     onClick={() => handleSort(field)}
                   >
                     <span className="inline-flex items-center gap-1">
@@ -961,15 +982,15 @@ export function OrdersTable({
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto">
+      <div className={portalTableScrollClass}>
         <table className="min-w-full table-fixed divide-y divide-gray-200 dark:divide-gray-700">
           <colgroup>
             <col className="w-[14rem]" />
           </colgroup>
-          <thead className={t.theadClass}>
+          <thead className={`${t.theadClass} sticky top-0 z-10`}>
             <tr>
               <th 
-                className={`w-[14rem] max-w-[14rem] ${t.thClass}`}
+                className={`w-[14rem] max-w-[14rem] ${t.thClass} ${portalStickyThBgClass}`}
                 onClick={() => handleSort('client')}
               >
                 <div className="flex items-center space-x-1">
@@ -978,7 +999,7 @@ export function OrdersTable({
                 </div>
               </th>
               <th 
-                className={`${t.thClass} ${t.hideAgency ? 'hidden' : ''}`}
+                className={`${t.thClass} ${portalStickyThBgClass} ${t.hideAgency ? 'hidden' : ''}`}
                 onClick={() => handleSort('agency')}
               >
                 <div className="flex items-center space-x-1">
@@ -987,7 +1008,7 @@ export function OrdersTable({
                 </div>
               </th>
               <th 
-                className={t.thClass}
+                className={`${t.thClass} ${portalStickyThBgClass}`}
                 onClick={() => handleSort('invoice_id')}
               >
                 <div className="flex items-center space-x-1">
@@ -996,7 +1017,7 @@ export function OrdersTable({
                 </div>
               </th>
               <th 
-                className={t.thClass}
+                className={`${t.thClass} ${portalStickyThBgClass}`}
                 onClick={() => handleSort('approved')}
               >
                 <div className="flex items-center space-x-1">
@@ -1005,7 +1026,7 @@ export function OrdersTable({
                 </div>
               </th>
               <th 
-                className={t.thClass}
+                className={`${t.thClass} ${portalStickyThBgClass}`}
                 onClick={() => handleSort('from')}
               >
                 <div className="flex items-center space-x-1">
@@ -1014,7 +1035,7 @@ export function OrdersTable({
                 </div>
               </th>
               <th 
-                className={t.thClass}
+                className={`${t.thClass} ${portalStickyThBgClass}`}
                 onClick={() => handleSort('to')}
               >
                 <div className="flex items-center space-x-1">
@@ -1023,7 +1044,7 @@ export function OrdersTable({
                 </div>
               </th>
               <th 
-                className={t.thClass}
+                className={`${t.thClass} ${portalStickyThBgClass}`}
                 onClick={() => handleSort('media_received')}
               >
                 <div className="flex items-center space-x-1">
@@ -1032,7 +1053,7 @@ export function OrdersTable({
                 </div>
               </th>
               <th 
-                className={t.thClass}
+                className={`${t.thClass} ${portalStickyThBgClass}`}
                 onClick={() => handleSort('final_price')}
               >
                 <div className="flex items-center space-x-1">
@@ -1041,7 +1062,7 @@ export function OrdersTable({
                 </div>
               </th>
               <th 
-                className={t.thClass}
+                className={`${t.thClass} ${portalStickyThBgClass}`}
                 onClick={() => handleSort('invoice_issued')}
               >
                 <div className="flex items-center space-x-1">
@@ -1050,7 +1071,7 @@ export function OrdersTable({
                 </div>
               </th>
               <th 
-                className={t.thClass}
+                className={`${t.thClass} ${portalStickyThBgClass}`}
                 onClick={() => handleSort('invoice_sent')}
               >
                 <div className="flex items-center space-x-1">

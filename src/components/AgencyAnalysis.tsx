@@ -10,10 +10,14 @@ import { FilterDropdown } from '@/components/FilterDropdown';
 import {
   portalCardClass,
   portalRowHoverClass,
-  portalTheadClass,
-  portalThClass,
+  portalStickyThBgClass,
+  portalStickyTheadClass,
+  portalTableScrollClass,
   portalToolbarClass,
 } from '@/lib/portal-ui';
+
+const agencyStickyThClass =
+  `px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase cursor-pointer select-none ${portalStickyThBgClass}`;
 
 interface AgencyAnalysisProps {
   filters: {
@@ -390,17 +394,17 @@ export function AgencyAnalysis({ filters, onEditOrder }: AgencyAnalysisProps) {
           Bendra rodoma mėnesio suma: €{totalMonthlyAmount.toLocaleString('lt-LT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </p>
       </div>
-      <div className="overflow-x-auto">
+      <div className={portalTableScrollClass}>
         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-          <thead className={portalTheadClass}>
+          <thead className={portalStickyTheadClass}>
             <tr>
-              <th onClick={() => handleSort('agency')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase cursor-pointer select-none">Agentūra</th>
-              <th onClick={() => handleSort('totalOrders')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase cursor-pointer select-none">Užsakymų sk.</th>
-              <th onClick={() => handleSort('approvedOrders')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase cursor-pointer select-none">Patvirtinti</th>
-              <th onClick={() => handleSort('approvedRate')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase cursor-pointer select-none">Patvirtinti %</th>
-              <th onClick={() => handleSort('unapprovedOrders')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase cursor-pointer select-none">Nepatvirtinti</th>
-              <th onClick={() => handleSort('monthlyAmount')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase cursor-pointer select-none">Suma per mėnesį</th>
-              <th className="px-6 py-3 w-10"></th>
+              <th onClick={() => handleSort('agency')} className={agencyStickyThClass}>Agentūra</th>
+              <th onClick={() => handleSort('totalOrders')} className={agencyStickyThClass}>Užsakymų sk.</th>
+              <th onClick={() => handleSort('approvedOrders')} className={agencyStickyThClass}>Patvirtinti</th>
+              <th onClick={() => handleSort('approvedRate')} className={agencyStickyThClass}>Patvirtinti %</th>
+              <th onClick={() => handleSort('unapprovedOrders')} className={agencyStickyThClass}>Nepatvirtinti</th>
+              <th onClick={() => handleSort('monthlyAmount')} className={agencyStickyThClass}>Suma per mėnesį</th>
+              <th className={`${portalStickyThBgClass} px-6 py-3 w-10`}></th>
             </tr>
           </thead>
           <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">

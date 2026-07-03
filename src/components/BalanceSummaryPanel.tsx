@@ -18,8 +18,9 @@ import { resolveListMonthYear } from '@/lib/orders-filters';
 import {
   portalCardClass,
   portalTdClass,
-  portalThClass,
-  portalTheadClass,
+  portalStickyThClass,
+  portalStickyTheadClass,
+  portalTableScrollClass,
   portalToolbarClass,
 } from '@/lib/portal-ui';
 import type { Invoice, ReceivedInvoice } from '@/types';
@@ -145,14 +146,14 @@ export function BalanceSummaryPanel({
           <div className="text-xs text-gray-500 dark:text-gray-400">Sumos be PVM, pagal sąskaitos datą</div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className={portalTableScrollClass}>
           <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-            <thead className={portalTheadClass}>
+            <thead className={portalStickyTheadClass}>
               <tr>
-                <th className={portalThClass}>Mėnuo</th>
-                <th className={`${portalThClass} text-right`}>Pajamos (išrašytos)</th>
-                <th className={`${portalThClass} text-right`}>Išlaidos (gautos)</th>
-                <th className={`${portalThClass} text-right`}>Grynasis rezultatas</th>
+                <th className={portalStickyThClass}>Mėnuo</th>
+                <th className={`${portalStickyThClass} text-right`}>Pajamos (išrašytos)</th>
+                <th className={`${portalStickyThClass} text-right`}>Išlaidos (gautos)</th>
+                <th className={`${portalStickyThClass} text-right`}>Grynasis rezultatas</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-gray-800">

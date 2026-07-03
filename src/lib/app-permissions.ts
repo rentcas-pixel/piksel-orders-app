@@ -14,7 +14,7 @@ export function getVisibleAppTabs(role: AppRole): AppTab[] {
 }
 
 export function getVisibleInvoicesSubTabs(role: AppRole): InvoicesSubTab[] {
-  if (role === 'admin') return ['issued', 'received', 'balance'];
+  if (role === 'admin') return ['issued', 'received', 'balance', 'clients'];
   return STAFF_INVOICES_SUB_TABS;
 }
 

@@ -5,18 +5,18 @@ export const POST_CAMPAIGN_EXPORT_LABEL = 'Ataskaita';
 
 /** Papildomų parodymų % diapazonas pagal kalendorinį mėnesį (0 = sausis). */
 const MONTHLY_BOOST_RANGES: { min: number; max: number }[] = [
-  { min: 0.24, max: 0.32 }, // sausis
-  { min: 0.21, max: 0.29 }, // vasaris
-  { min: 0.12, max: 0.18 }, // kovas
-  { min: 0.08, max: 0.15 }, // balandis
-  { min: 0.02, max: 0.08 }, // gegužė
-  { min: 0.02, max: 0.08 }, // birželis
-  { min: 0.2, max: 0.27 }, // liepa
-  { min: 0.1, max: 0.2 }, // rugpjūtis (tikslinama pagal dieną)
-  { min: 0.02, max: 0.06 }, // rugsėjis
-  { min: 0.01, max: 0.05 }, // spalis
-  { min: 0, max: 0.04 }, // lapkritis
-  { min: 0, max: 0.05 }, // gruodis (tikslinama pagal dieną)
+  { min: 0.48, max: 0.64 }, // sausis
+  { min: 0.42, max: 0.58 }, // vasaris
+  { min: 0.24, max: 0.36 }, // kovas
+  { min: 0.16, max: 0.3 }, // balandis
+  { min: 0.16, max: 0.3 }, // gegužė
+  { min: 0.16, max: 0.3 }, // birželis
+  { min: 0.4, max: 0.54 }, // liepa
+  { min: 0.2, max: 0.4 }, // rugpjūtis (tikslinama pagal dieną)
+  { min: 0.16, max: 0.3 }, // rugsėjis
+  { min: 0.16, max: 0.3 }, // spalis
+  { min: 0.16, max: 0.3 }, // lapkritis
+  { min: 0.16, max: 0.3 }, // gruodis
 ];
 
 function hashSeed(value: string): number {
@@ -38,16 +38,9 @@ export function getMonthBoostRange(
   if (monthIndex === 7) {
     const t = (dayOfMonth - 1) / 30;
     return {
-      min: lerp(0.18, 0.08, t),
-      max: lerp(0.2, 0.1, t),
+      min: lerp(0.36, 0.16, t),
+      max: lerp(0.4, 0.2, t),
     };
-  }
-
-  if (monthIndex === 11) {
-    if (dayOfMonth <= 20) {
-      return { min: 0, max: 0.03 };
-    }
-    return { min: 0, max: 0.05 };
   }
 
   return MONTHLY_BOOST_RANGES[monthIndex] ?? { min: 0, max: 0 };

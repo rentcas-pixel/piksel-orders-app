@@ -22,8 +22,6 @@ export function AgencyInvoicesPanel({ agency, portalMode = false }: AgencyInvoic
   return (
     <>
       <InvoicesFiltersBar
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
         month={month}
         year={year}
         onMonthYearChange={(nextMonth, nextYear) => {
@@ -38,6 +36,8 @@ export function AgencyInvoicesPanel({ agency, portalMode = false }: AgencyInvoic
         agency={agency}
         portalMode={portalMode}
         searchQuery={debouncedSearch}
+        searchInput={searchQuery}
+        onSearchInputChange={setSearchQuery}
         month={month}
         year={year}
         paymentFilter={paymentFilter}

@@ -15,8 +15,9 @@ import {
   portalCardClass,
   portalRowHoverClass,
   portalTdClass,
-  portalThClass,
-  portalTheadClass,
+  portalStickyThClass,
+  portalStickyTheadClass,
+  portalTableScrollClass,
 } from '@/lib/portal-ui';
 
 interface CombinedInvoiceBuilderProps {
@@ -292,11 +293,11 @@ export function CombinedInvoiceBuilder({
           )}
         </p>
       ) : (
-        <div className="max-h-[min(420px,50vh)] overflow-auto">
+        <div className={portalTableScrollClass}>
           <table className="w-full text-sm">
-            <thead className={`${portalTheadClass} sticky top-0 z-10 bg-white dark:bg-gray-800`}>
+            <thead className={portalStickyTheadClass}>
               <tr>
-                <th className={`${portalThClass} w-10`}>
+                <th className={`${portalStickyThClass} w-10`}>
                   <input
                     type="checkbox"
                     checked={allVisibleSelected}
@@ -304,10 +305,10 @@ export function CombinedInvoiceBuilder({
                     aria-label="Pasirinkti visus matomus"
                   />
                 </th>
-                <th className={portalThClass}>Klientas</th>
-                <th className={portalThClass}>Kampanija</th>
-                <th className={portalThClass}>Laikotarpis</th>
-                <th className={`${portalThClass} text-right`}>Mėn. suma</th>
+                <th className={portalStickyThClass}>Klientas</th>
+                <th className={portalStickyThClass}>Kampanija</th>
+                <th className={portalStickyThClass}>Laikotarpis</th>
+                <th className={`${portalStickyThClass} text-right`}>Mėn. suma</th>
               </tr>
             </thead>
             <tbody>

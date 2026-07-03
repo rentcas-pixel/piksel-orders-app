@@ -12,6 +12,11 @@ import {
 import { FilterDropdown, filterControlClass } from '@/components/FilterDropdown';
 import { FilterTabGroup } from '@/components/FilterTabGroup';
 import { MonthTabNavigator } from '@/components/MonthTabNavigator';
+import {
+  portalSearchFieldClass,
+  portalSearchIconClass,
+  portalSearchInputClass,
+} from '@/lib/portal-ui';
 
 interface PortalFiltersBarProps {
   searchQuery: string;
@@ -20,6 +25,9 @@ interface PortalFiltersBarProps {
   onFiltersChange: (filters: OrdersListFilters) => void;
   showMonthYear?: boolean;
   embedded?: boolean;
+  showSearch?: boolean;
+  highlightSearch?: boolean;
+  searchPlaceholder?: string;
 }
 
 function FilterField({
@@ -49,6 +57,9 @@ export function PortalFiltersBar({
   onFiltersChange,
   showMonthYear = true,
   embedded = false,
+  showSearch = true,
+  highlightSearch = false,
+  searchPlaceholder = 'Ieškoti pagal klientą, agentūrą, užsakymo nr...',
 }: PortalFiltersBarProps) {
   const secondaryActiveCount = countSecondaryFilters(filters);
   const [secondaryOpen, setSecondaryOpen] = useState(secondaryActiveCount > 0);
@@ -73,16 +84,28 @@ export function PortalFiltersBar({
 
   const content = (
     <div className="space-y-3">
-      <div className={`relative ${filterControlClass}`}>
-        <MagnifyingGlassIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-        <input
-          type="text"
-          placeholder="Ieškoti pagal klientą, agentūrą, užsakymo nr..."
-          value={searchQuery}
-          onChange={(e) => onSearchChange(e.target.value)}
-          className="h-10 w-full rounded-lg bg-transparent pl-10 pr-3 text-sm focus:outline-none"
-        />
-      </div>
+      {showSearch && (
+        <div className={highlightSearch ? portalSearchFieldClass : `relative ${filterControlClass}`}>
+          <MagnifyingGlassIcon
+            className={
+              highlightSearch
+                ? portalSearchIconClass
+                : 'absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400'
+            }
+          />
+          <input
+            type="text"
+            placeholder={searchPlaceholder}
+            value={searchQuery}
+            onChange={(e) => onSearchChange(e.target.value)}
+            className={
+              highlightSearch
+                ? portalSearchInputClass
+                : 'h-10 w-full rounded-lg bg-transparent pl-10 pr-3 text-sm focus:outline-none'
+            }
+          />
+        </div>
+      )}
 
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:gap-x-5">
         <FilterTabGroup

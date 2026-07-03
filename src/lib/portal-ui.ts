@@ -9,7 +9,25 @@ export const portalTheadClass = 'bg-gray-50 dark:bg-gray-900';
 export const portalThClass =
   'px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider';
 
+/** Scroll zona su fiksuota lentelės antrašte */
+export const portalTableScrollClass = 'max-h-[min(70vh,720px)] overflow-auto';
+
+export const portalStickyThBgClass = 'bg-gray-50 dark:bg-gray-900';
+
+export const portalStickyTheadClass = `${portalTheadClass} sticky top-0 z-10`;
+
+export const portalStickyThClass = `${portalThClass} ${portalStickyThBgClass}`;
+
 export const portalTdClass = 'px-4 py-3 text-sm text-gray-600 dark:text-gray-300';
+
+export const portalSearchFieldClass =
+  'relative h-10 w-full rounded-lg border border-gray-300/80 bg-gray-50 shadow-sm ring-1 ring-gray-200/90 focus-within:border-blue-400/70 focus-within:ring-2 focus-within:ring-blue-500/20 dark:border-gray-600 dark:bg-gray-900/60 dark:ring-gray-700/80';
+
+export const portalSearchInputClass =
+  'h-10 w-full rounded-lg bg-transparent pl-10 pr-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none dark:text-gray-100 dark:placeholder:text-gray-500';
+
+export const portalSearchIconClass =
+  'absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-blue-600 dark:text-blue-400';
 
 export const portalExportBtnClass =
   'inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40';

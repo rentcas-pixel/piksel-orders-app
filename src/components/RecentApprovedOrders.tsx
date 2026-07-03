@@ -8,8 +8,9 @@ import {
   portalCardClass,
   portalExportBtnClass,
   portalRowHoverClass,
-  portalTheadClass,
-  portalThClass,
+  portalStickyThClass,
+  portalStickyTheadClass,
+  portalTableScrollClass,
   portalToolbarClass,
 } from '@/lib/portal-ui';
 
@@ -170,15 +171,15 @@ export function RecentApprovedOrders({ onEditOrder, refreshKey }: RecentApproved
           Nerasta patvirtintų užsakymų.
         </div>
       ) : (
-        <div className="overflow-x-auto">
+        <div className={portalTableScrollClass}>
           <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-            <thead className={portalTheadClass}>
+            <thead className={portalStickyTheadClass}>
               <tr>
-                <th className={portalThClass}>Data</th>
-                <th className={portalThClass}>Klientas</th>
-                <th className={portalThClass}>Agentūra</th>
-                <th className={portalThClass}>Užsakymo Nr.</th>
-                <th className={portalThClass}>Suma</th>
+                <th className={portalStickyThClass}>Data</th>
+                <th className={portalStickyThClass}>Klientas</th>
+                <th className={portalStickyThClass}>Agentūra</th>
+                <th className={portalStickyThClass}>Užsakymo Nr.</th>
+                <th className={portalStickyThClass}>Suma</th>
               </tr>
             </thead>
             <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">

@@ -23,8 +23,9 @@ import {
   portalExportBtnClass,
   portalRowHoverClass,
   portalTdClass,
-  portalThClass,
-  portalTheadClass,
+  portalStickyThClass,
+  portalStickyTheadClass,
+  portalTableScrollClass,
   portalToolbarClass,
 } from '@/lib/portal-ui';
 import type { BankTransaction } from '@/types';
@@ -428,9 +429,9 @@ export function BankPanel({
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className={portalTableScrollClass}>
           <table className="min-w-full table-fixed text-sm">
-            <thead className={portalTheadClass}>
+            <thead className={portalStickyTheadClass}>
               <tr>
                 <SortableBankHeader
                   label="Data"
@@ -438,7 +439,7 @@ export function BankPanel({
                   activeColumn={sortColumn}
                   direction={sortDirection}
                   onSort={handleSort}
-                  className={`${portalThClass} w-[6.5rem] whitespace-nowrap`}
+                  className={`${portalStickyThClass} w-[6.5rem] whitespace-nowrap`}
                   title={
                     sortColumn === 'date'
                       ? sortDirection === 'desc'
@@ -447,15 +448,15 @@ export function BankPanel({
                       : 'Rūšiuoti pagal datą'
                   }
                 />
-                <th className={`${portalThClass} ${bankTextColClass}`}>{counterpartyLabel}</th>
-                <th className={`${portalThClass} ${bankTextColClass}`}>Aprašymas</th>
+                <th className={`${portalStickyThClass} ${bankTextColClass}`}>{counterpartyLabel}</th>
+                <th className={`${portalStickyThClass} ${bankTextColClass}`}>Aprašymas</th>
                 <SortableBankHeader
                   label="Suma"
                   column="amount"
                   activeColumn={sortColumn}
                   direction={sortDirection}
                   onSort={handleSort}
-                  className={`${portalThClass} w-[7.5rem] text-right whitespace-nowrap`}
+                  className={`${portalStickyThClass} w-[7.5rem] text-right whitespace-nowrap`}
                   align="right"
                   title={
                     sortColumn === 'amount'
@@ -465,7 +466,7 @@ export function BankPanel({
                       : 'Rūšiuoti pagal sumą'
                   }
                 />
-                <th className={`${portalThClass} w-10`} />
+                <th className={`${portalStickyThClass} w-10`} />
               </tr>
             </thead>
             <tbody>

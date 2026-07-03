@@ -8,13 +8,17 @@ import { calculateScreenRevenuesForPeriod, getDaysInRange, resolveRevenueAnalysi
 import { format } from 'date-fns';
 import { downloadExcel } from '@/lib/export-excel';
 import { resolveListMonthYear } from '@/lib/orders-filters';
+import { foldSearchText } from '@/lib/company-name-match';
 import { FilterDropdown } from '@/components/FilterDropdown';
+import { PortalSearchField } from '@/components/PortalSearchField';
 import {
   portalCardClass,
   portalExportBtnClass,
   portalRowHoverClass,
-  portalTheadClass,
-  portalThClass,
+  portalStickyThBgClass,
+  portalStickyThClass,
+  portalStickyTheadClass,
+  portalTableScrollClass,
   portalToolbarClass,
 } from '@/lib/portal-ui';
 
@@ -39,6 +43,7 @@ export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: Scre
   const [revenues, setRevenues] = useState<ReturnType<typeof calculateScreenRevenuesForPeriod>>([]);
   const [expandedScreen, setExpandedScreen] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [screenSearch, setScreenSearch] = useState('');
   const [selectedOwner, setSelectedOwner] = useState('');
   const [ownerByScreenId, setOwnerByScreenId] = useState<Record<string, string>>({});
   const [ownerOptions, setOwnerOptions] = useState<Array<{ id: string; name: string }>>([]);
@@ -61,9 +66,20 @@ export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: Scre
   const periodTitle = formatRevenuePeriodTitle(resolvedPeriod.month, resolvedPeriod.year);
 
   const filteredRevenues = useMemo(() => {
-    if (!selectedOwner) return revenues;
-    return revenues.filter((r) => ownerByScreenId[r.screenId] === selectedOwner);
-  }, [revenues, ownerByScreenId, selectedOwner]);
+    let rows = revenues;
+    if (selectedOwner) {
+      rows = rows.filter((r) => ownerByScreenId[r.screenId] === selectedOwner);
+    }
+    const q = foldSearchText(screenSearch);
+    if (q) {
+      rows = rows.filter(
+        (r) =>
+          foldSearchText(r.screenName).includes(q) ||
+          foldSearchText(r.screenCity).includes(q)
+      );
+    }
+    return rows;
+  }, [revenues, ownerByScreenId, selectedOwner, screenSearch]);
 
   const handleExportExcel = useCallback(() => {
     setExporting(true);
@@ -193,22 +209,28 @@ export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: Scre
 
   return (
     <div className={portalCardClass}>
-      <div className={portalToolbarClass}>
-        <div>
+      <div className={`${portalToolbarClass} flex-wrap items-end gap-3`}>
+        <div className="min-w-0 flex-1">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
             Ekranų pajamos – {periodTitle}
           </h3>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
             Bendros pajamos: €{totalRevenue.toLocaleString('lt-LT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:gap-3">
+          <PortalSearchField
+            value={screenSearch}
+            onChange={setScreenSearch}
+            placeholder="Ieškoti pagal ekrano pavadinimą…"
+            className="w-full sm:w-56 md:w-64 sm:mr-0.5"
+          />
           <FilterDropdown
             value={selectedOwner}
             options={ownerFilterOptions}
             placeholder="Owneris"
             onChange={setSelectedOwner}
-            className="w-44"
+            className="w-full sm:w-44"
           />
           <button
             onClick={handleExportExcel}
@@ -221,26 +243,26 @@ export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: Scre
         </div>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className={portalTableScrollClass}>
         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-          <thead className={portalTheadClass}>
+          <thead className={portalStickyTheadClass}>
             <tr>
-              <th className={`${portalThClass} w-12`}>
+              <th className={`${portalStickyThClass} w-12`}>
                 Nr.
               </th>
-              <th className={portalThClass}>
+              <th className={portalStickyThClass}>
                 Ekranas (name)
               </th>
-              <th className={portalThClass}>
+              <th className={portalStickyThClass}>
                 Owner
               </th>
-              <th className={portalThClass}>
+              <th className={portalStickyThClass}>
                 Pajamos
               </th>
-              <th className={portalThClass}>
+              <th className={portalStickyThClass}>
                 Užsakymai
               </th>
-              <th className="px-4 py-3 w-10"></th>
+              <th className={`${portalStickyThBgClass} px-4 py-3 w-10`}></th>
             </tr>
           </thead>
           <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -321,7 +343,11 @@ export function ScreenRevenueAnalysis({ filters, onEditOrder, refreshKey }: Scre
             {filteredRevenues.length === 0 && (
               <tr>
                 <td colSpan={6} className="px-6 py-6 text-sm text-center text-gray-500 dark:text-gray-400">
-                  Pasirinktam owneriui šiame mėnesyje nėra duomenų.
+                  {screenSearch.trim()
+                    ? 'Pagal paiešką ekranų nerasta.'
+                    : selectedOwner
+                      ? 'Pasirinktam owneriui šiame mėnesyje nėra duomenų.'
+                      : 'Duomenų nerasta.'}
                 </td>
               </tr>
             )}

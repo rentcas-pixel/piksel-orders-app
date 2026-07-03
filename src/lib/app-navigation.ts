@@ -1,6 +1,6 @@
 export type AppTab = 'orders' | 'invoices' | 'bank' | 'email' | 'revenue' | 'partners' | 'agencies' | 'analytics' | 'latest';
 
-export type InvoicesSubTab = 'issued' | 'received' | 'balance';
+export type InvoicesSubTab = 'issued' | 'received' | 'balance' | 'clients';
 
 export type BankSubTab = 'dashboard' | 'income' | 'expense' | 'balance';
 
@@ -15,6 +15,7 @@ export const INVOICES_SUB_TABS: { value: InvoicesSubTab; label: string }[] = [
   { value: 'issued', label: 'Išrašytos' },
   { value: 'received', label: 'Gautos' },
   { value: 'balance', label: 'Balansas' },
+  { value: 'clients', label: 'Klientai' },
 ];
 
 export const PAGE_META: Record<AppTab, { title: string; description: string }> = {
@@ -72,7 +73,7 @@ export const ADMIN_ONLY_APP_TABS: AppTab[] = ['bank'];
 
 export const STAFF_INVOICES_SUB_TABS: InvoicesSubTab[] = ['issued'];
 
-export const ADMIN_ONLY_INVOICES_SUB_TABS: InvoicesSubTab[] = ['received', 'balance'];
+export const ADMIN_ONLY_INVOICES_SUB_TABS: InvoicesSubTab[] = ['received', 'balance', 'clients'];
 
 export interface AppBreadcrumbSegment {
   label: string;
