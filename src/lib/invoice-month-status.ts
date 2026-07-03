@@ -1,3 +1,15 @@
+/**
+ * Sąskaitos būsenos logika (vienas šaltinis).
+ *
+ * Šaltiniai:
+ * 1. DB sąskaitos (coverage) – automatinis „išrašyta“ pagal sąskaitos periodą
+ * 2. order_invoice_month_flags – rankinis žymėjimas kelių mėnesių užsakymams (per mėnesį)
+ * 3. order_invoice_status (legacy) – tik vieno mėnesio užsakymams
+ *
+ * Kelių mėnesių užsakymams legacy NENAUDOJAMAS mėnesio rodinyje (ne „išsilieja“ per mėnesius).
+ * „Visi + metai“ rodo suvestinę: išrašyta jei bent viename mėnesyje yra coverage arba vėliava.
+ */
+
 import { resolveListMonthYear } from '@/lib/orders-filters';
 import { getMonthlyDistribution, isMultiMonthOrder } from '@/lib/invoice-utils';
 import type { Order, OrderInvoiceStatus } from '@/types';
@@ -19,6 +31,18 @@ export interface OrderInvoiceCoverage {
   periodTo: string | null;
   invoiceDate: string;
 }
+
+export interface BillingMonthInvoiceFlags {
+  invoice_issued: boolean;
+  invoice_sent: boolean;
+}
+
+type ResolutionMode = 'global' | 'year' | 'month';
+
+export const emptyBillingMonthInvoiceFlags = (): BillingMonthInvoiceFlags => ({
+  invoice_issued: false,
+  invoice_sent: false,
+});
 
 export function billingMonthDateRange(
   year: string,
@@ -95,16 +119,6 @@ export function periodCoversBillingMonth(
   return false;
 }
 
-export interface BillingMonthInvoiceFlags {
-  invoice_issued: boolean;
-  invoice_sent: boolean;
-}
-
-export const emptyBillingMonthInvoiceFlags = (): BillingMonthInvoiceFlags => ({
-  invoice_issued: false,
-  invoice_sent: false,
-});
-
 export function nextInvoiceStatusOnToggle(
   current: BillingMonthInvoiceFlags,
   field: 'invoice_issued' | 'invoice_sent',
@@ -154,6 +168,48 @@ export function orderBillingMonthsInYear(order: Order, year: string): BillingMon
     }));
 }
 
+export function billingMonthsCoveredByInvoice(coverage: OrderInvoiceCoverage): BillingMonthContext[] {
+  if (coverage.periodFrom && coverage.periodTo) {
+    return getMonthlyDistribution(coverage.periodFrom, coverage.periodTo, 1).map((entry) => ({
+      month: String(entry.month).padStart(2, '0'),
+      year: String(entry.year),
+    }));
+  }
+
+  if (coverage.invoiceDate && /^\d{4}-\d{2}-\d{2}$/.test(coverage.invoiceDate)) {
+    const [year, month] = coverage.invoiceDate.split('-');
+    return [{ year, month }];
+  }
+
+  return [];
+}
+
+/** Kelių mėnesių užsakymams reikia konkretaus sąskaitavimo mėnesio rankiniam žymėjimui. */
+export function invoiceToggleRequiresBillingMonth(
+  order: Order,
+  billing: BillingMonthContext | null
+): boolean {
+  return isMultiMonthOrder(order) && Boolean(billing?.year && !billing.month);
+}
+
+export function readInvoiceStatusField(
+  order: Order,
+  status: MonthInvoiceStatus | OrderInvoiceStatus | null | undefined,
+  field: keyof BillingMonthInvoiceFlags
+): boolean {
+  if (status) return status[field];
+  if (field === 'invoice_issued' && !isMultiMonthOrder(order)) {
+    return !!order.invoice_sent;
+  }
+  return false;
+}
+
+function resolutionMode(billing: BillingMonthContext | null): ResolutionMode {
+  if (!billing?.year) return 'global';
+  if (!billing.month) return 'year';
+  return 'month';
+}
+
 function coverageMatchesYear(coverage: OrderInvoiceCoverage, year: string): boolean {
   return invoiceMatchesBillingMonth(
     {
@@ -177,6 +233,100 @@ function monthFlagsForOrderInYear(
     .map(([, flags]) => flags);
 }
 
+function resolveMultiMonthMonthStatus(
+  orderId: string,
+  billing: BillingMonthContext,
+  coverages: OrderInvoiceCoverage[],
+  monthFlags: Record<string, BillingMonthInvoiceFlags>
+): MonthInvoiceStatus {
+  const monthCoverage = coverages.some((entry) =>
+    periodCoversBillingMonth(entry.periodFrom, entry.periodTo, entry.invoiceDate, billing)
+  );
+  const flagKey = monthFlagKey(orderId, billing.year, billing.month);
+  const flags = monthFlags[flagKey] ?? emptyBillingMonthInvoiceFlags();
+  const issued = monthCoverage || flags.invoice_issued || flags.invoice_sent;
+  const sent = issued && flags.invoice_sent;
+
+  return { invoice_issued: issued, invoice_sent: sent };
+}
+
+function resolveMultiMonthYearStatus(
+  orderId: string,
+  year: string,
+  coverages: OrderInvoiceCoverage[],
+  monthFlags: Record<string, BillingMonthInvoiceFlags>
+): MonthInvoiceStatus {
+  const yearCoverage = coverages.some((entry) => coverageMatchesYear(entry, year));
+  const yearMonthFlags = monthFlagsForOrderInYear(orderId, year, monthFlags);
+  const anyFlagIssued = yearMonthFlags.some(
+    (flags) => flags.invoice_issued || flags.invoice_sent
+  );
+  const anyFlagSent = yearMonthFlags.some((flags) => flags.invoice_sent);
+  const issued = yearCoverage || anyFlagIssued;
+
+  return {
+    invoice_issued: issued,
+    invoice_sent: anyFlagSent,
+  };
+}
+
+function resolveMultiMonthGlobalStatus(coverages: OrderInvoiceCoverage[]): MonthInvoiceStatus {
+  return {
+    invoice_issued: coverages.length > 0,
+    invoice_sent: false,
+  };
+}
+
+function resolveSingleMonthStatus(
+  billing: BillingMonthContext | null,
+  mode: ResolutionMode,
+  coverages: OrderInvoiceCoverage[],
+  legacy: OrderInvoiceStatus | undefined
+): MonthInvoiceStatus {
+  let coverage = coverages.length > 0;
+  if (billing?.year && mode !== 'global') {
+    coverage = coverages.some((entry) =>
+      invoiceMatchesBillingMonth(
+        {
+          invoice_date: entry.invoiceDate,
+          period_from: entry.periodFrom,
+          period_to: entry.periodTo,
+        },
+        billing.month,
+        billing.year
+      )
+    );
+  }
+
+  return {
+    invoice_issued: coverage || legacy?.invoice_issued === true,
+    invoice_sent: legacy?.invoice_sent ?? false,
+  };
+}
+
+export function resolveOrderMonthInvoiceStatus(params: {
+  order: Order | undefined;
+  billing: BillingMonthContext | null;
+  coverages: OrderInvoiceCoverage[];
+  legacy: OrderInvoiceStatus | undefined;
+  monthFlags: Record<string, BillingMonthInvoiceFlags>;
+}): MonthInvoiceStatus {
+  const { order, billing, coverages, legacy, monthFlags } = params;
+  const mode = resolutionMode(billing);
+
+  if (order && isMultiMonthOrder(order)) {
+    if (mode === 'month' && billing) {
+      return resolveMultiMonthMonthStatus(order.id, billing, coverages, monthFlags);
+    }
+    if (mode === 'year' && billing) {
+      return resolveMultiMonthYearStatus(order.id, billing.year, coverages, monthFlags);
+    }
+    return resolveMultiMonthGlobalStatus(coverages);
+  }
+
+  return resolveSingleMonthStatus(billing, mode, coverages, legacy);
+}
+
 export function buildMonthStatusMap(params: {
   orderIds: string[];
   ordersById: Record<string, Order | undefined>;
@@ -190,70 +340,13 @@ export function buildMonthStatusMap(params: {
 
   for (const orderId of orderIds) {
     const order = ordersById[orderId];
-    const legacy = legacyStatuses[orderId];
-    const orderCoverages = coverages.filter((entry) => entry.orderId === orderId);
-
-    if (!billing?.year) {
-      const issued =
-        orderCoverages.length > 0 || legacy?.invoice_issued === true || !!order?.invoice_sent;
-      result[orderId] = {
-        invoice_issued: issued,
-        invoice_sent: legacy?.invoice_sent ?? false,
-      };
-      continue;
-    }
-
-    if (!billing.month) {
-      const yearCoverage = orderCoverages.some((entry) =>
-        coverageMatchesYear(entry, billing.year)
-      );
-      const yearMonthFlags = monthFlagsForOrderInYear(orderId, billing.year, monthFlags);
-
-      if (order && isMultiMonthOrder(order)) {
-        const anyMonthFlagIssued = yearMonthFlags.some((flags) => flags.invoice_issued);
-        const anyMonthFlagSent = yearMonthFlags.some((flags) => flags.invoice_sent);
-        const sent = anyMonthFlagSent || legacy?.invoice_sent === true;
-        const issued =
-          yearCoverage || anyMonthFlagIssued || sent || legacy?.invoice_issued === true;
-        result[orderId] = {
-          invoice_issued: issued,
-          invoice_sent: sent,
-        };
-      } else {
-        result[orderId] = {
-          invoice_issued: yearCoverage || legacy?.invoice_issued === true,
-          invoice_sent: legacy?.invoice_sent ?? false,
-        };
-      }
-      continue;
-    }
-
-    const monthCoverage = orderCoverages.some((entry) =>
-      periodCoversBillingMonth(entry.periodFrom, entry.periodTo, entry.invoiceDate, billing)
-    );
-
-    if (order && isMultiMonthOrder(order)) {
-      const flagKey = monthFlagKey(orderId, billing.year, billing.month);
-      const hasExplicitFlag = Object.prototype.hasOwnProperty.call(monthFlags, flagKey);
-      const flags = monthFlags[flagKey] ?? emptyBillingMonthInvoiceFlags();
-      const sent =
-        flags.invoice_sent || (!hasExplicitFlag && legacy?.invoice_sent === true);
-      const issued =
-        monthCoverage ||
-        flags.invoice_issued ||
-        sent ||
-        (!hasExplicitFlag && legacy?.invoice_issued === true);
-      result[orderId] = {
-        invoice_issued: issued,
-        invoice_sent: sent,
-      };
-      continue;
-    }
-
-    result[orderId] = {
-      invoice_issued: monthCoverage || legacy?.invoice_issued === true,
-      invoice_sent: legacy?.invoice_sent ?? false,
-    };
+    result[orderId] = resolveOrderMonthInvoiceStatus({
+      order,
+      billing,
+      coverages: coverages.filter((entry) => entry.orderId === orderId),
+      legacy: legacyStatuses[orderId],
+      monthFlags,
+    });
   }
 
   return result;

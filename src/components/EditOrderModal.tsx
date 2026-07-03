@@ -30,7 +30,9 @@ import { SupabaseService } from '@/lib/supabase-service';
 import { formatDateInputValue, parseDateOnlyLocal } from '@/lib/date-utils';
 import { isMultiMonthOrder } from '@/lib/invoice-utils';
 import {
+  invoiceToggleRequiresBillingMonth,
   nextInvoiceStatusOnToggle,
+  readInvoiceStatusField,
   resolveBillingContext,
   type BillingMonthContext,
 } from '@/lib/invoice-month-status';
@@ -237,6 +239,11 @@ export function EditOrderModal({
     };
   }, [isOpen, order, isAgency]);
 
+  const invoiceStatusToggleDisabled = useMemo(
+    () => (order ? invoiceToggleRequiresBillingMonth(order, billingContext) : false),
+    [order, billingContext]
+  );
+
   const loadInvoiceStatus = useCallback(async () => {
     if (!order) return;
 
@@ -245,8 +252,8 @@ export function EditOrderModal({
         const statusMap = await SupabaseService.getMonthInvoiceStatuses([order], billingContext);
         const status = statusMap[order.id];
         setInvoiceStatus({
-          invoice_issued: status?.invoice_issued ?? !!order.invoice_sent,
-          invoice_sent: status?.invoice_sent ?? false,
+          invoice_issued: readInvoiceStatusField(order, status, 'invoice_issued'),
+          invoice_sent: readInvoiceStatusField(order, status, 'invoice_sent'),
         });
         return;
       }
@@ -254,12 +261,15 @@ export function EditOrderModal({
       const statusMap = await SupabaseService.getInvoiceStatuses([order.id]);
       const status = statusMap[order.id];
       setInvoiceStatus({
-        invoice_issued: status?.invoice_issued ?? !!order.invoice_sent,
-        invoice_sent: status?.invoice_sent ?? false,
+        invoice_issued: readInvoiceStatusField(order, status, 'invoice_issued'),
+        invoice_sent: readInvoiceStatusField(order, status, 'invoice_sent'),
       });
     } catch (error) {
       console.error('Error loading invoice status:', error);
-      setInvoiceStatus({ invoice_issued: !!order.invoice_sent, invoice_sent: false });
+      setInvoiceStatus({
+        invoice_issued: readInvoiceStatusField(order, null, 'invoice_issued'),
+        invoice_sent: false,
+      });
     }
   }, [order, billingContext]);
 
@@ -355,16 +365,7 @@ export function EditOrderModal({
 
     try {
       if (multiMonthOrder && billingContext) {
-        if (billingContext.month) {
-          await SupabaseService.upsertOrderInvoiceMonthFlags(order.id, billingContext, nextStatus);
-        } else {
-          await SupabaseService.upsertOrderInvoiceMonthFlagsForOrderYear(
-            order,
-            billingContext.year,
-            nextStatus
-          );
-          await SupabaseService.upsertInvoiceStatus(order.id, nextStatus);
-        }
+        await SupabaseService.persistInvoiceStatusToggle(order, billingContext, nextStatus);
         return;
       }
 
@@ -389,23 +390,7 @@ export function EditOrderModal({
 
       try {
         if (multiMonthOrder && billingContext) {
-          if (billingContext.month) {
-            await SupabaseService.upsertOrderInvoiceMonthFlags(
-              order.id,
-              billingContext,
-              invoiceStatus
-            );
-          } else {
-            await SupabaseService.upsertOrderInvoiceMonthFlagsForOrderYear(
-              order,
-              billingContext.year,
-              invoiceStatus
-            );
-            await SupabaseService.upsertInvoiceStatus(order.id, {
-              invoice_issued: invoiceStatus.invoice_issued,
-              invoice_sent: invoiceStatus.invoice_sent,
-            });
-          }
+          await SupabaseService.persistInvoiceStatusToggle(order, billingContext, invoiceStatus);
         } else {
           await SupabaseService.upsertInvoiceStatus(order.id, {
             invoice_issued: invoiceStatus.invoice_issued,
@@ -936,12 +921,14 @@ export function EditOrderModal({
                 <StatusIconButton
                   active={invoiceStatus.invoice_issued}
                   label={
-                    invoiceStatus.invoice_issued
-                      ? 'Sąskaita išrašyta'
-                      : 'Sąskaita neišrašyta'
+                    invoiceStatusToggleDisabled
+                      ? 'Pasirinkite konkretų mėnesį kelių mėnesių užsakymui'
+                      : invoiceStatus.invoice_issued
+                        ? 'Sąskaita išrašyta'
+                        : 'Sąskaita neišrašyta'
                   }
                   icon={DocumentTextIcon}
-                  disabled={isAgency}
+                  disabled={isAgency || invoiceStatusToggleDisabled}
                   onClick={() =>
                     void handleToggleInvoiceStatus(
                       'invoice_issued',
@@ -969,11 +956,14 @@ export function EditOrderModal({
               <StatusIconButton
                 active={invoiceStatus.invoice_sent}
                 label={
-                  invoiceStatus.invoice_sent
-                    ? 'Sąskaita išsiųsta'
-                    : 'Sąskaita neišsiųsta'
+                  invoiceStatusToggleDisabled
+                    ? 'Pasirinkite konkretų mėnesį kelių mėnesių užsakymui'
+                    : invoiceStatus.invoice_sent
+                      ? 'Sąskaita išsiųsta'
+                      : 'Sąskaita neišsiųsta'
                 }
                 icon={PaperAirplaneIcon}
+                disabled={invoiceStatusToggleDisabled}
                 onClick={() =>
                   void handleToggleInvoiceStatus('invoice_sent', !invoiceStatus.invoice_sent)
                 }

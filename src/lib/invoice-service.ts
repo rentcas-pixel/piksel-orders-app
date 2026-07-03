@@ -20,6 +20,8 @@ import {
   parseInvoiceNumber,
 } from '@/lib/invoice-utils';
 import { SupabaseService } from '@/lib/supabase-service';
+import { PocketBaseService } from '@/lib/pocketbase';
+import { isMultiMonthOrder } from '@/lib/invoice-utils';
 
 export class InvoiceService {
   static async getLastInvoiceSequence(): Promise<number> {
@@ -208,7 +210,34 @@ export class InvoiceService {
 
   static async syncLegacyInvoiceStatus(orderId: string): Promise<void> {
     const coverages = await this.getOrderInvoiceCoverages([orderId]);
-    const hasAny = coverages.some((entry) => entry.orderId === orderId);
+    const orderCoverages = coverages.filter((entry) => entry.orderId === orderId);
+
+    let order = null;
+    try {
+      order = await PocketBaseService.getOrder(orderId);
+    } catch {
+      order = null;
+    }
+
+    if (order && isMultiMonthOrder(order)) {
+      if (orderCoverages.length > 0) {
+        await SupabaseService.applyCoverageMonthFlags(
+          orderId,
+          orderCoverages.map((entry) => ({
+            periodFrom: entry.periodFrom,
+            periodTo: entry.periodTo,
+            invoiceDate: entry.invoiceDate,
+          }))
+        );
+      }
+      await SupabaseService.upsertInvoiceStatus(orderId, {
+        invoice_issued: false,
+        invoice_sent: false,
+      });
+      return;
+    }
+
+    const hasAny = orderCoverages.length > 0;
     await SupabaseService.upsertInvoiceStatus(orderId, {
       invoice_issued: hasAny,
       ...(hasAny ? {} : { invoice_sent: false }),

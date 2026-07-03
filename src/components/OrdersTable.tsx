@@ -12,7 +12,12 @@ import type { TableTheme } from '@/lib/order-design-variants';
 import { getTableTheme } from '@/lib/table-theme';
 import { buildOrdersListFilter, resolveListMonthYear, type OrdersListFilters, type OrdersPeriodTab } from '@/lib/orders-filters';
 import { isMultiMonthOrder } from '@/lib/invoice-utils';
-import { resolveBillingContext, nextInvoiceStatusOnToggle } from '@/lib/invoice-month-status';
+import {
+  invoiceToggleRequiresBillingMonth,
+  nextInvoiceStatusOnToggle,
+  readInvoiceStatusField,
+  resolveBillingContext,
+} from '@/lib/invoice-month-status';
 import { StatusIconButton } from '@/components/StatusIconButton';
 import {
   portalExportBtnClass,
@@ -89,16 +94,18 @@ export function OrdersTable({
   );
 
   const getInvoiceIssued = useCallback(
-    (order: Order) => {
-      const status = getInvoiceStatus(order.id);
-      return status?.invoice_issued ?? !!order.invoice_sent;
-    },
+    (order: Order) => readInvoiceStatusField(order, getInvoiceStatus(order.id), 'invoice_issued'),
     [getInvoiceStatus]
   );
 
   const getInvoiceSent = useCallback(
-    (orderId: string) => getInvoiceStatus(orderId)?.invoice_sent ?? false,
+    (order: Order) => readInvoiceStatusField(order, getInvoiceStatus(order.id), 'invoice_sent'),
     [getInvoiceStatus]
+  );
+
+  const invoiceStatusToggleDisabled = useCallback(
+    (order: Order) => invoiceToggleRequiresBillingMonth(order, billingContext),
+    [billingContext]
   );
 
   const hasOrderCommentOrScreenshot = useCallback(
@@ -112,10 +119,14 @@ export function OrdersTable({
     value: boolean
   ) => {
     const previousStatus = invoiceStatuses[order.id];
-    const currentIssued = previousStatus?.invoice_issued ?? !!order.invoice_sent;
-    const currentSent = previousStatus?.invoice_sent ?? false;
+    const currentIssued = readInvoiceStatusField(order, previousStatus, 'invoice_issued');
+    const currentSent = readInvoiceStatusField(order, previousStatus, 'invoice_sent');
 
     if (isMultiMonthOrder(order) && billingContext) {
+      if (invoiceToggleRequiresBillingMonth(order, billingContext)) {
+        return;
+      }
+
       const nextStatus = nextInvoiceStatusOnToggle(
         { invoice_issued: currentIssued, invoice_sent: currentSent },
         field,
@@ -132,12 +143,7 @@ export function OrdersTable({
         [order.id]: optimisticStatus,
       }));
       try {
-        if (billingContext.month) {
-          await SupabaseService.upsertOrderInvoiceMonthFlags(order.id, billingContext, nextStatus);
-        } else {
-          await SupabaseService.upsertOrderInvoiceMonthFlagsForOrderYear(order, billingContext.year, nextStatus);
-          await SupabaseService.upsertInvoiceStatus(order.id, nextStatus);
-        }
+        await SupabaseService.persistInvoiceStatusToggle(order, billingContext, nextStatus);
       } catch (error) {
         console.error('Error updating month invoice flags:', error);
         setInvoiceStatuses((prev) => {
@@ -582,7 +588,7 @@ export function OrdersTable({
       const statusMap = await SupabaseService.getMonthInvoiceStatuses(items, billingContext);
       const invoiceFilteredItems = filters.invoice_sent
         ? items.filter(item => {
-            const issued = statusMap[item.id]?.invoice_issued ?? !!item.invoice_sent;
+            const issued = readInvoiceStatusField(item, statusMap[item.id], 'invoice_issued');
             return filters.invoice_sent === 'true' ? issued : !issued;
           })
         : items;
@@ -601,8 +607,8 @@ export function OrdersTable({
           format(new Date(o.to), 'yyyy-MM-dd'),
           o.media_received ? 'Taip' : 'Ne',
           o.final_price ?? 0,
-          (statusMap[o.id]?.invoice_issued ?? !!o.invoice_sent) ? 'Taip' : 'Ne',
-          (statusMap[o.id]?.invoice_sent ?? false) ? 'Taip' : 'Ne',
+          readInvoiceStatusField(o, statusMap[o.id], 'invoice_issued') ? 'Taip' : 'Ne',
+          readInvoiceStatusField(o, statusMap[o.id], 'invoice_sent') ? 'Taip' : 'Ne',
         ]),
       ];
       downloadExcel(data, `Uzsakymai_${monthName}`);
@@ -655,7 +661,7 @@ export function OrdersTable({
         let processedOrders = fetchedOrders;
         if (invoiceFilterActive) {
           processedOrders = processedOrders.filter(item => {
-            const isIssued = statusMap[item.id]?.invoice_issued ?? !!item.invoice_sent;
+            const isIssued = readInvoiceStatusField(item, statusMap[item.id], 'invoice_issued');
             return filters.invoice_sent === 'true' ? isIssued : !isIssued;
           });
         }
@@ -663,12 +669,8 @@ export function OrdersTable({
         if (invoiceSort) {
           const invoiceSortField = sortField as 'invoice_issued' | 'invoice_sent';
           processedOrders = [...processedOrders].sort((a, b) => {
-            const aValue = invoiceSortField === 'invoice_issued'
-              ? ((statusMap[a.id]?.invoice_issued ?? !!a.invoice_sent) ? 1 : 0)
-              : ((statusMap[a.id]?.invoice_sent ?? false) ? 1 : 0);
-            const bValue = invoiceSortField === 'invoice_issued'
-              ? ((statusMap[b.id]?.invoice_issued ?? !!b.invoice_sent) ? 1 : 0)
-              : ((statusMap[b.id]?.invoice_sent ?? false) ? 1 : 0);
+            const aValue = readInvoiceStatusField(a, statusMap[a.id], invoiceSortField) ? 1 : 0;
+            const bValue = readInvoiceStatusField(b, statusMap[b.id], invoiceSortField) ? 1 : 0;
             if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
             if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
             return 0;
@@ -800,21 +802,26 @@ export function OrdersTable({
     ) => {
       const isIssued = field === 'invoice_issued';
       const Icon = isIssued ? DocumentTextIcon : PaperAirplaneIcon;
-      const label = isIssued
-        ? on
-          ? 'Sąskaita išrašyta'
-          : 'Sąskaita neišrašyta'
-        : on
-          ? 'Sąskaita išsiųsta'
-          : 'Sąskaita neišsiųsta';
+      const toggleDisabled = invoiceStatusToggleDisabled(order);
+      const label = toggleDisabled
+        ? 'Pasirinkite konkretų mėnesį kelių mėnesių užsakymui'
+        : isIssued
+          ? on
+            ? 'Sąskaita išrašyta'
+            : 'Sąskaita neišrašyta'
+          : on
+            ? 'Sąskaita išsiųsta'
+            : 'Sąskaita neišsiųsta';
 
       return (
         <StatusIconButton
           active={on}
           label={label}
           icon={Icon}
+          disabled={toggleDisabled}
           onClick={(e) => {
             e.stopPropagation();
+            if (toggleDisabled) return;
             handleToggleInvoiceStatus(order, field, !on);
           }}
         />
@@ -921,7 +928,7 @@ export function OrdersTable({
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      {portalInvoiceIcon(order, 'invoice_sent', getInvoiceSent(order.id))}
+                      {portalInvoiceIcon(order, 'invoice_sent', getInvoiceSent(order))}
                     </td>
                   </tr>
                 ))
@@ -1144,29 +1151,37 @@ export function OrdersTable({
                   <StatusIconButton
                     active={getInvoiceIssued(order)}
                     label={
-                      getInvoiceIssued(order)
-                        ? 'Sąskaita išrašyta'
-                        : 'Sąskaita neišrašyta'
+                      invoiceStatusToggleDisabled(order)
+                        ? 'Pasirinkite konkretų mėnesį kelių mėnesių užsakymui'
+                        : getInvoiceIssued(order)
+                          ? 'Sąskaita išrašyta'
+                          : 'Sąskaita neišrašyta'
                     }
                     icon={DocumentTextIcon}
+                    disabled={invoiceStatusToggleDisabled(order)}
                     onClick={(e) => {
                       e.stopPropagation();
+                      if (invoiceStatusToggleDisabled(order)) return;
                       handleToggleInvoiceStatus(order, 'invoice_issued', !getInvoiceIssued(order));
                     }}
                   />
                 </td>
                 <td className={`${t.tdPad} whitespace-nowrap`}>
                   <StatusIconButton
-                    active={getInvoiceSent(order.id)}
+                    active={getInvoiceSent(order)}
                     label={
-                      getInvoiceSent(order.id)
-                        ? 'Sąskaita išsiųsta'
-                        : 'Sąskaita neišsiųsta'
+                      invoiceStatusToggleDisabled(order)
+                        ? 'Pasirinkite konkretų mėnesį kelių mėnesių užsakymui'
+                        : getInvoiceSent(order)
+                          ? 'Sąskaita išsiųsta'
+                          : 'Sąskaita neišsiųsta'
                     }
                     icon={PaperAirplaneIcon}
+                    disabled={invoiceStatusToggleDisabled(order)}
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleToggleInvoiceStatus(order, 'invoice_sent', !getInvoiceSent(order.id));
+                      if (invoiceStatusToggleDisabled(order)) return;
+                      handleToggleInvoiceStatus(order, 'invoice_sent', !getInvoiceSent(order));
                     }}
                   />
                 </td>

@@ -5,6 +5,7 @@ import { Order } from '@/types';
 import { PocketBaseService } from '@/lib/pocketbase';
 import { SupabaseService } from '@/lib/supabase-service';
 import { buildOrdersCalendarFilter, type OrdersListFilters } from '@/lib/orders-filters';
+import { readInvoiceStatusField } from '@/lib/invoice-month-status';
 import { OrdersGanttCalendar } from '@/components/OrdersGanttCalendar';
 
 interface OrdersCalendarProps {
@@ -51,7 +52,7 @@ export function OrdersCalendar({ searchQuery, filters, onEditOrder }: OrdersCale
           const billingContext = { month: String(month).padStart(2, '0'), year: String(year) };
           const statusMap = await SupabaseService.getMonthInvoiceStatuses(items, billingContext);
           items = items.filter((order) => {
-            const issued = statusMap[order.id]?.invoice_issued ?? !!order.invoice_sent;
+            const issued = readInvoiceStatusField(order, statusMap[order.id], 'invoice_issued');
             return filters.invoice_sent === 'true' ? issued : !issued;
           });
         }

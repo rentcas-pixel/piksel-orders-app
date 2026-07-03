@@ -3,13 +3,16 @@ import { Comment, Reminder, FileAttachment, OrderApprovalEvent, OrderInvoiceStat
 import { InvoiceService } from '@/lib/invoice-service';
 import {
   buildMonthStatusMap,
+  billingMonthsCoveredByInvoice,
   emptyBillingMonthInvoiceFlags,
+  invoiceToggleRequiresBillingMonth,
   monthFlagKey,
-  orderBillingMonthsInYear,
+  readInvoiceStatusField,
   toOrderInvoiceStatus,
   type BillingMonthContext,
   type BillingMonthInvoiceFlags,
 } from '@/lib/invoice-month-status';
+import { isMultiMonthOrder } from '@/lib/invoice-utils';
 
 /** Nuotraukos ir Excel (.xls / .xlsx) rodomi užsakymo modalo „Printscreens“ skiltyje */
 function isPrintscreenPanelFile(
@@ -284,14 +287,59 @@ export class SupabaseService {
     if (error) throw error;
   }
 
-  static async upsertOrderInvoiceMonthFlagsForOrderYear(
+  static async upsertOrderInvoiceMonthSent(
     order: Order,
-    year: string,
+    billing: BillingMonthContext | null,
     flags: BillingMonthInvoiceFlags
   ): Promise<void> {
-    const months = orderBillingMonthsInYear(order, year);
+    if (invoiceToggleRequiresBillingMonth(order, billing)) {
+      throw new Error('Kelių mėnesių užsakymams pasirinkite konkretų mėnesį.');
+    }
+
+    if (isMultiMonthOrder(order)) {
+      if (!billing?.month || !billing.year) {
+        throw new Error('Kelių mėnesių užsakymams pasirinkite sąskaitavimo mėnesį.');
+      }
+      await this.upsertOrderInvoiceMonthFlags(order.id, billing, flags);
+      return;
+    }
+
+    await this.upsertInvoiceStatus(order.id, flags);
+  }
+
+  static async applyCoverageMonthFlags(
+    orderId: string,
+    coverages: Array<{
+      periodFrom: string | null;
+      periodTo: string | null;
+      invoiceDate: string;
+    }>
+  ): Promise<void> {
+    const touchedMonths = new Map<string, BillingMonthContext>();
+
+    for (const coverage of coverages) {
+      for (const billing of billingMonthsCoveredByInvoice({
+        orderId,
+        invoiceId: '',
+        periodFrom: coverage.periodFrom,
+        periodTo: coverage.periodTo,
+        invoiceDate: coverage.invoiceDate,
+      })) {
+        touchedMonths.set(`${billing.year}:${billing.month}`, billing);
+      }
+    }
+
     await Promise.all(
-      months.map((billing) => this.upsertOrderInvoiceMonthFlags(order.id, billing, flags))
+      [...touchedMonths.values()].map(async (billing) => {
+        const existing =
+          (await this.getOrderInvoiceMonthFlags([orderId], billing))[
+            monthFlagKey(orderId, billing.year, billing.month)
+          ] ?? emptyBillingMonthInvoiceFlags();
+        await this.upsertOrderInvoiceMonthFlags(orderId, billing, {
+          ...existing,
+          invoice_issued: true,
+        });
+      })
     );
   }
 
@@ -348,11 +396,7 @@ export class SupabaseService {
     order: Order,
     field: keyof Pick<OrderInvoiceStatus, 'invoice_issued' | 'invoice_sent'>
   ): boolean {
-    const status = statusMap[order.id];
-    if (field === 'invoice_issued') {
-      return status?.invoice_issued ?? !!order.invoice_sent;
-    }
-    return status?.invoice_sent ?? false;
+    return readInvoiceStatusField(order, statusMap[order.id], field);
   }
 
   static async upsertInvoiceStatus(

@@ -7,7 +7,7 @@ import { PocketBaseService } from '@/lib/pocketbase';
 import { SupabaseService } from '@/lib/supabase-service';
 import { getDaysInMonth, getDaysInRange } from '@/lib/screen-revenue';
 import { resolveListMonthYear } from '@/lib/orders-filters';
-import { resolveBillingContext } from '@/lib/invoice-month-status';
+import { readInvoiceStatusField, resolveBillingContext } from '@/lib/invoice-month-status';
 import {
   portalStickyThBgClass,
   portalStickyTheadClass,
@@ -386,7 +386,7 @@ export function OrderAnalyticsDashboard({ filters, onEditOrder, refreshKey }: Or
         continue;
       }
       if (order.approved) {
-        const invoiceIssued = invoiceStatusMap[order.id]?.invoice_issued ?? !!order.invoice_sent;
+        const invoiceIssued = readInvoiceStatusField(order, invoiceStatusMap[order.id], 'invoice_issued');
         if (!invoiceIssued) {
           const orderEnd = new Date(`${order.to}T00:00:00`);
           if (!Number.isNaN(orderEnd.getTime())) {

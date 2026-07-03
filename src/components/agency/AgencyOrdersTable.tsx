@@ -17,6 +17,7 @@ import {
   type AgencyPeriodTab,
 } from '@/lib/agency-orders';
 import { resolveListMonthYear } from '@/lib/orders-filters';
+import { readInvoiceStatusField, resolveBillingContext } from '@/lib/invoice-month-status';
 import { fetchAgencyOrders } from '@/lib/agency-portal-api';
 
 interface AgencyOrdersTableProps {
@@ -99,8 +100,7 @@ export function AgencyOrdersTable({
           setInvoiceStatuses({});
         } else if (items.length > 0) {
           try {
-            const { month, year } = resolveListMonthYear(filters.month, filters.year);
-            const billingContext = month && year ? { month, year } : null;
+            const billingContext = resolveBillingContext(filters.month, filters.year);
             const statusMap = await SupabaseService.getMonthInvoiceStatuses(items, billingContext);
             setInvoiceStatuses(statusMap);
           } catch {
@@ -144,8 +144,7 @@ export function AgencyOrdersTable({
       const items = result.items || [];
       let exportStatuses: Record<string, OrderInvoiceStatus> = {};
       try {
-        const { month, year } = resolveListMonthYear(filters.month, filters.year);
-        const billingContext = month && year ? { month, year } : null;
+        const billingContext = resolveBillingContext(filters.month, filters.year);
         exportStatuses = await SupabaseService.getMonthInvoiceStatuses(items, billingContext);
       } catch {
         exportStatuses = {};
@@ -169,7 +168,7 @@ export function AgencyOrdersTable({
           format(new Date(o.to), 'yyyy-MM-dd'),
           o.final_price ?? 0,
           o.approved
-            ? (exportStatuses[o.id]?.invoice_issued ?? !!o.invoice_sent ? 'Taip' : 'Ne')
+            ? (readInvoiceStatusField(o, exportStatuses[o.id], 'invoice_issued') ? 'Taip' : 'Ne')
             : '—',
         ]),
       ];
@@ -220,7 +219,7 @@ export function AgencyOrdersTable({
   );
 
   const getInvoiceIssued = (order: Order) =>
-    invoiceStatuses[order.id]?.invoice_issued ?? !!order.invoice_sent;
+    readInvoiceStatusField(order, invoiceStatuses[order.id], 'invoice_issued');
 
   const handleInvoiceIconClick = async (event: MouseEvent, order: Order) => {
     event.stopPropagation();
