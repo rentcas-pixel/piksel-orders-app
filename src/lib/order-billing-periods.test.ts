@@ -6,6 +6,7 @@ import {
   getBillableMonthlyDistribution,
   hasActiveBillingPeriods,
   orderMatchesBillingPeriodFilter,
+  orderHasNonContinuousBilling,
   validateBillingPeriods,
 } from '@/lib/order-billing-periods';
 
@@ -59,6 +60,17 @@ describe('order billing periods', () => {
     );
     const total = distribution.reduce((sum, entry) => sum + entry.amount, 0);
     expect(Math.abs(total - 3000)).toBeLessThan(0.05);
+  });
+
+  it('detects non-continuous billing vs full campaign', () => {
+    const order = makeOrder();
+    expect(orderHasNonContinuousBilling(order, [])).toBe(false);
+    expect(orderHasNonContinuousBilling(order, samplePeriods)).toBe(true);
+    expect(
+      orderHasNonContinuousBilling(order, [
+        { active_from: '2026-04-01', active_to: '2026-10-16' },
+      ])
+    ).toBe(false);
   });
 
   it('validates periods inside campaign bounds', () => {

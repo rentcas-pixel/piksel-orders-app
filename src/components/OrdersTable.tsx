@@ -12,7 +12,9 @@ import type { TableTheme } from '@/lib/order-design-variants';
 import { getTableTheme } from '@/lib/table-theme';
 import { buildOrdersListFilter, resolveListMonthYear, type OrdersListFilters, type OrdersPeriodTab } from '@/lib/orders-filters';
 import { isMultiMonthOrder } from '@/lib/invoice-utils';
-import { orderMatchesBillingPeriodFilter } from '@/lib/order-billing-periods';
+import { orderMatchesBillingPeriodFilter, orderHasNonContinuousBilling } from '@/lib/order-billing-periods';
+import { BillingGapsIndicator } from '@/components/BillingGapsIndicator';
+import type { OrderBillingPeriod } from '@/types';
 import {
   invoiceToggleRequiresBillingMonth,
   nextInvoiceStatusOnToggle,
@@ -64,6 +66,7 @@ export function OrdersTable({
   const [exporting, setExporting] = useState(false);
   const [invoiceStatuses, setInvoiceStatuses] = useState<Record<string, OrderInvoiceStatus>>({});
   const [orderActivityMap, setOrderActivityMap] = useState<Record<string, boolean>>({});
+  const [billingPeriodsMap, setBillingPeriodsMap] = useState<Record<string, OrderBillingPeriod[]>>({});
 
   // Function to check if media alert should be shown
   const shouldShowMediaAlert = (order: Order): boolean => {
@@ -112,6 +115,11 @@ export function OrdersTable({
   const hasOrderCommentOrScreenshot = useCallback(
     (orderId: string) => orderActivityMap[orderId] ?? false,
     [orderActivityMap]
+  );
+
+  const hasNonContinuousBilling = useCallback(
+    (order: Order) => orderHasNonContinuousBilling(order, billingPeriodsMap[order.id]),
+    [billingPeriodsMap]
   );
 
   const handleToggleInvoiceStatus = async (
@@ -667,11 +675,12 @@ export function OrdersTable({
         setOrderActivityMap(activityMap);
 
         let periodsMap: Awaited<ReturnType<typeof SupabaseService.getOrderBillingPeriods>> = {};
-        if (billingPeriodFilterActive && fetchedOrders.length > 0) {
+        if (fetchedOrders.length > 0) {
           periodsMap = await SupabaseService.getOrderBillingPeriods(
             fetchedOrders.map((item) => item.id)
           );
         }
+        setBillingPeriodsMap(periodsMap);
 
         let processedOrders = fetchedOrders;
         if (billingPeriodFilterActive) {
@@ -726,6 +735,7 @@ export function OrdersTable({
         setOrders(sortedOrders);
         setInvoiceStatuses({});
         setOrderActivityMap({});
+        setBillingPeriodsMap({});
         setTotalPages(1);
         setTotalItems(sortedOrders.length);
       } finally {
@@ -914,6 +924,7 @@ export function OrdersTable({
                     <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">
                       <div className="flex items-center gap-2">
                         {order.client}
+                        {hasNonContinuousBilling(order) && <BillingGapsIndicator />}
                         {hasOrderCommentOrScreenshot(order.id) && (
                           <span
                             className="shrink-0 inline-flex text-blue-600 dark:text-blue-400"
@@ -1132,6 +1143,7 @@ export function OrdersTable({
                       <span className={`truncate min-w-0 flex-1 ${t.clientFont} text-gray-900 dark:text-white`}>
                         {order.client}
                       </span>
+                      {hasNonContinuousBilling(order) && <BillingGapsIndicator />}
                       {shouldShowMediaAlert(order) && (
                         <span className="shrink-0 text-red-600 animate-pulse" aria-hidden>
                           ⚠️

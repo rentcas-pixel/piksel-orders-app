@@ -280,3 +280,14 @@ export function orderSupportsBillingPeriods(order: Pick<Order, 'from' | 'to'>): 
   if (!start || !end || start >= end) return false;
   return daysInclusiveBetween(start, end) > 1;
 }
+
+/** Ar užsakymas turi nestandartinį sąskaitavimą (aktyvūs periodai neužpildo visos kampanijos). */
+export function orderHasNonContinuousBilling(
+  order: Pick<Order, 'from' | 'to'>,
+  periods: OrderBillingPeriod[] | null | undefined
+): boolean {
+  if (!hasActiveBillingPeriods(periods) || !order.from || !order.to) return false;
+  const campaignDays = countBillableDays(order.from, order.to, []);
+  const activeDays = countBillableDays(order.from, order.to, periods!);
+  return activeDays < campaignDays;
+}

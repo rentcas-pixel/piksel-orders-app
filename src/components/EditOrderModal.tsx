@@ -11,6 +11,7 @@ import {
   PaperAirplaneIcon,
   PhotoIcon,
   PlusCircleIcon,
+  ArrowsRightLeftIcon,
 } from '@heroicons/react/24/outline';
 import {
   downloadReklamosPlanas,
@@ -124,6 +125,7 @@ export function EditOrderModal({
   const [otsLoading, setOtsLoading] = useState(false);
   const [customBillingPeriodsEnabled, setCustomBillingPeriodsEnabled] = useState(false);
   const [billingPeriods, setBillingPeriods] = useState<OrderBillingPeriod[]>([]);
+  const [billingPeriodsPanelOpen, setBillingPeriodsPanelOpen] = useState(false);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
 
   const scheduleOrder = useMemo((): Order | null => {
@@ -167,7 +169,9 @@ export function EditOrderModal({
       loadQuote();
       void SupabaseService.getOrderBillingPeriod(order.id).then((entries) => {
         setBillingPeriods(entries);
-        setCustomBillingPeriodsEnabled(entries.length > 0);
+        const hasCustomPeriods = entries.length > 0;
+        setCustomBillingPeriodsEnabled(hasCustomPeriods);
+        setBillingPeriodsPanelOpen(hasCustomPeriods);
       });
     }
   }, [order, loadQuote]);
@@ -1082,9 +1086,35 @@ export function EditOrderModal({
 
           <div className="space-y-2">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Transliacijų laikotarpis
-                    </label>
+                    <div className="mb-2 flex items-center gap-2">
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Transliacijų laikotarpis
+                      </label>
+                      {!isAgency && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setBillingPeriodsPanelOpen((open) => {
+                              const nextOpen = !open;
+                              if (!nextOpen && billingPeriods.length === 0) {
+                                setCustomBillingPeriodsEnabled(false);
+                              }
+                              return nextOpen;
+                            });
+                          }}
+                          className={`inline-flex items-center rounded-md p-1 transition-colors ${
+                            customBillingPeriodsEnabled || billingPeriodsPanelOpen
+                              ? 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:hover:bg-amber-900/50'
+                              : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-300'
+                          }`}
+                          title="Nestandartinis sąskaitavimas — keli aktyvūs periodai"
+                          aria-label="Nestandartinis sąskaitavimas"
+                          aria-pressed={billingPeriodsPanelOpen}
+                        >
+                          <ArrowsRightLeftIcon className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
               <div className="flex items-center space-x-2">
                 <input
                   type="text"
@@ -1151,14 +1181,42 @@ export function EditOrderModal({
                   </div>
                 )}
 
-                {scheduleOrder && !isAgency && (
+                {scheduleOrder && !isAgency && billingPeriodsPanelOpen && (
                   <OrderBillingPeriodsSection
                     order={scheduleOrder}
                     enabled={customBillingPeriodsEnabled}
                     periods={billingPeriods}
                     onEnabledChange={setCustomBillingPeriodsEnabled}
                     onPeriodsChange={setBillingPeriods}
+                    onClose={() => {
+                      setBillingPeriodsPanelOpen(false);
+                      if (billingPeriods.length === 0) {
+                        setCustomBillingPeriodsEnabled(false);
+                      }
+                    }}
                   />
+                )}
+
+                {formData.from && formData.to && formData.final_price && customBillingPeriodsEnabled && (
+                  <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                    <div className="text-sm text-gray-900 dark:text-white flex items-center">
+                      <span className="font-normal">Viso:</span>{' '}
+                      <span className="font-semibold">{formData.final_price?.toFixed(2)}€</span>
+                      {quote && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const url = order?.viaduct ? quote.viaduct_link : quote.link;
+                            window.open(url, '_blank');
+                          }}
+                          className="ml-2 text-gray-400 hover:text-gray-600 transition-colors"
+                          title="Atidaryti skaičiuoklę"
+                        >
+                          🔗
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 )}
 
                 {isAgency && (
