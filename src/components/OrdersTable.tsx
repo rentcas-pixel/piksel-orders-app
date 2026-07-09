@@ -10,9 +10,9 @@ import { format } from 'date-fns';
 import { downloadExcel } from '@/lib/export-excel';
 import type { TableTheme } from '@/lib/order-design-variants';
 import { getTableTheme } from '@/lib/table-theme';
-import { buildOrdersListFilter, resolveListMonthYear, type OrdersListFilters, type OrdersPeriodTab } from '@/lib/orders-filters';
+import { buildOrdersListFilter, resolveListMonthYear, isSplitAwareOrdersPeriodTab, type OrdersListFilters, type OrdersPeriodTab } from '@/lib/orders-filters';
 import { isMultiMonthOrder } from '@/lib/invoice-utils';
-import { orderMatchesBillingPeriodFilter, orderHasNonContinuousBilling } from '@/lib/order-billing-periods';
+import { orderMatchesBillingPeriodFilter, orderHasNonContinuousBilling, filterOrdersForPeriodTab } from '@/lib/order-billing-periods';
 import { BillingGapsIndicator } from '@/components/BillingGapsIndicator';
 import { OrderSpecIndicator } from '@/components/OrderSpecIndicator';
 import type { OrderBillingPeriod } from '@/types';
@@ -392,6 +392,7 @@ export function OrdersTable({
         searchQuery,
         filters,
         periodTab,
+        widePeriodTab: isSplitAwareOrdersPeriodTab(periodTab),
       });
     }
 
@@ -658,8 +659,12 @@ export function OrdersTable({
           filters.year
         );
         const billingPeriodFilterActive = Boolean(resolvedYear);
+        const splitPeriodTabActive = portalStyle && isSplitAwareOrdersPeriodTab(periodTab);
         const needsExpandedFetch =
-          invoiceFilterActive || invoiceSort || Boolean(resolvedMonth && resolvedYear);
+          invoiceFilterActive ||
+          invoiceSort ||
+          Boolean(resolvedMonth && resolvedYear) ||
+          splitPeriodTabActive;
         const serverSortField = invoiceSort ? 'updated' : sortField;
 
         const result = await PocketBaseService.getOrders({
@@ -692,6 +697,13 @@ export function OrdersTable({
               resolvedYear!,
               periodsMap[order.id]
             )
+          );
+        }
+        if (splitPeriodTabActive) {
+          processedOrders = filterOrdersForPeriodTab(
+            processedOrders,
+            periodTab,
+            periodsMap
           );
         }
         if (invoiceFilterActive) {

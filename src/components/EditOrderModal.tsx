@@ -34,6 +34,7 @@ import { isMultiMonthOrder } from '@/lib/invoice-utils';
 import { validateBillingPeriods } from '@/lib/order-billing-periods';
 import { resolveOrderPrice } from '@/lib/order-price';
 import { OrderBillingPeriodsSection } from '@/components/OrderBillingPeriodsSection';
+import { OrderBillingPeriodsReadOnly } from '@/components/OrderBillingPeriodsReadOnly';
 import { OrderSpecPriceSection } from '@/components/OrderSpecPriceSection';
 import type { OrderBillingPeriod } from '@/types';
 import {
@@ -1297,6 +1298,10 @@ export function EditOrderModal({
                       }
                     }}
                   />
+                )}
+
+                {scheduleOrder && isAgency && billingPeriods.length > 0 && (
+                  <OrderBillingPeriodsReadOnly order={scheduleOrder} periods={billingPeriods} />
                 )}
 
                 {formData.from && formData.to && formData.final_price && customBillingPeriodsEnabled && (

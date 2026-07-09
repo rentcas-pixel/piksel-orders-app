@@ -1,3 +1,4 @@
+import { startOfDay } from 'date-fns';
 import { daysInclusiveBetween, parseDateOnlyLocal } from '@/lib/date-utils';
 import type { Order } from '@/types';
 
@@ -290,4 +291,125 @@ export function orderHasNonContinuousBilling(
   const campaignDays = countBillableDays(order.from, order.to, []);
   const activeDays = countBillableDays(order.from, order.to, periods!);
   return activeDays < campaignDays;
+}
+
+/** Ar užsakymas patenka į „Einamos“ skirtuką (šiandien aktyvus, įskaitant split periodus). */
+export function orderMatchesCurrentPeriodTab(
+  order: Pick<Order, 'from' | 'to'>,
+  periods?: OrderBillingPeriod[] | null,
+  referenceDate: Date = startOfDay(new Date())
+): boolean {
+  if (!order.from || !order.to) return false;
+
+  const orderStart = parseDateOnlyLocal(order.from);
+  const orderEnd = parseDateOnlyLocal(order.to);
+  if (!orderStart || !orderEnd) return false;
+  if (referenceDate < orderStart || referenceDate > orderEnd) return false;
+
+  if (hasActiveBillingPeriods(periods)) {
+    return isDayInActivePeriod(referenceDate, periods!);
+  }
+
+  return true;
+}
+
+function hasUpcomingBillingPeriod(
+  referenceDate: Date,
+  periods: OrderBillingPeriod[]
+): boolean {
+  return sortBillingPeriods(periods).some((period) => {
+    const start = parseDateOnlyLocal(period.active_from);
+    return start != null && start > referenceDate;
+  });
+}
+
+function getLatestBillingPeriodEnd(periods: OrderBillingPeriod[]): Date | null {
+  let latest: Date | null = null;
+  for (const period of periods) {
+    const end = parseDateOnlyLocal(period.active_to);
+    if (!end) continue;
+    if (!latest || end > latest) latest = end;
+  }
+  return latest;
+}
+
+/** Ar užsakymas patenka į „Būsimos“ skirtuką (dar neaktyvus, bet turi būsimą split langą arba from > šiandien). */
+export function orderMatchesFuturePeriodTab(
+  order: Pick<Order, 'from' | 'to'>,
+  periods?: OrderBillingPeriod[] | null,
+  referenceDate: Date = startOfDay(new Date())
+): boolean {
+  if (!order.from || !order.to) return false;
+
+  const orderStart = parseDateOnlyLocal(order.from);
+  const orderEnd = parseDateOnlyLocal(order.to);
+  if (!orderStart || !orderEnd) return false;
+  if (referenceDate > orderEnd) return false;
+
+  if (hasActiveBillingPeriods(periods)) {
+    if (isDayInActivePeriod(referenceDate, periods!)) return false;
+    return hasUpcomingBillingPeriod(referenceDate, periods!);
+  }
+
+  return orderStart > referenceDate;
+}
+
+/** Ar užsakymas patenka į „Buvusios“ skirtuką (kampanija baigta arba visi split periodai praeityje). */
+export function orderMatchesPastPeriodTab(
+  order: Pick<Order, 'from' | 'to'>,
+  periods?: OrderBillingPeriod[] | null,
+  referenceDate: Date = startOfDay(new Date())
+): boolean {
+  if (!order.from || !order.to) return false;
+
+  const orderStart = parseDateOnlyLocal(order.from);
+  const orderEnd = parseDateOnlyLocal(order.to);
+  if (!orderStart || !orderEnd) return false;
+  if (referenceDate > orderEnd) return true;
+
+  if (hasActiveBillingPeriods(periods)) {
+    if (isDayInActivePeriod(referenceDate, periods!)) return false;
+    if (hasUpcomingBillingPeriod(referenceDate, periods!)) return false;
+    const latestEnd = getLatestBillingPeriodEnd(periods!);
+    return latestEnd != null && referenceDate > latestEnd;
+  }
+
+  return referenceDate > orderEnd;
+}
+
+export type OrderPeriodTab = 'current' | 'future' | 'past';
+
+export function orderMatchesPeriodTab(
+  order: Pick<Order, 'from' | 'to'>,
+  tab: OrderPeriodTab,
+  periods?: OrderBillingPeriod[] | null,
+  referenceDate: Date = startOfDay(new Date())
+): boolean {
+  switch (tab) {
+    case 'current':
+      return orderMatchesCurrentPeriodTab(order, periods, referenceDate);
+    case 'future':
+      return orderMatchesFuturePeriodTab(order, periods, referenceDate);
+    case 'past':
+      return orderMatchesPastPeriodTab(order, periods, referenceDate);
+  }
+}
+
+export function filterOrdersForPeriodTab<T extends Pick<Order, 'id' | 'from' | 'to'>>(
+  orders: T[],
+  tab: OrderPeriodTab,
+  periodsMap: OrderBillingPeriodsMap,
+  referenceDate?: Date
+): T[] {
+  return orders.filter((order) =>
+    orderMatchesPeriodTab(order, tab, periodsMap[order.id], referenceDate)
+  );
+}
+
+export function filterOrdersForCurrentPeriodTab<T extends Pick<Order, 'id' | 'from' | 'to'>>(
+  orders: T[],
+  periodsMap: OrderBillingPeriodsMap,
+  referenceDate?: Date
+): T[] {
+  return filterOrdersForPeriodTab(orders, 'current', periodsMap, referenceDate);
 }

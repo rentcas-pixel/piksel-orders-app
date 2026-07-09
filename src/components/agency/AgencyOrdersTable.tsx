@@ -1,9 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useState, type MouseEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react';
 import { format } from 'date-fns';
 import { ArrowDownTrayIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
-import { Order, type OrderInvoiceStatus } from '@/types';
+import { Order, type OrderBillingPeriod, type OrderInvoiceStatus } from '@/types';
 import { PocketBaseService } from '@/lib/pocketbase';
 import { SupabaseService } from '@/lib/supabase-service';
 import { InvoiceService } from '@/lib/invoice-service';
@@ -11,9 +11,12 @@ import { downloadExcel } from '@/lib/export-excel';
 import { downloadIssuedInvoicePdf } from '@/lib/invoice-pdf-batch';
 import { isInvoiceListable } from '@/lib/invoice-utils';
 import { StatusIconButton } from '@/components/StatusIconButton';
+import { BillingGapsIndicator } from '@/components/BillingGapsIndicator';
 import { OrderSpecIndicator } from '@/components/OrderSpecIndicator';
+import { orderHasNonContinuousBilling } from '@/lib/order-billing-periods';
 import {
   buildAgencyOrdersFilter,
+  fetchAgencyOrdersForPeriodTab,
   type AgencyListFilters,
   type AgencyPeriodTab,
 } from '@/lib/agency-orders';
@@ -48,16 +51,26 @@ export function AgencyOrdersTable({
   const [exporting, setExporting] = useState(false);
   const [invoiceStatuses, setInvoiceStatuses] = useState<Record<string, OrderInvoiceStatus>>({});
   const [downloadingOrderId, setDownloadingOrderId] = useState<string | null>(null);
+  const [billingPeriodsMap, setBillingPeriodsMap] = useState<Record<string, OrderBillingPeriod[]>>({});
+
+  const hasNonContinuousBilling = useCallback(
+    (order: Order) => orderHasNonContinuousBilling(order, billingPeriodsMap[order.id]),
+    [billingPeriodsMap]
+  );
+
+  const agencyFilterParams = useMemo(
+    () => ({
+      agency,
+      searchQuery,
+      filters,
+      periodTab,
+    }),
+    [agency, searchQuery, filters, periodTab]
+  );
 
   const buildFilterString = useCallback(
-    () =>
-      buildAgencyOrdersFilter({
-        agency,
-        searchQuery,
-        filters,
-        periodTab,
-      }),
-    [agency, searchQuery, filters, periodTab]
+    () => buildAgencyOrdersFilter(agencyFilterParams),
+    [agencyFilterParams]
   );
 
   useEffect(() => {
@@ -86,16 +99,35 @@ export function AgencyOrdersTable({
               filters,
               periodTab,
             })
-          : await PocketBaseService.getOrders({
+          : await fetchAgencyOrdersForPeriodTab({
+              filterParams: agencyFilterParams,
               page: currentPage,
               perPage: 20,
               sort,
-              filter: buildFilterString(),
+              getOrders: (opts) =>
+                PocketBaseService.getOrders(opts).then((page) => ({
+                  items: page.items ?? [],
+                  totalItems: page.totalItems ?? 0,
+                  totalPages: page.totalPages ?? 1,
+                })),
             });
         const items = result.items || [];
         setOrders(items);
         setTotalPages(result.totalPages || 1);
         setTotalItems(result.totalItems || 0);
+
+        if (items.length > 0) {
+          try {
+            const periodsMap = await SupabaseService.getOrderBillingPeriods(
+              items.map((item) => item.id)
+            );
+            setBillingPeriodsMap(periodsMap);
+          } catch {
+            setBillingPeriodsMap({});
+          }
+        } else {
+          setBillingPeriodsMap({});
+        }
 
         if (portalMode) {
           setInvoiceStatuses({});
@@ -120,7 +152,7 @@ export function AgencyOrdersTable({
     };
 
     fetchOrders();
-  }, [agency, currentPage, buildFilterString, sortField, sortDirection, portalMode, searchQuery, filters, periodTab]);
+  }, [agency, currentPage, buildFilterString, sortField, sortDirection, portalMode, searchQuery, filters, periodTab, agencyFilterParams]);
 
   const handleExportExcel = useCallback(async () => {
     if (!agency.trim()) return;
@@ -136,11 +168,17 @@ export function AgencyOrdersTable({
             filters,
             periodTab,
           })
-        : await PocketBaseService.getOrders({
+        : await fetchAgencyOrdersForPeriodTab({
+            filterParams: agencyFilterParams,
             page: 1,
             perPage: 500,
             sort,
-            filter: buildFilterString(),
+            getOrders: (opts) =>
+              PocketBaseService.getOrders(opts).then((page) => ({
+                items: page.items ?? [],
+                totalItems: page.totalItems ?? 0,
+                totalPages: page.totalPages ?? 1,
+              })),
           });
       const items = result.items || [];
       let exportStatuses: Record<string, OrderInvoiceStatus> = {};
@@ -364,6 +402,7 @@ export function AgencyOrdersTable({
                   <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">
                     <div className="flex items-center gap-1.5 min-w-0">
                       <span className="truncate">{order.client}</span>
+                      {hasNonContinuousBilling(order) && <BillingGapsIndicator />}
                       {order.is_spec_order && <OrderSpecIndicator />}
                     </div>
                   </td>

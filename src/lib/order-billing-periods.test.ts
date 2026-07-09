@@ -2,10 +2,14 @@ import { describe, expect, it } from 'vitest';
 import type { Order } from '@/types';
 import {
   countBillableDays,
+  filterOrdersForPeriodTab,
   getBillableDaysInMonth,
   getBillableMonthlyDistribution,
   hasActiveBillingPeriods,
   orderMatchesBillingPeriodFilter,
+  orderMatchesCurrentPeriodTab,
+  orderMatchesFuturePeriodTab,
+  orderMatchesPastPeriodTab,
   orderHasNonContinuousBilling,
   validateBillingPeriods,
 } from '@/lib/order-billing-periods';
@@ -82,5 +86,47 @@ describe('order billing periods', () => {
         '2026-10-16'
       )
     ).toContain('ribose');
+  });
+
+  it('matches current tab only on active split days', () => {
+    const order = makeOrder({ from: '2026-05-04', to: '2026-12-27' });
+    const splitPeriods = [
+      { active_from: '2026-05-04', active_to: '2026-05-10' },
+      { active_from: '2026-11-09', active_to: '2026-12-27' },
+    ];
+    const may5 = new Date(2026, 4, 5);
+    const july9 = new Date(2026, 6, 9);
+    const nov10 = new Date(2026, 10, 10);
+    const jan1_2027 = new Date(2027, 0, 1);
+
+    expect(orderMatchesCurrentPeriodTab(order, splitPeriods, may5)).toBe(true);
+    expect(orderMatchesCurrentPeriodTab(order, splitPeriods, july9)).toBe(false);
+    expect(orderMatchesCurrentPeriodTab(order, splitPeriods, nov10)).toBe(true);
+    expect(orderMatchesCurrentPeriodTab(order, [], july9)).toBe(true);
+
+    expect(orderMatchesFuturePeriodTab(order, splitPeriods, july9)).toBe(true);
+    expect(orderMatchesFuturePeriodTab(order, splitPeriods, may5)).toBe(false);
+    expect(orderMatchesFuturePeriodTab(order, splitPeriods, nov10)).toBe(false);
+    expect(orderMatchesFuturePeriodTab(order, [], july9)).toBe(false);
+
+    expect(orderMatchesPastPeriodTab(order, splitPeriods, jan1_2027)).toBe(true);
+    expect(orderMatchesPastPeriodTab(order, splitPeriods, july9)).toBe(false);
+    expect(orderMatchesPastPeriodTab(order, splitPeriods, may5)).toBe(false);
+
+    const currentFiltered = filterOrdersForPeriodTab(
+      [order],
+      'current',
+      { [order.id]: splitPeriods },
+      july9
+    );
+    expect(currentFiltered).toHaveLength(0);
+
+    const futureFiltered = filterOrdersForPeriodTab(
+      [order],
+      'future',
+      { [order.id]: splitPeriods },
+      july9
+    );
+    expect(futureFiltered).toHaveLength(1);
   });
 });

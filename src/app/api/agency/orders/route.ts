@@ -1,7 +1,7 @@
 import { agencyUnauthorizedResponse, getAgencySession } from '@/lib/agency-auth';
 import {
   buildAgencyCalendarFilter,
-  buildAgencyOrdersFilter,
+  fetchAgencyOrdersForPeriodTab,
   type AgencyListFilters,
   type AgencyPeriodTab,
 } from '@/lib/agency-orders';
@@ -36,29 +36,43 @@ export async function GET(request: Request) {
   const sort = searchParams.get('sort') ?? '-updated';
   const matchValues = session.agency.pocketbase_values;
 
-  const filter =
-    mode === 'calendar'
-      ? buildAgencyCalendarFilter({
-          agencyMatchValues: matchValues,
-          searchQuery,
-          filters: { status: filters.status, client: filters.client },
-          year: parseInt(searchParams.get('calendarYear') ?? String(new Date().getFullYear()), 10),
-          month: parseInt(searchParams.get('calendarMonth') ?? String(new Date().getMonth() + 1), 10),
-        })
-      : buildAgencyOrdersFilter({
-          agencyMatchValues: matchValues,
-          searchQuery,
-          filters,
-          periodTab,
-        });
+  if (mode === 'calendar') {
+    const filter = buildAgencyCalendarFilter({
+      agencyMatchValues: matchValues,
+      searchQuery,
+      filters: { status: filters.status, client: filters.client },
+      year: parseInt(searchParams.get('calendarYear') ?? String(new Date().getFullYear()), 10),
+      month: parseInt(searchParams.get('calendarMonth') ?? String(new Date().getMonth() + 1), 10),
+    });
+    const result = await getOrdersServer({
+      page: Number.isFinite(page) ? page : 1,
+      perPage: Number.isFinite(perPage) ? perPage : 20,
+      sort,
+      filter,
+      fields: AGENCY_ORDER_FIELDS,
+      timeoutMs: 20000,
+    });
+    return Response.json(result);
+  }
 
-  const result = await getOrdersServer({
+  const result = await fetchAgencyOrdersForPeriodTab({
+    filterParams: {
+      agencyMatchValues: matchValues,
+      searchQuery,
+      filters,
+      periodTab,
+    },
     page: Number.isFinite(page) ? page : 1,
     perPage: Number.isFinite(perPage) ? perPage : 20,
     sort,
-    filter,
     fields: AGENCY_ORDER_FIELDS,
     timeoutMs: 20000,
+    getOrders: (opts) =>
+      getOrdersServer(opts).then((page) => ({
+        items: page.items ?? [],
+        totalItems: page.totalItems ?? 0,
+        totalPages: page.totalPages ?? 1,
+      })),
   });
 
   return Response.json(result);

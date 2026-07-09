@@ -4,6 +4,7 @@ import {
   type CampaignBundle,
   type CampaignScreen,
 } from '@/lib/campaign-calculator';
+import { filterOrdersForPeriodTab } from '@/lib/order-billing-periods';
 import { getOrdersServer } from '@/lib/pocketbase-server';
 import { PocketBaseService } from '@/lib/pocketbase';
 import {
@@ -12,9 +13,14 @@ import {
 } from '@/lib/orders-filters';
 import { toCampaignOrderInput, toCampaignScreen } from '@/lib/reklamos-planas-data';
 import { agencyMatchesFilter, getCanonicalAgencyLabel } from '@/lib/agency-names';
+import { SupabaseService } from '@/lib/supabase-service';
+import type { Order } from '@/types';
 
 export type AgencyPeriodTab = 'all' | 'current' | 'future' | 'past';
 export type AgencyViewMode = 'list' | 'calendar';
+
+/** PB laukai periodų skirtukų filtravimui (reikalingi from/to). */
+export const AGENCY_PERIOD_TAB_ORDER_FIELDS = 'id,from,to';
 
 export interface AgencyListFilters {
   status: string;
@@ -54,15 +60,35 @@ export function getPeriodFilter(tab: AgencyPeriodTab): string {
   }
 }
 
+/** Platesnis PB filtras split užsakymams — po fetch filtruojama pagal aktyvius periodus. */
+export function getPeriodTabWideFilter(tab: AgencyPeriodTab): string {
+  const today = todayIso();
+  switch (tab) {
+    case 'current':
+      return `(from<="${today}" && to>="${today}")`;
+    case 'future':
+      return `to>="${today}"`;
+    case 'past':
+      return `from<="${today}"`;
+    default:
+      return '';
+  }
+}
+
+export function isSplitAwarePeriodTab(tab: AgencyPeriodTab): tab is 'current' | 'future' | 'past' {
+  return tab === 'current' || tab === 'future' || tab === 'past';
+}
+
 export function buildAgencyOrdersFilter(params: {
   agency?: string;
   agencyMatchValues?: string[];
   searchQuery: string;
   filters: AgencyListFilters;
   periodTab: AgencyPeriodTab;
+  widePeriodTab?: boolean;
 }): string {
   const parts: string[] = [];
-  const { agency, agencyMatchValues, searchQuery, filters, periodTab } = params;
+  const { agency, agencyMatchValues, searchQuery, filters, periodTab, widePeriodTab } = params;
 
   const matchValues =
     agencyMatchValues && agencyMatchValues.length > 0
@@ -118,7 +144,9 @@ export function buildAgencyOrdersFilter(params: {
     parts.push(`(from<="${resolvedYear}-12-31" && to>="${resolvedYear}-01-01")`);
   }
 
-  const periodFilter = getPeriodFilter(periodTab);
+  const periodFilter = widePeriodTab
+    ? getPeriodTabWideFilter(periodTab)
+    : getPeriodFilter(periodTab);
   if (periodFilter) parts.push(periodFilter);
 
   if (!filters.showStaleUnapproved) {
@@ -156,21 +184,110 @@ export function buildAgencyCalendarFilter(params: {
 export type AgencyPeriodCounts = Record<AgencyPeriodTab, number>;
 
 const PERIOD_TABS: AgencyPeriodTab[] = ['all', 'current', 'future', 'past'];
+const SPLIT_AWARE_PERIOD_TAB_FETCH_LIMIT = 500;
+
+type AgencyOrdersPageResult = {
+  items: Order[];
+  totalItems: number;
+  totalPages: number;
+};
+
+type AgencyOrdersFetcher = (params: {
+  page: number;
+  perPage: number;
+  sort: string;
+  filter: string;
+  fields?: string;
+  timeoutMs?: number;
+}) => Promise<AgencyOrdersPageResult>;
+
+export type AgencyOrdersFilterParams = {
+  agency?: string;
+  agencyMatchValues?: string[];
+  searchQuery: string;
+  filters: AgencyListFilters;
+  periodTab: AgencyPeriodTab;
+};
+
+function paginateFilteredOrders(
+  orders: Order[],
+  page: number,
+  perPage: number
+): AgencyOrdersPageResult {
+  const totalItems = orders.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / perPage));
+  const offset = (page - 1) * perPage;
+  return {
+    items: orders.slice(offset, offset + perPage),
+    totalItems,
+    totalPages,
+  };
+}
+
+export async function fetchAgencyOrdersForPeriodTab(params: {
+  filterParams: AgencyOrdersFilterParams;
+  page: number;
+  perPage: number;
+  sort: string;
+  fields?: string;
+  timeoutMs?: number;
+  getOrders: AgencyOrdersFetcher;
+}): Promise<AgencyOrdersPageResult> {
+  const { filterParams, page, perPage, sort, fields, timeoutMs, getOrders } = params;
+  const { periodTab } = filterParams;
+
+  if (!isSplitAwarePeriodTab(periodTab)) {
+    const filter = buildAgencyOrdersFilter(filterParams);
+    return getOrders({ page, perPage, sort, filter, fields, timeoutMs });
+  }
+
+  const filter = buildAgencyOrdersFilter({ ...filterParams, widePeriodTab: true });
+  const result = await getOrders({
+    page: 1,
+    perPage: SPLIT_AWARE_PERIOD_TAB_FETCH_LIMIT,
+    sort,
+    filter,
+    fields: fields ?? AGENCY_PERIOD_TAB_ORDER_FIELDS,
+    timeoutMs,
+  });
+  const periodsMap = await SupabaseService.getOrderBillingPeriods(
+    result.items.map((item) => item.id)
+  );
+  const filtered = filterOrdersForPeriodTab(result.items, periodTab, periodsMap);
+  return paginateFilteredOrders(filtered, page, perPage);
+}
+
+async function countAgencyPeriodTab(params: {
+  filterParams: AgencyOrdersFilterParams;
+  getOrders: AgencyOrdersFetcher;
+}): Promise<number> {
+  const result = await fetchAgencyOrdersForPeriodTab({
+    filterParams: params.filterParams,
+    page: 1,
+    perPage: 1,
+    sort: '-updated',
+    getOrders: params.getOrders,
+  });
+  return result.totalItems;
+}
 
 export async function fetchAgencyPeriodCounts(params: {
   agency: string;
   searchQuery: string;
   filters: AgencyListFilters;
 }): Promise<AgencyPeriodCounts> {
+  const getOrders: AgencyOrdersFetcher = (opts) =>
+    PocketBaseService.getOrders(opts).then((result) => ({
+      items: result.items ?? [],
+      totalItems: result.totalItems ?? 0,
+      totalPages: result.totalPages ?? 1,
+    }));
+
   const entries = await Promise.all(
     PERIOD_TABS.map(async (tab) => {
-      const filter = buildAgencyOrdersFilter({ ...params, periodTab: tab });
-      const result = await PocketBaseService.getOrders({
-        page: 1,
-        perPage: 1,
-        filter,
-      });
-      return [tab, result.totalItems ?? 0] as const;
+      const filterParams = { ...params, periodTab: tab };
+      const count = await countAgencyPeriodTab({ filterParams, getOrders });
+      return [tab, count] as const;
     })
   );
   return Object.fromEntries(entries) as AgencyPeriodCounts;

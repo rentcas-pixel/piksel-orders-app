@@ -2,7 +2,8 @@ import { unstable_cache } from 'next/cache';
 import type { AgencyRecord } from '@/lib/agency-auth';
 import { listAgencyInvoicesServer } from '@/lib/agency-invoice-match';
 import {
-  buildAgencyOrdersFilter,
+  AGENCY_PERIOD_TAB_ORDER_FIELDS,
+  fetchAgencyOrdersForPeriodTab,
   type AgencyListFilters,
   type AgencyPeriodCounts,
   type AgencyPeriodTab,
@@ -43,25 +44,31 @@ export function getAgencyPeriodCountsCached(
     async () => {
       const entries = await Promise.all(
         PERIOD_TABS.map(async (tab) => {
-          const filter = buildAgencyOrdersFilter({
-            agencyMatchValues: matchValues,
-            searchQuery,
-            filters,
-            periodTab: tab,
-          });
-          const result = await getOrdersServer({
+          const result = await fetchAgencyOrdersForPeriodTab({
+            filterParams: {
+              agencyMatchValues: matchValues,
+              searchQuery,
+              filters,
+              periodTab: tab,
+            },
             page: 1,
             perPage: 1,
-            filter,
-            fields: 'id',
+            sort: '-updated',
+            fields: AGENCY_PERIOD_TAB_ORDER_FIELDS,
             timeoutMs: 20000,
+            getOrders: (opts) =>
+              getOrdersServer(opts).then((page) => ({
+                items: page.items ?? [],
+                totalItems: page.totalItems ?? 0,
+                totalPages: page.totalPages ?? 1,
+              })),
           });
-          return [tab, result.totalItems ?? 0] as const;
+          return [tab, result.totalItems] as const;
         })
       );
       return Object.fromEntries(entries) as AgencyPeriodCounts;
     },
-    ['agency-period-counts', matchValues.join(','), filterKey],
+    ['agency-period-counts', 'v2', matchValues.join(','), filterKey],
     { revalidate: 60 }
   )();
 }

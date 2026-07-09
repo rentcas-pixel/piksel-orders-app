@@ -21,6 +21,26 @@ function getPeriodFilter(tab: OrdersPeriodTab): string {
   }
 }
 
+function getPeriodTabWideFilter(tab: OrdersPeriodTab): string {
+  const today = todayIso();
+  switch (tab) {
+    case 'current':
+      return `(from<="${today}" && to>="${today}")`;
+    case 'future':
+      return `to>="${today}"`;
+    case 'past':
+      return `from<="${today}"`;
+    default:
+      return '';
+  }
+}
+
+export function isSplitAwareOrdersPeriodTab(
+  tab: OrdersPeriodTab | undefined
+): tab is 'current' | 'future' | 'past' {
+  return tab === 'current' || tab === 'future' || tab === 'past';
+}
+
 export interface OrdersListFilters {
   status: string;
   month: string;
@@ -93,11 +113,12 @@ export function buildOrdersListFilter(params: {
   searchQuery: string;
   filters: OrdersListFilters;
   periodTab?: OrdersPeriodTab;
+  widePeriodTab?: boolean;
   calendarYear?: number;
   calendarMonth?: number;
 }): string {
   const parts: string[] = [];
-  const { searchQuery, filters, periodTab, calendarYear, calendarMonth } = params;
+  const { searchQuery, filters, periodTab, widePeriodTab, calendarYear, calendarMonth } = params;
   const { month: resolvedMonth, year: resolvedYear } = resolveListMonthYear(
     filters.month,
     filters.year
@@ -168,7 +189,9 @@ export function buildOrdersListFilter(params: {
   }
 
   if (periodTab) {
-    const periodFilter = getPeriodFilter(periodTab);
+    const periodFilter = widePeriodTab
+      ? getPeriodTabWideFilter(periodTab)
+      : getPeriodFilter(periodTab);
     if (periodFilter) parts.push(periodFilter);
   }
 
