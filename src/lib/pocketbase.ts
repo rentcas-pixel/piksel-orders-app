@@ -1,4 +1,9 @@
 import { config } from '@/config';
+import {
+  normalizeOrder,
+  normalizeOrders,
+  orderPriceNeedsPersistSync,
+} from '@/lib/order-price';
 import { Order, Screen, Partner } from '@/types';
 
 const POCKETBASE_URL = config.pocketbase.url;
@@ -127,29 +132,66 @@ export class PocketBaseService {
     const response = await this.makeRequestWithRetry(url);
     
     return {
-      items: response.items || [],
+      items: normalizeOrders(response.items || []),
       totalItems: response.totalItems || 0,
       totalPages: response.totalPages || 0,
     };
   }
 
   static async getOrder(id: string): Promise<Order> {
-    return this.makeRequestWithRetry(`/records/${id}`);
+    const raw = await this.makeRequestWithRetry(`/records/${id}`);
+    return this.hydrateOrder(raw);
+  }
+
+  /** Jei details.total ≠ final_price — pataiso PB fone (be skaičiuoklės refresh). */
+  static async syncOrderPriceIfNeeded(order: Order): Promise<Order> {
+    const { needed, canonicalPrice } = orderPriceNeedsPersistSync(order);
+    if (!needed) {
+      return normalizeOrder(order);
+    }
+
+    try {
+      const updated = await this.makeRequestWithRetry(`/records/${order.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ final_price: canonicalPrice }),
+      });
+      return normalizeOrder(updated);
+    } catch (error) {
+      console.warn('Order price sync failed:', order.id, error);
+      return normalizeOrder(order);
+    }
+  }
+
+  private static hydrateOrder(raw: Order): Order {
+    const normalized = normalizeOrder(raw);
+    const { needed, canonicalPrice } = orderPriceNeedsPersistSync(raw);
+
+    if (needed) {
+      void this.makeRequestWithRetry(`/records/${raw.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ final_price: canonicalPrice }),
+      }).catch((error) => {
+        console.warn('Background order price sync failed:', raw.id, error);
+      });
+    }
+
+    return normalized;
   }
 
   static async searchOrders(query: string): Promise<Order[]> {
     // Debounce search requests
     return this.queueRequest(async () => {
       const response = await this.makeRequestWithRetry(`/records?filter=(client~"${query}" || agency~"${query}" || invoice_id~"${query}")&perPage=25`);
-      return response.items || [];
+      return normalizeOrders(response.items || []);
     });
   }
 
   static async updateOrder(id: string, data: Partial<Order>): Promise<Order> {
-    return this.makeRequestWithRetry(`/records/${id}`, {
+    const updated = await this.makeRequestWithRetry(`/records/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
     });
+    return normalizeOrder(updated);
   }
 
   static async deleteOrder(id: string): Promise<void> {
@@ -194,7 +236,7 @@ export class PocketBaseService {
       
       try {
         const response = await this.makeRequestWithRetry(`/records?filter=(${batchFilter})&perPage=${batchSize}`);
-        results.push(...(response.items || []));
+        results.push(...normalizeOrders(response.items || []));
       } catch (error) {
         console.error('❌ Batch request failed:', error);
       }

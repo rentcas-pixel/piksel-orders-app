@@ -10,7 +10,7 @@ import { getOrdersServer } from '@/lib/pocketbase-server';
 export const maxDuration = 60;
 
 const AGENCY_ORDER_FIELDS =
-  'id,client,agency,invoice_id,approved,from,to,final_price,media_received,invoice_sent,updated,viaduct,screens';
+  'id,client,agency,invoice_id,approved,from,to,final_price,media_received,invoice_sent,updated,viaduct,screens,details';
 
 function readFilters(searchParams: URLSearchParams): AgencyListFilters {
   return {

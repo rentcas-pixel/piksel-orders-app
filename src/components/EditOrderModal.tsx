@@ -31,6 +31,7 @@ import { SupabaseService } from '@/lib/supabase-service';
 import { formatDateInputValue, parseDateOnlyLocal } from '@/lib/date-utils';
 import { isMultiMonthOrder } from '@/lib/invoice-utils';
 import { validateBillingPeriods } from '@/lib/order-billing-periods';
+import { resolveOrderPrice } from '@/lib/order-price';
 import { OrderBillingPeriodsSection } from '@/components/OrderBillingPeriodsSection';
 import type { OrderBillingPeriod } from '@/types';
 import {
@@ -160,7 +161,7 @@ export function EditOrderModal({
         invoice_id: order.invoice_id,
         from: order.from,
         to: order.to,
-        final_price: order.final_price || 0,
+        final_price: resolveOrderPrice(order) || 0,
         approved: order.approved,
         media_received: order.media_received,
         viaduct: order.viaduct,
@@ -175,6 +176,23 @@ export function EditOrderModal({
       });
     }
   }, [order, loadQuote]);
+
+  useEffect(() => {
+    if (!order || !isOpen || isAgency) return;
+
+    let cancelled = false;
+    void PocketBaseService.syncOrderPriceIfNeeded(order).then((synced) => {
+      if (cancelled) return;
+      if (Math.abs(synced.final_price - (order.final_price || 0)) >= 0.01) {
+        setFormData((prev) => ({ ...prev, final_price: synced.final_price }));
+        onOrderUpdated?.(synced);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [order, isOpen, isAgency, onOrderUpdated]);
 
   useEffect(() => {
     if (!isOpen || !order || isAgency) {

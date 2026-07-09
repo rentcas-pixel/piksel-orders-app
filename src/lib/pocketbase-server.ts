@@ -1,4 +1,5 @@
 import { config } from '@/config';
+import { normalizeOrder, normalizeOrders } from '@/lib/order-price';
 import type { Order } from '@/types';
 
 const POCKETBASE_URL = config.pocketbase.url;
@@ -51,7 +52,7 @@ export async function getOrdersServer(params: {
   };
 
   return {
-    items: response.items ?? [],
+    items: normalizeOrders(response.items ?? []),
     totalItems: response.totalItems ?? 0,
     totalPages: response.totalPages ?? 0,
   };
@@ -59,7 +60,8 @@ export async function getOrdersServer(params: {
 
 export async function getOrderServer(id: string): Promise<Order | null> {
   try {
-    return (await pocketBaseFetch(`/records/${id}`)) as Order;
+    const order = (await pocketBaseFetch(`/records/${id}`)) as Order;
+    return normalizeOrder(order);
   } catch {
     return null;
   }

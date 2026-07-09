@@ -21,6 +21,10 @@ export interface Order {
     cpt?: number;
     discount?: number;
     finalPrice?: number;
+    /** Galutinė kaina po apimties / laikotarpio nuolaidų (iš skaičiuoklės) */
+    total?: number;
+    amountDiscount?: number;
+    periodDiscount?: number;
   };
 }
 
