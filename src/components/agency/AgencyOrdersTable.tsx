@@ -11,6 +11,7 @@ import { downloadExcel } from '@/lib/export-excel';
 import { downloadIssuedInvoicePdf } from '@/lib/invoice-pdf-batch';
 import { isInvoiceListable } from '@/lib/invoice-utils';
 import { StatusIconButton } from '@/components/StatusIconButton';
+import { OrderSpecIndicator } from '@/components/OrderSpecIndicator';
 import {
   buildAgencyOrdersFilter,
   type AgencyListFilters,
@@ -361,7 +362,10 @@ export function AgencyOrdersTable({
                   className="hover:bg-blue-50 dark:hover:bg-blue-950/30 cursor-pointer transition-colors"
                 >
                   <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">
-                    {order.client}
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="truncate">{order.client}</span>
+                      {order.is_spec_order && <OrderSpecIndicator />}
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
                     {order.invoice_id}

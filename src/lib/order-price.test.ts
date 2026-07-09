@@ -67,4 +67,21 @@ describe('order-price', () => {
       canonicalPrice: 185.41,
     });
   });
+
+  it('uses spec manual price and skips calculator sync', () => {
+    const order = makeOrder({
+      final_price: 206.35,
+      details: { total: 185.41 },
+    });
+    const specMap = { 'order-1': 850 };
+
+    expect(normalizeOrder(order, specMap)).toMatchObject({
+      final_price: 850,
+      is_spec_order: true,
+    });
+    expect(orderPriceNeedsPersistSync(order, specMap)).toEqual({
+      needed: false,
+      canonicalPrice: 850,
+    });
+  });
 });

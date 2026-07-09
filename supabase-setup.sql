@@ -70,5 +70,15 @@ CREATE POLICY "Allow all operations on file_attachments" ON file_attachments FOR
 CREATE POLICY "Allow all operations on order_approval_events" ON order_approval_events FOR ALL USING (true);
 CREATE POLICY "Allow all operations on order_invoice_status" ON order_invoice_status FOR ALL USING (true);
 
--- 8. Storage bucket sukūrimas (reikia atlikti per Supabase dashboard)
+-- 8. Spec. užsakymai — rankinė kaina (žr. supabase/migrations/20260709_order_spec_prices.sql)
+CREATE TABLE IF NOT EXISTS order_spec_prices (
+  order_id TEXT PRIMARY KEY,
+  manual_price NUMERIC NOT NULL CHECK (manual_price > 0),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_order_spec_prices_updated ON order_spec_prices (updated_at DESC);
+ALTER TABLE order_spec_prices ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all on order_spec_prices" ON order_spec_prices FOR ALL USING (true);
+
+-- 9. Storage bucket sukūrimas (reikia atlikti per Supabase dashboard)
 -- Eikite į Storage -> New Bucket -> pavadinimas: "files" -> public

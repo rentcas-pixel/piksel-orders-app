@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import { useDebounce } from '@/hooks/useDebounce';
+import { useDebounce, useDebouncedSearchQuery } from '@/hooks/useDebounce';
 import { useAppSession } from '@/hooks/useAppSession';
 import { canAccessAppTab, canAccessInvoicesSubTab, hasAdminFinanceAccess } from '@/lib/app-permissions';
 import { OrdersTable } from '@/components/OrdersTable';
@@ -42,6 +42,8 @@ import { resolveListMonthYear } from '@/lib/orders-filters';
 import type { CombinedInvoiceCandidate } from '@/lib/combined-invoice';
 import { BankImportProgressToast } from '@/components/BankImportProgressToast';
 import { ReminderNotifications } from '@/components/ReminderNotifications';
+import { EmailAgentPanel } from '@/components/EmailAgentPanel';
+import { EmailAutoSync } from '@/components/EmailAutoSync';
 import { WeekNumbersModal } from '@/components/WeekNumbersModal';
 import { PocketBaseService } from '@/lib/pocketbase';
 import {
@@ -94,7 +96,7 @@ export default function Home() {
     invoice_sent: '',
   });
 
-  const debouncedSearch = useDebounce(searchQuery, 400);
+  const debouncedSearch = useDebouncedSearchQuery(searchQuery);
   const debouncedClient = useDebounce(filters.client, 400);
   const debouncedAgency = useDebounce(filters.agency, 400);
   const debouncedFilters = useMemo(
@@ -228,7 +230,11 @@ export default function Home() {
             onTabChange={setActiveTab}
           />
 
-          {activeTab !== 'latest' && activeTab !== 'orders' && activeTab !== 'invoices' && activeTab !== 'bank' && (
+          {activeTab !== 'latest' &&
+            activeTab !== 'orders' &&
+            activeTab !== 'invoices' &&
+            activeTab !== 'bank' &&
+            activeTab !== 'email' && (
             <PortalFiltersBar
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}
@@ -439,6 +445,16 @@ export default function Home() {
               />
               <ChartsAnalysis filters={debouncedFilters} />
             </div>
+          )}
+
+          {activeTab === 'email' && isAdmin && (
+            <>
+              <EmailAutoSync
+                enabled
+                onNewEmails={() => setRefreshKey((prev) => prev + 1)}
+              />
+              <EmailAgentPanel refreshKey={refreshKey} searchQuery={debouncedSearch} />
+            </>
           )}
 
         </main>

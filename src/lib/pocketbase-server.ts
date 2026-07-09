@@ -1,5 +1,9 @@
 import { config } from '@/config';
-import { normalizeOrder, normalizeOrders } from '@/lib/order-price';
+import {
+  normalizeOrder,
+  normalizeOrders,
+} from '@/lib/order-price';
+import { SupabaseService } from '@/lib/supabase-service';
 import type { Order } from '@/types';
 
 const POCKETBASE_URL = config.pocketbase.url;
@@ -51,8 +55,11 @@ export async function getOrdersServer(params: {
     totalPages?: number;
   };
 
+  const items = response.items ?? [];
+  const specPriceMap = await SupabaseService.getOrderSpecPriceMap(items.map((o) => o.id));
+
   return {
-    items: normalizeOrders(response.items ?? []),
+    items: normalizeOrders(items, specPriceMap),
     totalItems: response.totalItems ?? 0,
     totalPages: response.totalPages ?? 0,
   };
@@ -61,7 +68,8 @@ export async function getOrdersServer(params: {
 export async function getOrderServer(id: string): Promise<Order | null> {
   try {
     const order = (await pocketBaseFetch(`/records/${id}`)) as Order;
-    return normalizeOrder(order);
+    const specPriceMap = await SupabaseService.getOrderSpecPriceMap([id]);
+    return normalizeOrder(order, specPriceMap);
   } catch {
     return null;
   }

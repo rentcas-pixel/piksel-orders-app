@@ -12,6 +12,7 @@ import {
   PhotoIcon,
   PlusCircleIcon,
   ArrowsRightLeftIcon,
+  BanknotesIcon,
 } from '@heroicons/react/24/outline';
 import {
   downloadReklamosPlanas,
@@ -33,6 +34,7 @@ import { isMultiMonthOrder } from '@/lib/invoice-utils';
 import { validateBillingPeriods } from '@/lib/order-billing-periods';
 import { resolveOrderPrice } from '@/lib/order-price';
 import { OrderBillingPeriodsSection } from '@/components/OrderBillingPeriodsSection';
+import { OrderSpecPriceSection } from '@/components/OrderSpecPriceSection';
 import type { OrderBillingPeriod } from '@/types';
 import {
   invoiceToggleRequiresBillingMonth,
@@ -127,6 +129,8 @@ export function EditOrderModal({
   const [customBillingPeriodsEnabled, setCustomBillingPeriodsEnabled] = useState(false);
   const [billingPeriods, setBillingPeriods] = useState<OrderBillingPeriod[]>([]);
   const [billingPeriodsPanelOpen, setBillingPeriodsPanelOpen] = useState(false);
+  const [isSpecOrder, setIsSpecOrder] = useState(false);
+  const [specOrderPanelOpen, setSpecOrderPanelOpen] = useState(false);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
 
   const scheduleOrder = useMemo((): Order | null => {
@@ -154,31 +158,48 @@ export function EditOrderModal({
   }, [order]);
 
   useEffect(() => {
-    if (order) {
+    if (!order) return;
+
+    let cancelled = false;
+
+    const loadOrderForm = async () => {
+      const specPrice = await SupabaseService.getOrderSpecPrice(order.id);
+      if (cancelled) return;
+
+      const hasSpecPrice = specPrice != null && specPrice > 0;
+      setIsSpecOrder(hasSpecPrice);
+      setSpecOrderPanelOpen(hasSpecPrice);
+
       setFormData({
         client: order.client,
         agency: order.agency,
         invoice_id: order.invoice_id,
         from: order.from,
         to: order.to,
-        final_price: resolveOrderPrice(order) || 0,
+        final_price: hasSpecPrice ? specPrice : resolveOrderPrice(order) || 0,
         approved: order.approved,
         media_received: order.media_received,
         viaduct: order.viaduct,
       });
-      
-      loadQuote();
-      void SupabaseService.getOrderBillingPeriod(order.id).then((entries) => {
-        setBillingPeriods(entries);
-        const hasCustomPeriods = entries.length > 0;
-        setCustomBillingPeriodsEnabled(hasCustomPeriods);
-        setBillingPeriodsPanelOpen(hasCustomPeriods);
-      });
-    }
+    };
+
+    void loadOrderForm();
+    loadQuote();
+    void SupabaseService.getOrderBillingPeriod(order.id).then((entries) => {
+      if (cancelled) return;
+      setBillingPeriods(entries);
+      const hasCustomPeriods = entries.length > 0;
+      setCustomBillingPeriodsEnabled(hasCustomPeriods);
+      setBillingPeriodsPanelOpen(hasCustomPeriods);
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [order, loadQuote]);
 
   useEffect(() => {
-    if (!order || !isOpen || isAgency) return;
+    if (!order || !isOpen || isAgency || isSpecOrder) return;
 
     let cancelled = false;
     void PocketBaseService.syncOrderPriceIfNeeded(order).then((synced) => {
@@ -192,7 +213,7 @@ export function EditOrderModal({
     return () => {
       cancelled = true;
     };
-  }, [order, isOpen, isAgency, onOrderUpdated]);
+  }, [order, isOpen, isAgency, isSpecOrder, onOrderUpdated]);
 
   useEffect(() => {
     if (!isOpen || !order || isAgency) {
@@ -445,7 +466,27 @@ export function EditOrderModal({
       const wasApproved = !!order.approved;
       const orderPayload = { ...formData };
       delete orderPayload.invoice_sent;
+
+      let specManualPrice: number | null = null;
+      if (!isAgency) {
+        if (isSpecOrder) {
+          specManualPrice = Number(formData.final_price);
+          if (!specManualPrice || specManualPrice <= 0) {
+            alert('Įveskite spec. užsakymo kainą (didesnę už 0).');
+            return;
+          }
+          await SupabaseService.upsertOrderSpecPrice(order.id, specManualPrice);
+          delete orderPayload.final_price;
+        } else {
+          await SupabaseService.deleteOrderSpecPrice(order.id);
+        }
+      }
+
       const updatedOrder = await PocketBaseService.updateOrder(order.id, orderPayload);
+      const displayOrder =
+        isSpecOrder && specManualPrice != null
+          ? { ...updatedOrder, final_price: specManualPrice, is_spec_order: true }
+          : { ...updatedOrder, is_spec_order: false };
 
       try {
         if (multiMonthOrder && billingContext?.month && billingContext.year) {
@@ -476,9 +517,9 @@ export function EditOrderModal({
       if (!wasApproved && nextApproved) {
         try {
           await SupabaseService.addApprovalEvent({
-            order_id: updatedOrder.id,
-            snapshot_client: updatedOrder.client,
-            snapshot_amount: updatedOrder.final_price,
+            order_id: displayOrder.id,
+            snapshot_client: displayOrder.client,
+            snapshot_amount: displayOrder.final_price,
           });
         } catch (approvalError) {
           // Do not block order updates if Supabase approval events are not configured yet.
@@ -486,7 +527,7 @@ export function EditOrderModal({
         }
       }
 
-      onOrderUpdated?.(updatedOrder);
+      onOrderUpdated?.(displayOrder);
       onClose();
     } catch {
       console.error('Error updating order');
@@ -1132,6 +1173,22 @@ export function EditOrderModal({
                           <ArrowsRightLeftIcon className="h-4 w-4" />
                         </button>
                       )}
+                      {!isAgency && (
+                        <button
+                          type="button"
+                          onClick={() => setSpecOrderPanelOpen((open) => !open)}
+                          className={`inline-flex items-center rounded-md p-1 transition-colors ${
+                            isSpecOrder || specOrderPanelOpen
+                              ? 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:hover:bg-amber-900/50'
+                              : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-300'
+                          }`}
+                          title="Spec. užsakymas — rankinė kaina"
+                          aria-label="Spec. užsakymas"
+                          aria-pressed={specOrderPanelOpen}
+                        >
+                          <BanknotesIcon className="h-4 w-4" />
+                        </button>
+                      )}
                     </div>
               <div className="flex items-center space-x-2">
                 <input
@@ -1161,6 +1218,32 @@ export function EditOrderModal({
                 <span className="font-normal">Savaitės:</span> <span className="font-semibold">{weeksDisplay}</span>
               </div>
             </div>
+
+            {!isAgency && specOrderPanelOpen && (
+              <OrderSpecPriceSection
+                enabled={isSpecOrder}
+                price={formData.final_price ?? 0}
+                onEnabledChange={(enabled) => {
+                  setIsSpecOrder(enabled);
+                  if (!enabled && order) {
+                    setFormData((prev) => ({
+                      ...prev,
+                      final_price: resolveOrderPrice(order) || 0,
+                    }));
+                  }
+                }}
+                onPriceChange={(price) => handleInputChange('final_price', price)}
+                onClose={() => setSpecOrderPanelOpen(false)}
+                onDisable={() => {
+                  if (order) {
+                    setFormData((prev) => ({
+                      ...prev,
+                      final_price: resolveOrderPrice(order) || 0,
+                    }));
+                  }
+                }}
+              />
+            )}
               </div>
 
 
@@ -1180,7 +1263,8 @@ export function EditOrderModal({
                       })()}
                       <div className="pt-3 border-t border-gray-200 dark:border-gray-600">
                         <div className="text-sm text-gray-900 dark:text-white flex items-center">
-                          <span className="font-normal">Viso:</span> <span className="font-semibold">{formData.final_price?.toFixed(2)}€</span>
+                          <span className="font-normal">Viso:</span>{' '}
+                          <span className="font-semibold">{formData.final_price?.toFixed(2)}€</span>
                           {quote && (
                             <button
                               onClick={() => {

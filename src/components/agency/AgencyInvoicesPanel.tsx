@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useDebounce } from '@/hooks/useDebounce';
+import { useDebouncedSearchQuery } from '@/hooks/useDebounce';
 import { InvoicesFiltersBar } from '@/components/InvoicesFiltersBar';
 import { InvoicesTable } from '@/components/InvoicesTable';
 
@@ -17,7 +17,7 @@ export function AgencyInvoicesPanel({ agency, portalMode = false }: AgencyInvoic
   const [month, setMonth] = useState('');
   const [year, setYear] = useState(String(new Date().getFullYear()));
   const [paymentFilter, setPaymentFilter] = useState<IssuedInvoicePaymentFilter>('all');
-  const debouncedSearch = useDebounce(searchQuery, 400);
+  const debouncedSearch = useDebouncedSearchQuery(searchQuery);
 
   return (
     <>

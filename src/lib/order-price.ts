@@ -1,4 +1,5 @@
 import type { Order } from '@/types';
+import { isSpecOrder, type OrderSpecPriceMap } from '@/lib/order-spec-price';
 
 const PRICE_EPSILON = 0.01;
 
@@ -26,10 +27,18 @@ export function resolveOrderPrice(order: Pick<Order, 'final_price' | 'details'>)
   return 0;
 }
 
-export function orderPriceNeedsPersistSync(order: Order): {
+export function orderPriceNeedsPersistSync(
+  order: Order,
+  specPriceMap?: OrderSpecPriceMap
+): {
   needed: boolean;
   canonicalPrice: number;
 } {
+  if (isSpecOrder(order, specPriceMap)) {
+    const manual = specPriceMap?.[order.id] ?? order.final_price;
+    return { needed: false, canonicalPrice: roundOrderPrice(Number(manual) || 0) };
+  }
+
   const hasDetailsTotal =
     typeof order.details?.total === 'number' && order.details.total > 0;
   const canonicalPrice = resolveOrderPrice(order);
@@ -43,7 +52,16 @@ export function orderPriceNeedsPersistSync(order: Order): {
 }
 
 /** Atnaujina final_price atmintyje pagal details.total (rodymui be refresh). */
-export function normalizeOrder(order: Order): Order {
+export function normalizeOrder(order: Order, specPriceMap?: OrderSpecPriceMap): Order {
+  if (isSpecOrder(order, specPriceMap)) {
+    const manual = specPriceMap?.[order.id] ?? order.final_price;
+    return {
+      ...order,
+      final_price: roundOrderPrice(Number(manual) || 0),
+      is_spec_order: true,
+    };
+  }
+
   const resolved = resolveOrderPrice(order);
   const stored = roundOrderPrice(Number(order.final_price) || 0);
 
@@ -54,6 +72,6 @@ export function normalizeOrder(order: Order): Order {
   return { ...order, final_price: resolved };
 }
 
-export function normalizeOrders(orders: Order[]): Order[] {
-  return orders.map(normalizeOrder);
+export function normalizeOrders(orders: Order[], specPriceMap?: OrderSpecPriceMap): Order[] {
+  return orders.map((order) => normalizeOrder(order, specPriceMap));
 }

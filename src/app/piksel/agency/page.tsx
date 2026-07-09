@@ -4,7 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { ArrowRightOnRectangleIcon, CalendarDaysIcon, CameraIcon, DocumentTextIcon, TableCellsIcon } from '@heroicons/react/24/outline';
-import { useDebounce } from '@/hooks/useDebounce';
+import { useDebounce, useDebouncedSearchQuery } from '@/hooks/useDebounce';
 import { AgencyInvoicesPanel } from '@/components/agency/AgencyInvoicesPanel';
 import { AgencyPhotoPanel } from '@/components/agency/AgencyPhotoPanel';
 import { AgencyOrdersTable } from '@/components/agency/AgencyOrdersTable';
@@ -54,7 +54,7 @@ function AgencyPortalContent() {
     showStaleUnapproved: false,
   });
 
-  const debouncedSearch = useDebounce(searchQuery, 400);
+  const debouncedSearch = useDebouncedSearchQuery(searchQuery);
   const debouncedClient = useDebounce(filters.client, 400);
   const debouncedFilters = useMemo(
     () => ({ ...filters, client: debouncedClient }),

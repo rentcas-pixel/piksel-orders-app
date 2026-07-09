@@ -1,4 +1,9 @@
 import { supabase } from './supabase';
+import {
+  formatSupabaseError,
+  isMissingRelationError,
+  warnSpecPricesTableMissingOnce,
+} from '@/lib/supabase-errors';
 import { Comment, Reminder, FileAttachment, OrderApprovalEvent, OrderInvoiceStatus, OrderBillingPeriod, CommentVisibility, type Order } from '@/types';
 import { InvoiceService } from '@/lib/invoice-service';
 import {
@@ -365,6 +370,73 @@ export class SupabaseService {
 
     const { error } = await supabase.from('order_billing_periods').insert(rows);
     if (error) throw error;
+  }
+
+  static async getOrderSpecPriceMap(orderIds: string[]): Promise<Record<string, number>> {
+    const uniqueOrderIds = [...new Set(orderIds.filter(Boolean))];
+    if (uniqueOrderIds.length === 0) return {};
+
+    const { data, error } = await supabase
+      .from('order_spec_prices')
+      .select('order_id, manual_price')
+      .in('order_id', uniqueOrderIds);
+
+    if (error) {
+      if (isMissingRelationError(error, 'order_spec_prices')) {
+        warnSpecPricesTableMissingOnce();
+      } else {
+        console.error('getOrderSpecPriceMap:', formatSupabaseError(error));
+      }
+      return {};
+    }
+
+    const map: Record<string, number> = {};
+    for (const row of data ?? []) {
+      const price = Number(row.manual_price);
+      if (price > 0) map[row.order_id] = price;
+    }
+    return map;
+  }
+
+  static async getOrderSpecPrice(orderId: string): Promise<number | null> {
+    const map = await this.getOrderSpecPriceMap([orderId]);
+    return map[orderId] ?? null;
+  }
+
+  static async upsertOrderSpecPrice(orderId: string, manualPrice: number): Promise<void> {
+    if (!orderId) return;
+    const price = Math.round(manualPrice * 100) / 100;
+    if (price <= 0) throw new Error('Spec. užsakymo kaina turi būti didesnė už 0');
+
+    const { error } = await supabase.from('order_spec_prices').upsert(
+      {
+        order_id: orderId,
+        manual_price: price,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'order_id' }
+    );
+    if (error) {
+      if (isMissingRelationError(error, 'order_spec_prices')) {
+        warnSpecPricesTableMissingOnce();
+        throw new Error(
+          'Spec. užsakymų lentelė Supabase dar nesukurta. Paleiskite supabase/migrations/20260709_order_spec_prices.sql'
+        );
+      }
+      throw new Error(formatSupabaseError(error));
+    }
+  }
+
+  static async deleteOrderSpecPrice(orderId: string): Promise<void> {
+    if (!orderId) return;
+    const { error } = await supabase.from('order_spec_prices').delete().eq('order_id', orderId);
+    if (error) {
+      if (isMissingRelationError(error, 'order_spec_prices')) {
+        warnSpecPricesTableMissingOnce();
+        return;
+      }
+      throw new Error(formatSupabaseError(error));
+    }
   }
 
   static async applyCoverageMonthFlags(

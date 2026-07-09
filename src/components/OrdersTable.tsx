@@ -14,6 +14,7 @@ import { buildOrdersListFilter, resolveListMonthYear, type OrdersListFilters, ty
 import { isMultiMonthOrder } from '@/lib/invoice-utils';
 import { orderMatchesBillingPeriodFilter, orderHasNonContinuousBilling } from '@/lib/order-billing-periods';
 import { BillingGapsIndicator } from '@/components/BillingGapsIndicator';
+import { OrderSpecIndicator } from '@/components/OrderSpecIndicator';
 import type { OrderBillingPeriod } from '@/types';
 import {
   invoiceToggleRequiresBillingMonth,
@@ -925,6 +926,7 @@ export function OrdersTable({
                       <div className="flex items-center gap-2">
                         {order.client}
                         {hasNonContinuousBilling(order) && <BillingGapsIndicator />}
+                        {order.is_spec_order && <OrderSpecIndicator />}
                         {hasOrderCommentOrScreenshot(order.id) && (
                           <span
                             className="shrink-0 inline-flex text-blue-600 dark:text-blue-400"
@@ -1144,6 +1146,7 @@ export function OrdersTable({
                         {order.client}
                       </span>
                       {hasNonContinuousBilling(order) && <BillingGapsIndicator />}
+                      {order.is_spec_order && <OrderSpecIndicator />}
                       {shouldShowMediaAlert(order) && (
                         <span className="shrink-0 text-red-600 animate-pulse" aria-hidden>
                           ⚠️
@@ -1182,7 +1185,9 @@ export function OrdersTable({
                   <BoolPill value={order.media_received} />
                 </td>
                 <td className={`${t.tdPad} whitespace-nowrap`}>
-                  <div className={`${t.cellText} font-medium text-gray-900 dark:text-white tabular-nums`}>{formatPrice(order.final_price)}</div>
+                  <div className={`${t.cellText} font-medium text-gray-900 dark:text-white tabular-nums`}>
+                    {formatPrice(order.final_price)}
+                  </div>
                 </td>
                 <td className={`${t.tdPad} whitespace-nowrap`}>
                   <StatusIconButton

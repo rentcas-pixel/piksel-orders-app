@@ -9,6 +9,8 @@ export interface Order {
   to: string;
   media_received: boolean;
   final_price: number;
+  /** Hub: rankinė spec. kaina (Supabase), ne iš PocketBase/skaičiuoklės */
+  is_spec_order?: boolean;
   invoice_sent: boolean;
   updated: string;
   intensity?: string; // Kas 4, Kas 6, Kas 8, Kas 12, Kas 24

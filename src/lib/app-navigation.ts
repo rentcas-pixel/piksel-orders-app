@@ -57,7 +57,17 @@ export const PAGE_META: Record<AppTab, { title: string; description: string }> =
   },
 };
 
-export const APP_TABS: AppTab[] = ['orders', 'revenue', 'partners', 'agencies', 'latest', 'analytics', 'invoices', 'bank'];
+export const APP_TABS: AppTab[] = [
+  'orders',
+  'revenue',
+  'partners',
+  'agencies',
+  'latest',
+  'analytics',
+  'invoices',
+  'bank',
+  'email',
+];
 
 export const STAFF_APP_TABS: AppTab[] = [
   'orders',
@@ -69,7 +79,7 @@ export const STAFF_APP_TABS: AppTab[] = [
   'invoices',
 ];
 
-export const ADMIN_ONLY_APP_TABS: AppTab[] = ['bank'];
+export const ADMIN_ONLY_APP_TABS: AppTab[] = ['bank', 'email'];
 
 export const STAFF_INVOICES_SUB_TABS: InvoicesSubTab[] = ['issued'];
 

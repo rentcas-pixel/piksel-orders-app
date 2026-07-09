@@ -4,6 +4,7 @@ import {
   normalizeOrders,
   orderPriceNeedsPersistSync,
 } from '@/lib/order-price';
+import { SupabaseService } from '@/lib/supabase-service';
 import { Order, Screen, Partner } from '@/types';
 
 const POCKETBASE_URL = config.pocketbase.url;
@@ -130,9 +131,11 @@ export class PocketBaseService {
     const url = `/records?${queryParams}`;
     
     const response = await this.makeRequestWithRetry(url);
-    
+    const items = response.items || [];
+    const specPriceMap = await SupabaseService.getOrderSpecPriceMap(items.map((o: Order) => o.id));
+
     return {
-      items: normalizeOrders(response.items || []),
+      items: normalizeOrders(items, specPriceMap),
       totalItems: response.totalItems || 0,
       totalPages: response.totalPages || 0,
     };
@@ -145,9 +148,14 @@ export class PocketBaseService {
 
   /** Jei details.total ≠ final_price — pataiso PB fone (be skaičiuoklės refresh). */
   static async syncOrderPriceIfNeeded(order: Order): Promise<Order> {
-    const { needed, canonicalPrice } = orderPriceNeedsPersistSync(order);
+    const specPriceMap = await SupabaseService.getOrderSpecPriceMap([order.id]);
+    if (specPriceMap[order.id]) {
+      return normalizeOrder(order, specPriceMap);
+    }
+
+    const { needed, canonicalPrice } = orderPriceNeedsPersistSync(order, specPriceMap);
     if (!needed) {
-      return normalizeOrder(order);
+      return normalizeOrder(order, specPriceMap);
     }
 
     try {
@@ -155,16 +163,17 @@ export class PocketBaseService {
         method: 'PATCH',
         body: JSON.stringify({ final_price: canonicalPrice }),
       });
-      return normalizeOrder(updated);
+      return normalizeOrder(updated, specPriceMap);
     } catch (error) {
       console.warn('Order price sync failed:', order.id, error);
-      return normalizeOrder(order);
+      return normalizeOrder(order, specPriceMap);
     }
   }
 
-  private static hydrateOrder(raw: Order): Order {
-    const normalized = normalizeOrder(raw);
-    const { needed, canonicalPrice } = orderPriceNeedsPersistSync(raw);
+  private static async hydrateOrder(raw: Order): Promise<Order> {
+    const specPriceMap = await SupabaseService.getOrderSpecPriceMap([raw.id]);
+    const normalized = normalizeOrder(raw, specPriceMap);
+    const { needed, canonicalPrice } = orderPriceNeedsPersistSync(raw, specPriceMap);
 
     if (needed) {
       void this.makeRequestWithRetry(`/records/${raw.id}`, {
@@ -182,7 +191,9 @@ export class PocketBaseService {
     // Debounce search requests
     return this.queueRequest(async () => {
       const response = await this.makeRequestWithRetry(`/records?filter=(client~"${query}" || agency~"${query}" || invoice_id~"${query}")&perPage=25`);
-      return normalizeOrders(response.items || []);
+      const items = response.items || [];
+      const specPriceMap = await SupabaseService.getOrderSpecPriceMap(items.map((o: Order) => o.id));
+      return normalizeOrders(items, specPriceMap);
     });
   }
 
@@ -191,7 +202,8 @@ export class PocketBaseService {
       method: 'PATCH',
       body: JSON.stringify(data),
     });
-    return normalizeOrder(updated);
+    const specPriceMap = await SupabaseService.getOrderSpecPriceMap([id]);
+    return normalizeOrder(updated, specPriceMap);
   }
 
   static async deleteOrder(id: string): Promise<void> {
@@ -236,7 +248,9 @@ export class PocketBaseService {
       
       try {
         const response = await this.makeRequestWithRetry(`/records?filter=(${batchFilter})&perPage=${batchSize}`);
-        results.push(...normalizeOrders(response.items || []));
+        const items = response.items || [];
+        const specPriceMap = await SupabaseService.getOrderSpecPriceMap(items.map((o: Order) => o.id));
+        results.push(...normalizeOrders(items, specPriceMap));
       } catch (error) {
         console.error('❌ Batch request failed:', error);
       }
