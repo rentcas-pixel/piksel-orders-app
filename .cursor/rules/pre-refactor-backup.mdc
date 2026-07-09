@@ -1,0 +1,38 @@
+---
+description: Pilnas sistemos backup prieš refaktorą (2026-07-09) — git, duomenys, storage
+alwaysApply: true
+---
+
+# Pre-refactor backup (2026-07-09)
+
+Prieš didesnį order-list / period-tab refaktorą padarytas pilnas backup.
+
+## Git
+- Tag ir branch: `backup/pre-refactor-20260709`
+- Commit: `9422111` (`main`)
+- Repo: `rentcas-pixel/piksel-orders-app`
+
+## Lokalus duomenų backup
+- Katalogas: `backups/pre-refactor-20260709-152113/`
+- Archyvas: `backups/pre-refactor-20260709-152113.tar.gz` (~389 MB)
+- `backups/` yra `.gitignore` — necommitinti
+
+### Turinys
+- `pocketbase/` — orders (3194), quotes, screens, partners, bundles
+- `supabase/` — visos prod lentelės (JSON)
+- `storage/files/` — 1460 Storage failų (~405 MB)
+- `schema/migrations/` — Supabase migracijos
+
+## Komandos
+- `npm run backup:full` — PB + Supabase + schema + Storage
+- `npm run backup:storage` — tik Storage į paskutinį ar nurodytą backup katalogą
+- Skriptai: `scripts/full-system-backup.ts`, `scripts/download-storage-backup.ts`
+
+## Atkūrimas
+- Kodas: `git checkout backup/pre-refactor-20260709`
+- Duomenys: JSON eksportai + `storage/files/` (rankinis importas į PB/Supabase jei reikės)
+
+## Kontekstas refaktorui
+- Split-aware Einamos / Būsimos / Buvusios jau įgyvendinta (`order-billing-periods.ts`, `agency-orders.ts`)
+- Planuojamas struktūrinis refaktoras (ne funkcionalumo keitimas): bendras order-list pipeline, periodų modulio suvienodinimas, `OrdersTable` / `EditOrderModal` skaidymas
+- Prieš didelius refaktorius: priminti apie šį backup ir `npm run backup:full` jei praėjo laiko

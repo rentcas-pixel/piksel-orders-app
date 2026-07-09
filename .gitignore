@@ -33,6 +33,9 @@ yarn-error.log*
 # env files (opt-in for committing if needed)
 .env*
 
+# local full-system backups (contains production data)
+/backups/
+
 # vercel
 .vercel
 

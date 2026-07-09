@@ -11,8 +11,9 @@ import { downloadExcel } from '@/lib/export-excel';
 import type { TableTheme } from '@/lib/order-design-variants';
 import { getTableTheme } from '@/lib/table-theme';
 import { buildOrdersListFilter, resolveListMonthYear, isSplitAwareOrdersPeriodTab, type OrdersListFilters, type OrdersPeriodTab } from '@/lib/orders-filters';
+import { fetchHubOrdersForPeriodTab } from '@/lib/hub-orders';
 import { isMultiMonthOrder } from '@/lib/invoice-utils';
-import { orderMatchesBillingPeriodFilter, orderHasNonContinuousBilling, filterOrdersForPeriodTab } from '@/lib/order-billing-periods';
+import { orderMatchesBillingPeriodFilter, orderHasNonContinuousBilling } from '@/lib/order-billing-periods';
 import { BillingGapsIndicator } from '@/components/BillingGapsIndicator';
 import { OrderSpecIndicator } from '@/components/OrderSpecIndicator';
 import type { OrderBillingPeriod } from '@/types';
@@ -386,85 +387,18 @@ export function OrdersTable({
     });
   }, [sortField, sortDirection]);
 
+  const hubFilterParams = useMemo(
+    () => ({ searchQuery, filters, periodTab }),
+    [searchQuery, filters, periodTab]
+  );
+
   const buildFilterString = useCallback(() => {
-    if (portalStyle) {
-      return buildOrdersListFilter({
-        searchQuery,
-        filters,
-        periodTab,
-        widePeriodTab: isSplitAwareOrdersPeriodTab(periodTab),
-      });
-    }
-
-    const filtersArray = [];
-    
-    // Add search query filter
-    if (searchQuery.trim()) {
-      // Check if searching for "viad" to include viaduct orders
-      if (searchQuery.toLowerCase().startsWith('viad')) {
-        filtersArray.push(`(client~"${searchQuery}" || agency~"${searchQuery}" || invoice_id~"${searchQuery}" || viaduct=true)`);
-      } else {
-        filtersArray.push(`(client~"${searchQuery}" || agency~"${searchQuery}" || invoice_id~"${searchQuery}")`);
-      }
-    }
-    
-    // Status filter - handle boolean conversion
-    if (filters.status) {
-      if (filters.status === 'taip') {
-        filtersArray.push(`approved=true`);
-      } else if (filters.status === 'ne') {
-        filtersArray.push(`approved=false`);
-      }
-    }
-    
-    // Client filter
-    if (filters.client.trim()) {
-      filtersArray.push(`client~"${filters.client}"`);
-    }
-    
-    // Agency filter
-    if (filters.agency.trim()) {
-      filtersArray.push(`agency~"${filters.agency}"`);
-    }
-    
-    // Media received filter
-    if (filters.media_received) {
-      if (filters.media_received === 'true') {
-        filtersArray.push(`media_received=true`);
-      } else if (filters.media_received === 'false') {
-        filtersArray.push(`media_received=false`);
-      }
-    }
-
-    // Date filters - show orders that overlap with selected period
-    const { month: resolvedMonth, year: resolvedYear } = resolveListMonthYear(
-      filters.month,
-      filters.year
-    );
-    if (resolvedMonth && resolvedYear) {
-      const y = parseInt(resolvedYear, 10);
-      const m = parseInt(resolvedMonth, 10);
-      const lastDay = new Date(y, m, 0).getDate(); // last day of month (Feb=28, etc.)
-      const startDate = `${resolvedYear}-${resolvedMonth}-01`;
-      const endDate = `${resolvedYear}-${resolvedMonth}-${String(lastDay).padStart(2, '0')}`;
-      // Show orders that overlap with the selected month:
-      // - order starts before month ends AND order ends after month starts
-      filtersArray.push(`(from<="${endDate}" && to>="${startDate}")`);
-    } else if (resolvedYear) {
-      const startDate = `${resolvedYear}-01-01`;
-      const endDate = `${resolvedYear}-12-31`;
-      // Show orders that overlap with the selected year.
-      filtersArray.push(`(from<="${endDate}" && to>="${startDate}")`);
-    }
-    
-    // If no filters, return empty string
-    if (filtersArray.length === 0) {
-      return '';
-    }
-    
-    const result = filtersArray.join(' && ');
-    return result;
-  }, [searchQuery, filters, portalStyle, periodTab]);
+    return buildOrdersListFilter({
+      ...hubFilterParams,
+      periodTab: portalStyle ? periodTab : undefined,
+      widePeriodTab: portalStyle && isSplitAwareOrdersPeriodTab(periodTab),
+    });
+  }, [hubFilterParams, portalStyle]);
 
   const handleSort = (field: string) => {
     if (sortField === field) {
@@ -666,15 +600,44 @@ export function OrdersTable({
           Boolean(resolvedMonth && resolvedYear) ||
           splitPeriodTabActive;
         const serverSortField = invoiceSort ? 'updated' : sortField;
+        const sortString = `${sortDirection === 'desc' ? '-' : ''}${serverSortField}`;
+        const getOrders = (opts: Parameters<typeof PocketBaseService.getOrders>[0]) =>
+          PocketBaseService.getOrders(opts).then((page) => ({
+            items: page.items ?? [],
+            totalItems: page.totalItems ?? 0,
+            totalPages: page.totalPages ?? 1,
+          }));
 
-        const result = await PocketBaseService.getOrders({
-          page: needsExpandedFetch ? 1 : currentPage,
-          perPage: needsExpandedFetch ? 500 : 20,
-          sort: `${sortDirection === 'desc' ? '-' : ''}${serverSortField}`,
-          filter: filterString
-        });
+        let fetchedOrders: Order[];
+        let serverTotalPages = 1;
+        let serverTotalItems = 0;
 
-        const fetchedOrders = result.items || [];
+        if (splitPeriodTabActive) {
+          const result = await fetchHubOrdersForPeriodTab({
+            filterParams: hubFilterParams,
+            page: needsExpandedFetch ? 1 : currentPage,
+            perPage: needsExpandedFetch ? 500 : 20,
+            sort: sortString,
+            getOrders,
+          });
+          fetchedOrders = result.items;
+          if (!needsExpandedFetch) {
+            serverTotalPages = result.totalPages;
+            serverTotalItems = result.totalItems;
+          }
+        } else {
+          const result = await PocketBaseService.getOrders({
+            page: needsExpandedFetch ? 1 : currentPage,
+            perPage: needsExpandedFetch ? 500 : 20,
+            sort: sortString,
+            filter: filterString,
+          });
+          fetchedOrders = result.items || [];
+          if (!needsExpandedFetch) {
+            serverTotalPages = result.totalPages;
+            serverTotalItems = result.totalItems;
+          }
+        }
         const statusMap = await SupabaseService.getMonthInvoiceStatuses(fetchedOrders, billingContext);
         setInvoiceStatuses(statusMap);
         const activityMap = await SupabaseService.getOrderCommentOrScreenshotMap(fetchedOrders.map(item => item.id));
@@ -697,13 +660,6 @@ export function OrdersTable({
               resolvedYear!,
               periodsMap[order.id]
             )
-          );
-        }
-        if (splitPeriodTabActive) {
-          processedOrders = filterOrdersForPeriodTab(
-            processedOrders,
-            periodTab,
-            periodsMap
           );
         }
         if (invoiceFilterActive) {
@@ -736,8 +692,8 @@ export function OrdersTable({
           if (currentPage > computedTotalPages) setCurrentPage(1);
         } else {
           setOrders(processedOrders);
-          setTotalPages(result.totalPages);
-          setTotalItems(result.totalItems);
+          setTotalPages(serverTotalPages);
+          setTotalItems(serverTotalItems);
         }
       } catch {
         console.error('❌ Failed to fetch orders');

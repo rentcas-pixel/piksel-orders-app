@@ -1,44 +1,17 @@
 import { format, startOfDay, subDays, subMonths } from 'date-fns';
+import {
+  getPeriodTabPocketBaseFilter,
+  isSplitAwarePeriodTab,
+  type OrderListPeriodTab,
+} from '@/lib/order-period-tabs';
 
-export type OrdersPeriodTab = 'all' | 'current' | 'future' | 'past';
+export type OrdersPeriodTab = OrderListPeriodTab;
 export type OrdersViewMode = 'list' | 'calendar';
-
-function todayIso(): string {
-  return format(startOfDay(new Date()), 'yyyy-MM-dd');
-}
-
-function getPeriodFilter(tab: OrdersPeriodTab): string {
-  const today = todayIso();
-  switch (tab) {
-    case 'current':
-      return `(from<="${today}" && to>="${today}")`;
-    case 'future':
-      return `from>"${today}"`;
-    case 'past':
-      return `to<"${today}"`;
-    default:
-      return '';
-  }
-}
-
-function getPeriodTabWideFilter(tab: OrdersPeriodTab): string {
-  const today = todayIso();
-  switch (tab) {
-    case 'current':
-      return `(from<="${today}" && to>="${today}")`;
-    case 'future':
-      return `to>="${today}"`;
-    case 'past':
-      return `from<="${today}"`;
-    default:
-      return '';
-  }
-}
 
 export function isSplitAwareOrdersPeriodTab(
   tab: OrdersPeriodTab | undefined
 ): tab is 'current' | 'future' | 'past' {
-  return tab === 'current' || tab === 'future' || tab === 'past';
+  return isSplitAwarePeriodTab(tab);
 }
 
 export interface OrdersListFilters {
@@ -189,9 +162,7 @@ export function buildOrdersListFilter(params: {
   }
 
   if (periodTab) {
-    const periodFilter = widePeriodTab
-      ? getPeriodTabWideFilter(periodTab)
-      : getPeriodFilter(periodTab);
+    const periodFilter = getPeriodTabPocketBaseFilter(periodTab, { wide: widePeriodTab });
     if (periodFilter) parts.push(periodFilter);
   }
 
