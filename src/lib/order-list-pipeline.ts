@@ -15,7 +15,7 @@ export type OrdersPageResult<T extends Pick<Order, 'id' | 'from' | 'to'>> = {
   totalPages: number;
 };
 
-export type OrdersFetcher<T> = (params: {
+export type OrdersFetcher<T extends Pick<Order, 'id' | 'from' | 'to'>> = (params: {
   page: number;
   perPage: number;
   sort: string;
