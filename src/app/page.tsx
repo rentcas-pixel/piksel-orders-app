@@ -39,6 +39,7 @@ import { BankSubTabsNav } from '@/components/BankSubTabsNav';
 import { ReceivedInvoiceService } from '@/lib/received-invoice-service';
 import { InvoiceService } from '@/lib/invoice-service';
 import type { CombinedInvoiceCandidate } from '@/lib/combined-invoice';
+import type { OrdersListFilters } from '@/lib/orders-filters';
 import { BankImportProgressToast } from '@/components/BankImportProgressToast';
 import { ReminderNotifications } from '@/components/ReminderNotifications';
 import { EmailAgentPanel } from '@/components/EmailAgentPanel';
@@ -85,7 +86,7 @@ export default function Home() {
   const [issuedBatchImportOpen, setIssuedBatchImportOpen] = useState(false);
   const [bankImportOpen, setBankImportOpen] = useState(false);
   const [ordersViewMode, setOrdersViewMode] = useState<OrdersViewMode>('list');
-  const [filters, setFilters] = useState({
+  const [filters, setFilters] = useState<OrdersListFilters>({
     status: '',
     month: '',
     year: '2026',

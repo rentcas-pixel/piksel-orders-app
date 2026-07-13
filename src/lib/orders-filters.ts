@@ -18,6 +18,8 @@ export interface OrdersListFilters {
   status: string;
   month: string;
   year: string;
+  dateFrom: string;
+  dateTo: string;
   client: string;
   agency: string;
   media_received: string;
