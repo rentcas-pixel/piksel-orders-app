@@ -4,6 +4,7 @@ import {
   computeReceivedInvoiceTotals,
   ReceivedInvoiceService,
 } from '@/lib/received-invoice-service';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ReceivedInvoice, ReceivedInvoiceInput } from '@/types';
 
 export const BATCH_IMPORT_MAX_FILES = 100;
@@ -113,28 +114,34 @@ export async function scanReceivedInvoiceFile(
 
 export async function saveReceivedInvoiceFromExtraction(
   file: File,
-  input: ReceivedInvoiceInput
+  input: ReceivedInvoiceInput,
+  options?: { client?: SupabaseClient }
 ): Promise<{ invoice: ReceivedInvoice; action: 'created' | 'updated' }> {
-  const duplicate = await ReceivedInvoiceService.findDuplicate(input);
+  const client = options?.client;
+  const duplicate = await ReceivedInvoiceService.findDuplicate(input, undefined, client);
 
   let invoice: ReceivedInvoice;
   let action: 'created' | 'updated';
 
   if (duplicate) {
-    invoice = await ReceivedInvoiceService.update(duplicate.id, input);
+    invoice = await ReceivedInvoiceService.update(duplicate.id, input, client);
     action = 'updated';
   } else {
-    invoice = await ReceivedInvoiceService.create(input);
+    invoice = await ReceivedInvoiceService.create(input, client);
     action = 'created';
   }
 
   try {
-    const uploaded = await ReceivedInvoiceService.uploadFile(invoice.id, file);
-    invoice = await ReceivedInvoiceService.update(invoice.id, {
-      ...input,
-      file_url: uploaded.file_url,
-      file_name: uploaded.file_name,
-    });
+    const uploaded = await ReceivedInvoiceService.uploadFile(invoice.id, file, client);
+    invoice = await ReceivedInvoiceService.update(
+      invoice.id,
+      {
+        ...input,
+        file_url: uploaded.file_url,
+        file_name: uploaded.file_name,
+      },
+      client
+    );
   } catch (uploadError) {
     console.error('received invoice file upload:', uploadError);
   }

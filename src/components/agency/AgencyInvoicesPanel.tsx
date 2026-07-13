@@ -16,6 +16,8 @@ export function AgencyInvoicesPanel({ agency, portalMode = false }: AgencyInvoic
   const [searchQuery, setSearchQuery] = useState('');
   const [month, setMonth] = useState('');
   const [year, setYear] = useState(String(new Date().getFullYear()));
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [paymentFilter, setPaymentFilter] = useState<IssuedInvoicePaymentFilter>('all');
   const debouncedSearch = useDebouncedSearchQuery(searchQuery);
 
@@ -24,9 +26,17 @@ export function AgencyInvoicesPanel({ agency, portalMode = false }: AgencyInvoic
       <InvoicesFiltersBar
         month={month}
         year={year}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
         onMonthYearChange={(nextMonth, nextYear) => {
           setMonth(nextMonth);
           setYear(nextYear);
+          setDateFrom('');
+          setDateTo('');
+        }}
+        onDateRangeChange={(nextFrom, nextTo) => {
+          setDateFrom(nextFrom);
+          setDateTo(nextTo);
         }}
         paymentFilter={paymentFilter}
         onPaymentFilterChange={setPaymentFilter}
@@ -40,6 +50,8 @@ export function AgencyInvoicesPanel({ agency, portalMode = false }: AgencyInvoic
         onSearchInputChange={setSearchQuery}
         month={month}
         year={year}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
         paymentFilter={paymentFilter}
       />
     </>

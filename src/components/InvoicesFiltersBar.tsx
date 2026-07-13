@@ -1,6 +1,7 @@
 'use client';
 
 import { FilterTabGroup } from '@/components/FilterTabGroup';
+import { InvoiceDateRangeFilter } from '@/components/InvoiceDateRangeFilter';
 import { MonthTabNavigator } from '@/components/MonthTabNavigator';
 import { getYearTabOptions } from '@/lib/filter-options';
 import {
@@ -11,7 +12,10 @@ import {
 interface InvoicesFiltersBarProps {
   month: string;
   year: string;
+  dateFrom: string;
+  dateTo: string;
   onMonthYearChange: (month: string, year: string) => void;
+  onDateRangeChange: (dateFrom: string, dateTo: string) => void;
   paymentFilter: IssuedInvoicePaymentFilter;
   onPaymentFilterChange: (filter: IssuedInvoicePaymentFilter) => void;
   hidePaymentFilter?: boolean;
@@ -20,7 +24,10 @@ interface InvoicesFiltersBarProps {
 export function InvoicesFiltersBar({
   month,
   year,
+  dateFrom,
+  dateTo,
   onMonthYearChange,
+  onDateRangeChange,
   paymentFilter,
   onPaymentFilterChange,
   hidePaymentFilter = false,
@@ -38,6 +45,11 @@ export function InvoicesFiltersBar({
           value={year || String(new Date().getFullYear())}
           options={getYearTabOptions()}
           onChange={(v) => onMonthYearChange(month, v)}
+        />
+        <InvoiceDateRangeFilter
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          onChange={onDateRangeChange}
         />
         {!hidePaymentFilter && (
           <FilterTabGroup

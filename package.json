@@ -10,7 +10,13 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "backup:full": "tsx scripts/full-system-backup.ts",
-    "backup:storage": "tsx scripts/download-storage-backup.ts"
+    "backup:storage": "tsx scripts/download-storage-backup.ts",
+    "watch:invoices": "tsx scripts/watch-received-invoices.ts",
+    "stop:invoices": "tsx scripts/stop-watch-invoices.ts",
+    "install:watch-service": "bash scripts/install-watch-service.sh",
+    "uninstall:watch-service": "bash scripts/uninstall-watch-service.sh",
+    "import:invoices-folder": "tsx scripts/import-invoice-folder.ts",
+    "organize:invoices": "tsx scripts/organize-invoice-files.ts"
   },
   "dependencies": {
     "@headlessui/react": "^2.2.7",
@@ -46,6 +52,7 @@
     "eslint": "^9",
     "eslint-config-next": "^15.5.10",
     "tailwindcss": "^3.4.17",
+    "tsx": "^4.23.1",
     "typescript": "^5",
     "vitest": "^4.1.9"
   }

@@ -1,7 +1,18 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { sanitizeStorageKeySegment } from '@/lib/storage-path';
 import { supabase } from '@/lib/supabase';
+import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { calculateVat, VAT_RATE } from '@/lib/invoice-utils';
 import { getEffectivePaidAmount, isFullyPaid } from '@/lib/payment-allocation';
 import type { ReceivedInvoice, ReceivedInvoiceInput } from '@/types';
+
+function resolveClient(client?: SupabaseClient): SupabaseClient {
+  return client ?? supabase;
+}
+
+export function createReceivedInvoiceAdminClient(): SupabaseClient {
+  return createSupabaseAdminClient();
+}
 
 export const EXPENSE_CATEGORIES = [
   { value: 'nuoma', label: 'Nuoma' },
@@ -230,14 +241,16 @@ export class ReceivedInvoiceService {
       ReceivedInvoiceInput,
       'seller_name' | 'seller_company_code' | 'seller_vat_code' | 'invoice_number'
     >,
-    excludeId?: string
+    excludeId?: string,
+    client?: SupabaseClient
   ): Promise<ReceivedInvoice | null> {
+    const db = resolveClient(client);
     const number = input.invoice_number?.trim();
     if (!number) return null;
 
     const code = input.seller_company_code?.trim();
     if (code) {
-      let query = supabase
+      let query = db
         .from('received_invoices')
         .select('*')
         .eq('seller_company_code', code)
@@ -250,7 +263,7 @@ export class ReceivedInvoiceService {
 
     const vat = input.seller_vat_code?.trim();
     if (vat) {
-      let query = supabase
+      let query = db
         .from('received_invoices')
         .select('*')
         .eq('seller_vat_code', vat)
@@ -263,7 +276,7 @@ export class ReceivedInvoiceService {
 
     const name = input.seller_name?.trim();
     if (name) {
-      let query = supabase.from('received_invoices').select('*').eq('invoice_number', number);
+      let query = db.from('received_invoices').select('*').eq('invoice_number', number);
       if (excludeId) query = query.neq('id', excludeId);
       const { data, error } = await query;
       if (error) {
@@ -278,22 +291,28 @@ export class ReceivedInvoiceService {
     return null;
   }
 
-  static async create(input: ReceivedInvoiceInput): Promise<ReceivedInvoice> {
+  static async create(input: ReceivedInvoiceInput, client?: SupabaseClient): Promise<ReceivedInvoice> {
+    const db = resolveClient(client);
     let payload = prepareDbPayload(input, true);
-    let result = await supabase.from('received_invoices').insert([payload]).select().single();
+    let result = await db.from('received_invoices').insert([payload]).select().single();
 
     if (result.error && isMissingCurrencyColumnError(result.error)) {
       payload = prepareDbPayload(input, false);
-      result = await supabase.from('received_invoices').insert([payload]).select().single();
+      result = await db.from('received_invoices').insert([payload]).select().single();
     }
 
     if (result.error) throw result.error;
     return decodeCurrency(result.data);
   }
 
-  static async update(id: string, input: ReceivedInvoiceInput): Promise<ReceivedInvoice> {
+  static async update(
+    id: string,
+    input: ReceivedInvoiceInput,
+    client?: SupabaseClient
+  ): Promise<ReceivedInvoice> {
+    const db = resolveClient(client);
     let payload = prepareDbPayload(input, true);
-    let result = await supabase
+    let result = await db
       .from('received_invoices')
       .update(payload)
       .eq('id', id)
@@ -302,7 +321,7 @@ export class ReceivedInvoiceService {
 
     if (result.error && isMissingCurrencyColumnError(result.error)) {
       payload = prepareDbPayload(input, false);
-      result = await supabase
+      result = await db
         .from('received_invoices')
         .update(payload)
         .eq('id', id)
@@ -360,7 +379,12 @@ export class ReceivedInvoiceService {
     return decodeCurrency(data);
   }
 
-  static async uploadFile(invoiceId: string, file: File): Promise<{ file_url: string; file_name: string }> {
+  static async uploadFile(
+    invoiceId: string,
+    file: File,
+    client?: SupabaseClient
+  ): Promise<{ file_url: string; file_name: string }> {
+    const db = resolveClient(client);
     const safeBaseName = file.name.replace(/[/\\]/g, '-');
     const isPdf =
       safeBaseName.toLowerCase().endsWith('.pdf') ||
@@ -371,14 +395,15 @@ export class ReceivedInvoiceService {
     let contentType: string;
 
     if (isPdf) {
-      const stem = safeBaseName.replace(/\.pdf$/i, '').trim() || 'invoice';
+      const stem =
+        sanitizeStorageKeySegment(safeBaseName.replace(/\.pdf$/i, '').trim() || 'invoice');
       const buf = await file.arrayBuffer();
       storagePath = `received-invoices/${invoiceId}/${Date.now()}_${stem}.pdf`;
       body = new Blob([buf], { type: 'application/pdf' });
       contentType = 'application/pdf';
 
       let uploadError = (
-        await supabase.storage.from('files').upload(storagePath, body, { contentType })
+        await db.storage.from('files').upload(storagePath, body, { contentType })
       ).error;
 
       if (uploadError && /mime|content.?type/i.test(uploadError.message)) {
@@ -386,24 +411,25 @@ export class ReceivedInvoiceService {
         body = new Blob([buf], { type: 'image/png' });
         contentType = 'image/png';
         uploadError = (
-          await supabase.storage.from('files').upload(storagePath, body, { contentType })
+          await db.storage.from('files').upload(storagePath, body, { contentType })
         ).error;
       }
 
       if (uploadError) throw uploadError;
     } else {
-      storagePath = `received-invoices/${invoiceId}/${Date.now()}_${safeBaseName}`;
+      const safeName = sanitizeStorageKeySegment(safeBaseName);
+      storagePath = `received-invoices/${invoiceId}/${Date.now()}_${safeName}`;
       body = file;
       contentType = resolveUploadContentType(file);
 
-      const { error: uploadError } = await supabase.storage
+      const { error: uploadError } = await db.storage
         .from('files')
         .upload(storagePath, body, { contentType });
 
       if (uploadError) throw uploadError;
     }
 
-    const { data: urlData } = supabase.storage.from('files').getPublicUrl(storagePath);
+    const { data: urlData } = db.storage.from('files').getPublicUrl(storagePath);
     if (!urlData.publicUrl) {
       throw new Error('Nepavyko gauti failo URL');
     }

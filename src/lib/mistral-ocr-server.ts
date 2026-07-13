@@ -10,6 +10,7 @@ import {
   parseMistralIssuedInvoiceAnnotation,
   type MistralIssuedInvoiceExtraction,
 } from '@/lib/mistral-issued-invoice-ocr';
+import { sanitizeMistralUploadFilename } from '@/lib/storage-path';
 
 const MISTRAL_API_BASE = 'https://api.mistral.ai/v1';
 
@@ -40,9 +41,10 @@ async function uploadMistralFile(
   buffer: Buffer,
   filename: string
 ): Promise<string> {
+  const safeFilename = sanitizeMistralUploadFilename(filename);
   const formData = new FormData();
   formData.append('purpose', 'ocr');
-  formData.append('file', new Blob([new Uint8Array(buffer)]), filename);
+  formData.append('file', new Blob([new Uint8Array(buffer)]), safeFilename);
 
   const response = await fetch(`${MISTRAL_API_BASE}/files`, {
     method: 'POST',

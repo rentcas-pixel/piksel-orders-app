@@ -19,6 +19,12 @@ import { InvoiceListTotalsSummary } from '@/components/InvoiceListTotalsSummary'
 import { sumInvoiceAmountBreakdowns } from '@/lib/invoice-utils';
 import { resolveListMonthYear } from '@/lib/orders-filters';
 import {
+  formatInvoiceListPeriodLabel,
+  invoiceMatchesListPeriod,
+  isCustomInvoiceDateRange,
+  resolveInvoiceFetchRange,
+} from '@/lib/balance-summary';
+import {
   matchesIssuedInvoicePaymentFilter,
   type IssuedInvoicePaymentFilter,
 } from '@/lib/issued-invoice-filters';
@@ -47,6 +53,8 @@ interface ReceivedInvoicesTableProps {
   onSearchInputChange?: (query: string) => void;
   month: string;
   year: string;
+  dateFrom?: string;
+  dateTo?: string;
   statusFilter: IssuedInvoicePaymentFilter;
   refreshKey: number;
   onNewInvoice: () => void;
@@ -77,6 +85,8 @@ export function ReceivedInvoicesTable({
   onSearchInputChange,
   month,
   year,
+  dateFrom = '',
+  dateTo = '',
   statusFilter,
   refreshKey,
   onNewInvoice,
@@ -109,14 +119,21 @@ export function ReceivedInvoicesTable({
     }
   }, [downloadingId, zipping]);
 
+  const fetchRange = useMemo(
+    () => resolveInvoiceFetchRange({ month, year, dateFrom, dateTo }),
+    [month, year, dateFrom, dateTo]
+  );
+
   const loadInvoices = useCallback(async () => {
     setLoading(true);
     try {
-      setInvoices(await ReceivedInvoiceService.getAll());
+      setInvoices(
+        await ReceivedInvoiceService.getAllForDateRange(fetchRange.start, fetchRange.end)
+      );
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [fetchRange.start, fetchRange.end]);
 
   useEffect(() => {
     void loadInvoices();
@@ -136,12 +153,19 @@ export function ReceivedInvoicesTable({
     [month, year]
   );
 
+  const useCustomRange = isCustomInvoiceDateRange(dateFrom, dateTo);
+  const periodLabel = useMemo(
+    () => formatInvoiceListPeriodLabel({ month, year, dateFrom, dateTo }),
+    [month, year, dateFrom, dateTo]
+  );
+
   const filtered = useMemo(() => {
-    const periodPrefix = `${resolvedYear}-${resolvedMonth}`;
     const q = searchQuery.trim().toLowerCase();
 
     return invoices.filter((inv) => {
-      if (!inv.invoice_date.startsWith(periodPrefix)) return false;
+      if (!invoiceMatchesListPeriod(inv.invoice_date, month, year, dateFrom, dateTo)) {
+        return false;
+      }
 
       const payment = receivedToPaymentRow(inv);
       if (!matchesIssuedInvoicePaymentFilter(payment.status, statusFilter)) return false;
@@ -159,7 +183,7 @@ export function ReceivedInvoicesTable({
         .toLowerCase();
       return haystack.includes(q);
     });
-  }, [invoices, searchQuery, resolvedMonth, resolvedYear, statusFilter]);
+  }, [invoices, searchQuery, month, year, dateFrom, dateTo, statusFilter]);
 
   const sorted = useMemo(() => {
     if (overdueSort) {
@@ -204,14 +228,18 @@ export function ReceivedInvoicesTable({
 
     setZipping(true);
     try {
-      await downloadReceivedInvoicesZip(downloadableInvoices, resolvedYear, resolvedMonth);
+      const zipYear = useCustomRange
+        ? `${dateFrom || 'start'}_${dateTo || 'end'}`
+        : resolvedYear;
+      const zipMonth = useCustomRange ? '' : resolvedMonth;
+      await downloadReceivedInvoicesZip(downloadableInvoices, zipYear, zipMonth);
     } catch (error) {
       console.error('Download received invoices ZIP:', error);
       alert(error instanceof Error ? error.message : 'Nepavyko atsisiųsti ZIP.');
     } finally {
       setZipping(false);
     }
-  }, [downloadableInvoices, downloadingId, resolvedMonth, resolvedYear, zipping]);
+  }, [downloadableInvoices, downloadingId, dateFrom, dateTo, resolvedMonth, resolvedYear, useCustomRange, zipping]);
 
   return (
     <div className={portalCardClass}>
@@ -356,13 +384,21 @@ export function ReceivedInvoicesTable({
             ) : filtered.length === 0 ? (
               <tr>
                 <td colSpan={8} className={`${portalTdClass} py-10 text-center text-gray-500`}>
-                  {statusFilter === 'all'
-                    ? 'Šį mėnesį gautų sąskaitų nerasta.'
-                    : statusFilter === 'paid'
-                      ? 'Šį mėnesį apmokėtų sąskaitų nerasta.'
-                      : statusFilter === 'overdue'
-                        ? 'Šį mėnesį vėluojančių sąskaitų nerasta.'
-                        : 'Šį mėnesį neapmokėtų sąskaitų nerasta.'}
+                  {(() => {
+                    const periodWord = useCustomRange
+                      ? `laikotarpiu (${periodLabel})`
+                      : 'šį mėnesį';
+                    if (statusFilter === 'all') {
+                      return `Pasirinktu ${periodWord} gautų sąskaitų nerasta.`;
+                    }
+                    if (statusFilter === 'paid') {
+                      return `Pasirinktu ${periodWord} apmokėtų sąskaitų nerasta.`;
+                    }
+                    if (statusFilter === 'overdue') {
+                      return `Pasirinktu ${periodWord} vėluojančių sąskaitų nerasta.`;
+                    }
+                    return `Pasirinktu ${periodWord} neapmokėtų sąskaitų nerasta.`;
+                  })()}
                 </td>
               </tr>
             ) : (

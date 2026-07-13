@@ -17,7 +17,12 @@ import {
   matchesIssuedInvoicePaymentFilter,
   type IssuedInvoicePaymentFilter,
 } from '@/lib/issued-invoice-filters';
-import { invoiceMatchesPeriod } from '@/lib/balance-summary';
+import {
+  formatInvoiceListPeriodLabel,
+  invoiceMatchesListPeriod,
+  isCustomInvoiceDateRange,
+  resolveInvoiceFetchRange,
+} from '@/lib/balance-summary';
 import { resolveListMonthYear } from '@/lib/orders-filters';
 import {
   portalCardClass,
@@ -45,6 +50,8 @@ interface InvoicesTableProps {
   onSearchInputChange?: (query: string) => void;
   month: string;
   year: string;
+  dateFrom?: string;
+  dateTo?: string;
   paymentFilter?: IssuedInvoicePaymentFilter;
   refreshKey?: number;
   onNewInvoice?: () => void;
@@ -61,13 +68,14 @@ function formatDate(value: string) {
 }
 
 export function InvoicesTable({
-  agency,
   portalMode = false,
   searchQuery,
   searchInput,
   onSearchInputChange,
   month,
   year,
+  dateFrom = '',
+  dateTo = '',
   paymentFilter = 'all',
   refreshKey = 0,
   onNewInvoice,
@@ -82,6 +90,11 @@ export function InvoicesTable({
   const [overdueSort, setOverdueSort] = useState<OverdueSortDirection | null>(null);
   const [numberSort, setNumberSort] = useState<OverdueSortDirection | null>(null);
 
+  const fetchRange = useMemo(
+    () => resolveInvoiceFetchRange({ month, year, dateFrom, dateTo }),
+    [month, year, dateFrom, dateTo]
+  );
+
   const loadInvoices = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
@@ -89,7 +102,9 @@ export function InvoicesTable({
       if (portalMode) {
         setInvoices(await fetchAgencyInvoices());
       } else {
-        setInvoices(await InvoiceService.getAll());
+        setInvoices(
+          await InvoiceService.getAllForDateRange(fetchRange.start, fetchRange.end)
+        );
       }
     } catch (error) {
       console.error('Sąskaitos:', error);
@@ -100,7 +115,7 @@ export function InvoicesTable({
     } finally {
       setLoading(false);
     }
-  }, [portalMode]);
+  }, [portalMode, fetchRange.start, fetchRange.end]);
 
   useEffect(() => {
     void loadInvoices();
@@ -135,9 +150,21 @@ export function InvoicesTable({
   );
 
   const periodInvoices = useMemo(() => {
-    if (!resolvedYear) return invoices;
-    return invoices.filter((inv) => invoiceMatchesPeriod(inv.invoice_date, month, year));
-  }, [invoices, month, year, resolvedYear]);
+    if (portalMode) {
+      if (!resolvedYear) return invoices;
+      return invoices.filter((inv) =>
+        invoiceMatchesListPeriod(inv.invoice_date, month, year, dateFrom, dateTo)
+      );
+    }
+    return invoices;
+  }, [invoices, portalMode, month, year, dateFrom, dateTo, resolvedYear]);
+
+  const periodLabel = useMemo(
+    () => formatInvoiceListPeriodLabel({ month, year, dateFrom, dateTo }),
+    [month, year, dateFrom, dateTo]
+  );
+
+  const useCustomRange = isCustomInvoiceDateRange(dateFrom, dateTo);
 
   const filtered = useMemo(() => {
     return periodInvoices.filter((inv) => {
@@ -200,15 +227,19 @@ export function InvoicesTable({
       return 'Sąskaitų nerasta.';
     }
     if (portalMode && !loading && invoices.length > 0 && periodInvoices.length === 0) {
+      if (useCustomRange) {
+        return `Pasirinktame laikotarpyje (${periodLabel}) sąskaitų nėra.`;
+      }
       if (!resolvedMonth) {
         return `Šiais metais (${resolvedYear}) sąskaitų nėra. Iš viso turite ${invoices.length} sąskaitų — pabandykite kitus metus.`;
       }
       return `Šį mėnesį sąskaitų nėra. Iš viso turite ${invoices.length} sąskaitų — pasirinkite kitą mėnesį arba „Visi“.`;
     }
-    if (paymentFilter === 'all') return 'Šį mėnesį sąskaitų nerasta.';
-    if (paymentFilter === 'paid') return 'Šį mėnesį apmokėtų sąskaitų nerasta.';
-    if (paymentFilter === 'overdue') return 'Šį mėnesį vėluojančių sąskaitų nerasta.';
-    return 'Šį mėnesį neapmokėtų sąskaitų nerasta.';
+    const periodWord = useCustomRange ? `laikotarpiu (${periodLabel})` : 'šį mėnesį';
+    if (paymentFilter === 'all') return `Pasirinktu ${periodWord} sąskaitų nerasta.`;
+    if (paymentFilter === 'paid') return `Pasirinktu ${periodWord} apmokėtų sąskaitų nerasta.`;
+    if (paymentFilter === 'overdue') return `Pasirinktu ${periodWord} vėluojančių sąskaitų nerasta.`;
+    return `Pasirinktu ${periodWord} neapmokėtų sąskaitų nerasta.`;
   }, [
     loadError,
     portalMode,
@@ -218,6 +249,8 @@ export function InvoicesTable({
     resolvedMonth,
     resolvedYear,
     paymentFilter,
+    useCustomRange,
+    periodLabel,
   ]);
 
   const invoicesWithFile = useMemo(
@@ -229,7 +262,11 @@ export function InvoicesTable({
     if (zipping || downloadingId || filtered.length === 0) return;
     setZipping(true);
     try {
-      await downloadInvoicesZip(filtered, resolvedYear, resolvedMonth);
+      const zipYear = useCustomRange
+        ? `${dateFrom || 'start'}_${dateTo || 'end'}`
+        : resolvedYear;
+      const zipMonth = useCustomRange ? '' : resolvedMonth;
+      await downloadInvoicesZip(filtered, zipYear, zipMonth);
     } catch (error) {
       console.error('ZIP:', error);
       alert('Klaida generuojant ZIP archyvą');

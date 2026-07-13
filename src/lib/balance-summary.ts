@@ -74,6 +74,77 @@ export function invoiceMatchesPeriod(
   return invoiceDate.startsWith(prefix);
 }
 
+export function invoiceMatchesDateRange(
+  invoiceDate: string,
+  dateFrom: string,
+  dateTo: string
+): boolean {
+  if (dateFrom && invoiceDate < dateFrom) return false;
+  if (dateTo && invoiceDate > dateTo) return false;
+  return true;
+}
+
+export function isCustomInvoiceDateRange(dateFrom: string, dateTo: string): boolean {
+  return Boolean(dateFrom || dateTo);
+}
+
+export function resolveInvoiceFetchRange(params: {
+  month: string;
+  year: string;
+  dateFrom?: string;
+  dateTo?: string;
+}): { start: string; end: string; useCustomRange: boolean } {
+  const dateFrom = params.dateFrom?.trim() ?? '';
+  const dateTo = params.dateTo?.trim() ?? '';
+
+  if (isCustomInvoiceDateRange(dateFrom, dateTo)) {
+    return {
+      start: dateFrom || '1970-01-01',
+      end: dateTo || '2099-12-31',
+      useCustomRange: true,
+    };
+  }
+
+  const { start, end } = getPeriodDateRange(params.month, params.year);
+  return { start, end, useCustomRange: false };
+}
+
+export function formatInvoiceListPeriodLabel(params: {
+  month: string;
+  year: string;
+  dateFrom?: string;
+  dateTo?: string;
+}): string {
+  const dateFrom = params.dateFrom?.trim() ?? '';
+  const dateTo = params.dateTo?.trim() ?? '';
+
+  if (isCustomInvoiceDateRange(dateFrom, dateTo)) {
+    if (dateFrom && dateTo) return `${dateFrom} – ${dateTo}`;
+    if (dateFrom) return `nuo ${dateFrom}`;
+    return `iki ${dateTo}`;
+  }
+
+  if (params.month) {
+    return getMonthLabel(params.month, params.year);
+  }
+
+  const { year: resolvedYear } = resolveListMonthYear(params.month, params.year);
+  return resolvedYear || String(new Date().getFullYear());
+}
+
+export function invoiceMatchesListPeriod(
+  invoiceDate: string,
+  month: string,
+  year: string,
+  dateFrom?: string,
+  dateTo?: string
+): boolean {
+  if (isCustomInvoiceDateRange(dateFrom ?? '', dateTo ?? '')) {
+    return invoiceMatchesDateRange(invoiceDate, dateFrom ?? '', dateTo ?? '');
+  }
+  return invoiceMatchesPeriod(invoiceDate, month, year);
+}
+
 export function computeBalanceSummary(
   invoices: Invoice[],
   received: ReceivedInvoice[],

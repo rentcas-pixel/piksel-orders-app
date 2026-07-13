@@ -1,6 +1,7 @@
 'use client';
 
 import { FilterTabGroup } from '@/components/FilterTabGroup';
+import { InvoiceDateRangeFilter } from '@/components/InvoiceDateRangeFilter';
 import { MonthTabNavigator } from '@/components/MonthTabNavigator';
 import { yearTabs } from '@/lib/filter-options';
 import {
@@ -11,7 +12,10 @@ import {
 interface ReceivedInvoicesFiltersBarProps {
   month: string;
   year: string;
+  dateFrom: string;
+  dateTo: string;
   onMonthYearChange: (month: string, year: string) => void;
+  onDateRangeChange: (dateFrom: string, dateTo: string) => void;
   statusFilter: IssuedInvoicePaymentFilter;
   onStatusFilterChange: (status: IssuedInvoicePaymentFilter) => void;
 }
@@ -19,7 +23,10 @@ interface ReceivedInvoicesFiltersBarProps {
 export function ReceivedInvoicesFiltersBar({
   month,
   year,
+  dateFrom,
+  dateTo,
   onMonthYearChange,
+  onDateRangeChange,
   statusFilter,
   onStatusFilterChange,
 }: ReceivedInvoicesFiltersBarProps) {
@@ -32,6 +39,11 @@ export function ReceivedInvoicesFiltersBar({
           value={year || '2026'}
           options={yearTabs}
           onChange={(v) => onMonthYearChange(month, v)}
+        />
+        <InvoiceDateRangeFilter
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          onChange={onDateRangeChange}
         />
         <FilterTabGroup
           label="Apmokėjimas"

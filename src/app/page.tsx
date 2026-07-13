@@ -38,7 +38,6 @@ import { BankDashboardPanel } from '@/components/BankDashboardPanel';
 import { BankSubTabsNav } from '@/components/BankSubTabsNav';
 import { ReceivedInvoiceService } from '@/lib/received-invoice-service';
 import { InvoiceService } from '@/lib/invoice-service';
-import { resolveListMonthYear } from '@/lib/orders-filters';
 import type { CombinedInvoiceCandidate } from '@/lib/combined-invoice';
 import { BankImportProgressToast } from '@/components/BankImportProgressToast';
 import { ReminderNotifications } from '@/components/ReminderNotifications';
@@ -90,6 +89,8 @@ export default function Home() {
     status: '',
     month: '',
     year: '2026',
+    dateFrom: '',
+    dateTo: '',
     client: '',
     agency: '',
     media_received: '',
@@ -341,7 +342,14 @@ export default function Home() {
             <InvoicesFiltersBar
               month={filters.month}
               year={filters.year}
-              onMonthYearChange={(month, year) => setFilters((prev) => ({ ...prev, month, year }))}
+              dateFrom={filters.dateFrom}
+              dateTo={filters.dateTo}
+              onMonthYearChange={(month, year) =>
+                setFilters((prev) => ({ ...prev, month, year, dateFrom: '', dateTo: '' }))
+              }
+              onDateRangeChange={(dateFrom, dateTo) =>
+                setFilters((prev) => ({ ...prev, dateFrom, dateTo }))
+              }
               paymentFilter={issuedPaymentFilter}
               onPaymentFilterChange={setIssuedPaymentFilter}
             />
@@ -365,6 +373,8 @@ export default function Home() {
               onSearchInputChange={setSearchQuery}
               month={filters.month}
               year={filters.year}
+              dateFrom={filters.dateFrom}
+              dateTo={filters.dateTo}
               paymentFilter={issuedPaymentFilter}
               refreshKey={refreshKey}
               onNewInvoice={handleNewStandaloneInvoice}
@@ -377,7 +387,14 @@ export default function Home() {
             <ReceivedInvoicesFiltersBar
               month={filters.month}
               year={filters.year}
-              onMonthYearChange={(month, year) => setFilters((prev) => ({ ...prev, month, year }))}
+              dateFrom={filters.dateFrom}
+              dateTo={filters.dateTo}
+              onMonthYearChange={(month, year) =>
+                setFilters((prev) => ({ ...prev, month, year, dateFrom: '', dateTo: '' }))
+              }
+              onDateRangeChange={(dateFrom, dateTo) =>
+                setFilters((prev) => ({ ...prev, dateFrom, dateTo }))
+              }
               statusFilter={expensesStatusFilter}
               onStatusFilterChange={setExpensesStatusFilter}
             />
@@ -391,6 +408,8 @@ export default function Home() {
               onSearchInputChange={setSearchQuery}
               month={filters.month}
               year={filters.year}
+              dateFrom={filters.dateFrom}
+              dateTo={filters.dateTo}
               statusFilter={expensesStatusFilter}
               refreshKey={refreshKey}
               onNewInvoice={() => setReceivedInvoiceModal({ invoice: null, isNew: true })}
