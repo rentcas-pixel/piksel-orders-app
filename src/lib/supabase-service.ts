@@ -18,6 +18,7 @@ import {
   type BillingMonthInvoiceFlags,
 } from '@/lib/invoice-month-status';
 import { isMultiMonthOrder } from '@/lib/invoice-utils';
+import { getVilniusDayUtcBounds } from '@/lib/vilnius-date';
 
 /** Nuotraukos ir Excel (.xls / .xlsx) rodomi užsakymo modalo „Printscreens“ skiltyje */
 function isPrintscreenPanelFile(
@@ -559,6 +560,19 @@ export class SupabaseService {
       .select('*')
       .order('approved_at', { ascending: false })
       .limit(limit);
+
+    if (error) throw error;
+    return data || [];
+  }
+
+  static async getApprovalEventsForVilniusDay(dateKey: string): Promise<OrderApprovalEvent[]> {
+    const { start, end } = getVilniusDayUtcBounds(dateKey);
+    const { data, error } = await supabase
+      .from('order_approval_events')
+      .select('*')
+      .gte('approved_at', start)
+      .lt('approved_at', end)
+      .order('approved_at', { ascending: false });
 
     if (error) throw error;
     return data || [];

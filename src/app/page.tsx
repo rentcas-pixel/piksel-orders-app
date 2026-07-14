@@ -42,8 +42,6 @@ import type { CombinedInvoiceCandidate } from '@/lib/combined-invoice';
 import type { OrdersListFilters } from '@/lib/orders-filters';
 import { BankImportProgressToast } from '@/components/BankImportProgressToast';
 import { ReminderNotifications } from '@/components/ReminderNotifications';
-import { EmailAgentPanel } from '@/components/EmailAgentPanel';
-import { EmailAutoSync } from '@/components/EmailAutoSync';
 import { WeekNumbersModal } from '@/components/WeekNumbersModal';
 import { PocketBaseService } from '@/lib/pocketbase';
 import {
@@ -235,8 +233,7 @@ export default function Home() {
           {activeTab !== 'latest' &&
             activeTab !== 'orders' &&
             activeTab !== 'invoices' &&
-            activeTab !== 'bank' &&
-            activeTab !== 'email' && (
+            activeTab !== 'bank' && (
             <PortalFiltersBar
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}
@@ -465,16 +462,6 @@ export default function Home() {
               />
               <ChartsAnalysis filters={debouncedFilters} />
             </div>
-          )}
-
-          {activeTab === 'email' && isAdmin && (
-            <>
-              <EmailAutoSync
-                enabled
-                onNewEmails={() => setRefreshKey((prev) => prev + 1)}
-              />
-              <EmailAgentPanel refreshKey={refreshKey} searchQuery={debouncedSearch} />
-            </>
           )}
 
         </main>

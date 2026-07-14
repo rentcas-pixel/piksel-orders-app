@@ -11,9 +11,12 @@ import {
   fileKey,
   importInvoiceFile,
   listInvoiceFiles,
+  listSkippedCandidateFiles,
   loadEnvLocal,
+  relocateSkippedFile,
   FAILED_DIR,
   PROCESSED_DIR,
+  SKIPPED_DIR,
 } from './invoice-folder-import';
 import { getWatchFolder } from './invoice-month-folders';
 import { acquireWatcherLock } from './watch-invoices-lock';
@@ -35,10 +38,12 @@ async function main(): Promise<void> {
   const watchFolder = getWatchFolder();
   const processedDir = path.join(watchFolder, PROCESSED_DIR);
   const failedDir = path.join(watchFolder, FAILED_DIR);
+  const skippedDir = path.join(watchFolder, SKIPPED_DIR);
 
   fs.mkdirSync(watchFolder, { recursive: true });
   fs.mkdirSync(processedDir, { recursive: true });
   fs.mkdirSync(failedDir, { recursive: true });
+  fs.mkdirSync(skippedDir, { recursive: true });
   acquireWatcherLock(watchFolder);
 
   const processing = new Set<string>();
@@ -87,6 +92,11 @@ async function main(): Promise<void> {
 
   function scanFolder(): void {
     if (queue.length > 0 || processing.size > 0) return;
+
+    for (const filePath of listSkippedCandidateFiles(watchFolder)) {
+      relocateSkippedFile(filePath, watchFolder, skippedDir);
+    }
+
     for (const filePath of listInvoiceFiles(watchFolder)) {
       enqueueIfNew(filePath);
     }
@@ -95,7 +105,7 @@ async function main(): Promise<void> {
   console.log('🔍 Gautų sąskaitų stebėtojas paleistas');
   console.log(`   Aplankas: ${watchFolder}`);
   console.log(`   Įkelkite PDF arba paveikslėlį — importas vyks automatiškai`);
-  console.log(`   Sėkmė → Piksel-{mėnuo}/, klaida → ${FAILED_DIR}/`);
+  console.log(`   Sėkmė → Piksel-{mėnuo}/, klaida → ${FAILED_DIR}/, praleista → ${SKIPPED_DIR}/`);
   console.log('   Sustabdyti: Ctrl+C arba npm run stop:invoices\n');
 
   scanFolder();

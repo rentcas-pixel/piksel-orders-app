@@ -18,7 +18,7 @@ const MONTH_FOLDER_NAMES: Record<number, string> = {
 };
 
 const DEFAULT_WATCH_FOLDER =
-  '/Users/renatasparojus/Documents/Piksel/Retai/Piksel-finansai/Cursor';
+  '/Users/renatasparojus/Documents/Piksel/Retai/01_Finansai/Piksel-finansai/Cursor';
 
 export function getWatchFolder(): string {
   return (process.env.RECEIVED_INVOICE_WATCH_FOLDER?.trim() || DEFAULT_WATCH_FOLDER).replace(

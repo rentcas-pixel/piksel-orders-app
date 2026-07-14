@@ -13,7 +13,7 @@ import {
 } from './invoice-folder-import';
 
 const DEFAULT_WATCH_FOLDER =
-  '/Users/renatasparojus/Documents/Piksel/Retai/Piksel-finansai/Cursor';
+  '/Users/renatasparojus/Documents/Piksel/Retai/01_Finansai/Piksel-finansai/Cursor';
 
 async function main(): Promise<void> {
   loadEnvLocal();

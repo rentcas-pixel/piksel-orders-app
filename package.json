@@ -16,7 +16,8 @@
     "install:watch-service": "bash scripts/install-watch-service.sh",
     "uninstall:watch-service": "bash scripts/uninstall-watch-service.sh",
     "import:invoices-folder": "tsx scripts/import-invoice-folder.ts",
-    "organize:invoices": "tsx scripts/organize-invoice-files.ts"
+    "organize:invoices": "tsx scripts/organize-invoice-files.ts",
+    "cleanup:month-folder": "tsx scripts/cleanup-monthly-folder.ts"
   },
   "dependencies": {
     "@headlessui/react": "^2.2.7",

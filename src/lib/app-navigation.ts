@@ -1,4 +1,11 @@
-export type AppTab = 'orders' | 'invoices' | 'bank' | 'email' | 'revenue' | 'partners' | 'agencies' | 'analytics' | 'latest';
+export type AppTab = 'orders' | 'invoices' | 'bank' | 'revenue' | 'partners' | 'agencies' | 'analytics' | 'latest';
+
+export type LatestSubTab = 'approved' | 'unapproved';
+
+export const LATEST_SUB_TABS: { value: LatestSubTab; label: string }[] = [
+  { value: 'approved', label: 'Patvirtinti' },
+  { value: 'unapproved', label: 'Nepatvirtinti' },
+];
 
 export type InvoicesSubTab = 'issued' | 'received' | 'balance' | 'clients';
 
@@ -31,10 +38,6 @@ export const PAGE_META: Record<AppTab, { title: string; description: string }> =
     title: 'Bankas',
     description: 'Banko pavedimai, apžvalga, sudengimas ir balansas.',
   },
-  email: {
-    title: 'Paštas',
-    description: 'AI el. pašto asistentas — laiškų analizė ir atsakymai.',
-  },
   revenue: {
     title: 'Ekranų pajamos',
     description: 'Pajamos pagal ekranus ir pasirinktą laikotarpį.',
@@ -49,7 +52,7 @@ export const PAGE_META: Record<AppTab, { title: string; description: string }> =
   },
   latest: {
     title: 'Naujausi',
-    description: 'Neseniai patvirtinti užsakymai.',
+    description: 'Neseniai patvirtinti ir nepatvirtinti užsakymai.',
   },
   analytics: {
     title: 'Analizė',
@@ -66,7 +69,6 @@ export const APP_TABS: AppTab[] = [
   'analytics',
   'invoices',
   'bank',
-  'email',
 ];
 
 export const STAFF_APP_TABS: AppTab[] = [
@@ -79,7 +81,7 @@ export const STAFF_APP_TABS: AppTab[] = [
   'invoices',
 ];
 
-export const ADMIN_ONLY_APP_TABS: AppTab[] = ['bank', 'email'];
+export const ADMIN_ONLY_APP_TABS: AppTab[] = ['bank'];
 
 export const STAFF_INVOICES_SUB_TABS: InvoicesSubTab[] = ['issued'];
 

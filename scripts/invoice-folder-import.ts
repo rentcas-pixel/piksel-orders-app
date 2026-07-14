@@ -10,9 +10,14 @@ import {
   getArchiveBaseDir,
   resolveMonthlyFolder,
 } from './invoice-month-folders';
+import {
+  getSkipReason,
+  isImportableInvoiceFilename,
+} from './invoice-heuristics';
 
 export const PROCESSED_DIR = 'apdorotos';
 export const FAILED_DIR = 'klaidos';
+export const SKIPPED_DIR = 'praleisti';
 
 function isEnoentError(error: unknown): boolean {
   return (
@@ -82,7 +87,35 @@ export function listInvoiceFiles(folder: string): string[] {
     .filter((entry) => entry.isFile())
     .filter((entry) => !entry.name.startsWith('.'))
     .filter((entry) => isSupportedReceivedInvoiceFilename(entry.name))
+    .filter((entry) => isImportableInvoiceFilename(entry.name))
     .map((entry) => path.join(folder, entry.name));
+}
+
+export function listSkippedCandidateFiles(folder: string): string[] {
+  if (!fs.existsSync(folder)) return [];
+
+  return fs
+    .readdirSync(folder, { withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .filter((entry) => !entry.name.startsWith('.'))
+    .filter((entry) => isSupportedReceivedInvoiceFilename(entry.name))
+    .filter((entry) => !isImportableInvoiceFilename(entry.name))
+    .map((entry) => path.join(folder, entry.name));
+}
+
+export function relocateSkippedFile(
+  filePath: string,
+  watchFolder: string,
+  skippedDir: string
+): boolean {
+  const filename = path.basename(filePath);
+  const reason = getSkipReason(filename);
+  if (!reason || !fs.existsSync(filePath)) return false;
+
+  const destination = uniqueDestination(skippedDir, filename);
+  moveFile(filePath, destination);
+  console.log(`⏭️  ${filename} → ${path.relative(watchFolder, destination)} (${reason})`);
+  return true;
 }
 
 export function resolveInvoiceFilePath(folder: string, filename: string): string | null {
