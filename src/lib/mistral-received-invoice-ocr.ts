@@ -54,7 +54,12 @@ Datos formatas: YYYY-MM-DD.
 Sumos su dviem skaitmenimis po kablelio.
 Jei sąskaita USD ar kita valiuta — nurodyk currency (EUR, USD, GBP) ir sumas toje valiutoje.
 Suma be PVM = amount, PVM = vat_amount (0 jei užsienio sąskaita be PVM), su PVM = total_amount.
-Tiekėjas yra tas, kas išrašė sąskaitą (pardavėjas), ne pirkėjas.`;
+
+Tiekėjas (seller_*) = kas IŠRAŠĖ sąskaitą (pardavėjas), NIEKADA pirkėjas/mokėtojas.
+UAB "Videoarchitektai" / Piksel (įm.k. 304500899, PVM LT100011114017) šiose gautose sąskaitose beveik visada yra MOKĖTOJAS — jų nedėk į seller_*.
+Jei dokumente yra "Sąskaitą išrašė: …" — tai seller_name.
+Individualios veiklos sąskaitose tiekėjas dažnai pažymėtas kaip "Gavėjas", o Videoarchitektai — kaip "Mokėtojas"; tada seller_* = Gavėjas (pvz. Margarita Kapčiuvienė), be Videoarchitektų kodų.
+Jei PVM netaikomas ir mokėtina suma = eilutės suma — vat_amount = 0, amount = total_amount.`;
 
 function parseNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value;

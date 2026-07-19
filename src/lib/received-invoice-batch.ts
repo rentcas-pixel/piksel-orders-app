@@ -45,6 +45,15 @@ export function extractionToReceivedInvoiceInput(
     amount = data.amount && data.amount > 0 ? data.amount : data.total_amount ?? 0;
     vat_amount = 0;
     total_amount = data.total_amount && data.total_amount > 0 ? data.total_amount : amount;
+  } else if (
+    amount > 0 &&
+    (data.vat_amount === 0 || data.vat_amount == null) &&
+    total_amount > 0 &&
+    Math.abs(total_amount - amount) < 0.02
+  ) {
+    // Individual activity / no-VAT invoices: keep amount === total, vat 0
+    vat_amount = 0;
+    total_amount = amount;
   } else if (amount > 0) {
     const totals = computeReceivedInvoiceTotals(amount);
     amount = totals.amount;

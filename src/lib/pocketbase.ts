@@ -444,6 +444,43 @@ export class PocketBaseService {
     return items;
   }
 
+  /** Ekranai media patikrai (pavadinimas + rezoliucija) */
+  static async getScreensForMediaCheck(
+    screenIds: string[]
+  ): Promise<Array<{ id: string; name: string; resolution?: string | null }>> {
+    const uniqueIds = [...new Set(screenIds)].filter(Boolean);
+    if (uniqueIds.length === 0) return [];
+
+    try {
+      const filter = uniqueIds.map((id) => `id="${id}"`).join(' || ');
+      const url = `${POCKETBASE_URL}/api/collections/${SCREENS_COLLECTION}/records?filter=(${filter})&perPage=200&fields=id,name,resolution`;
+      const response = await fetch(url, {
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!response.ok) return [];
+
+      const data = await response.json();
+      const items = (data.items || []) as Array<{
+        id: string;
+        name?: string;
+        resolution?: string | null;
+      }>;
+
+      const byId = new Map(items.map((item) => [item.id, item]));
+      return uniqueIds.map((id) => {
+        const item = byId.get(id);
+        return {
+          id,
+          name: item?.name || `ID: ${id.slice(0, 8)}…`,
+          resolution: item?.resolution ?? null,
+        };
+      });
+    } catch {
+      return [];
+    }
+  }
+
   /** Visi ekranai skaičiuoklės eksportui (su kainomis, OTS) */
   static async getCampaignScreens(viaduct: boolean): Promise<Record<string, unknown>[]> {
     const cacheKey = viaduct ? 'v' : 'u';

@@ -194,7 +194,9 @@ export async function processReceivedInvoiceOcr(
   filename: string,
   mimeType: string
 ): Promise<MistralReceivedInvoiceExtraction> {
-  return processMistralOcr(apiKey, buffer, filename, mimeType, runMistralOcr);
+  const { guardReceivedInvoiceSeller } = await import('@/lib/received-invoice-seller-guard');
+  const extracted = await processMistralOcr(apiKey, buffer, filename, mimeType, runMistralOcr);
+  return guardReceivedInvoiceSeller(extracted, buffer, mimeType);
 }
 
 export async function processIssuedInvoiceOcr(

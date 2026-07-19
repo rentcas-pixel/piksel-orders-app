@@ -20,7 +20,6 @@ const NON_IMPORTABLE_FILENAME_PATTERNS = [
   /važtarašt/i,
   /transaction[_\s-]?no/i,
   /operacij/i,
-  /videoarchitekt/i,
   /diodu[-_]?architekt/i,
   /\bval-\d+/i,
   /screenshot/i,
@@ -54,54 +53,58 @@ const IMPORTABLE_FILENAME_PATTERNS = [
 const UUID_IMAGE_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(-\d+)?\.(jpe?g|png|webp)$/i;
 
+// Own issued / internal docs that sometimes land in the watch folder.
+// Do NOT match bare "Videoarchitektai" or DF_ — suppliers put the buyer name in
+// filenames, and DF_ is Digital Foot (UAB Skaitmeninė Pėda) received invoices.
 const VIDEOARCH_FILENAME_PATTERNS = [
-  /videoarchitekt/i,
   /diodu[-_]?architekt/i,
-  /\bgijo_/i,
-  /\bvia\d/i,
-  /\bpkl\s+\d/i,
   /\bdet\d+/i,
-  /\bdf_\d/i,
   /\bsf\s+\d{4}-\d{2}/i,
-  /\bmc\d/i,
   /\bmcš/i,
   /\bevsa\b/i,
-  /202606-\d+\s+dom/i,
+  /^PIK[\s_-]*\d+/i,
 ];
 
+/** macOS often stores Lithuanian filenames as NFD; regexes use NFC forms. */
+function normalizeFilename(filename: string): string {
+  return filename.normalize('NFC').trim();
+}
+
 export function isSupportedInvoiceFilename(filename: string): boolean {
-  const name = filename.toLowerCase();
+  const name = normalizeFilename(filename).toLowerCase();
   return name.endsWith('.pdf') || /\.(jpe?g|png|webp)$/i.test(name);
 }
 
 export function isNonImportableFilename(filename: string): boolean {
-  const name = filename.trim();
+  const name = normalizeFilename(filename);
   if (!name) return true;
   return NON_IMPORTABLE_FILENAME_PATTERNS.some((pattern) => pattern.test(name));
 }
 
 export function isUuidOnlyImageFilename(filename: string): boolean {
-  return UUID_IMAGE_PATTERN.test(filename.trim());
+  return UUID_IMAGE_PATTERN.test(normalizeFilename(filename));
 }
 
 export function isVideoarchitektaiFilename(filename: string): boolean {
-  return VIDEOARCH_FILENAME_PATTERNS.some((pattern) => pattern.test(filename));
+  return VIDEOARCH_FILENAME_PATTERNS.some((pattern) => pattern.test(normalizeFilename(filename)));
 }
 
 export function isImportableInvoiceFilename(filename: string): boolean {
-  if (!isSupportedInvoiceFilename(filename)) return false;
-  if (isNonImportableFilename(filename)) return false;
-  if (isUuidOnlyImageFilename(filename)) return false;
-  if (isVideoarchitektaiFilename(filename)) return false;
-  return IMPORTABLE_FILENAME_PATTERNS.some((pattern) => pattern.test(filename));
+  const name = normalizeFilename(filename);
+  if (!isSupportedInvoiceFilename(name)) return false;
+  if (isNonImportableFilename(name)) return false;
+  if (isUuidOnlyImageFilename(name)) return false;
+  if (isVideoarchitektaiFilename(name)) return false;
+  return IMPORTABLE_FILENAME_PATTERNS.some((pattern) => pattern.test(name));
 }
 
 export function getSkipReason(filename: string): string | null {
-  if (!isSupportedInvoiceFilename(filename)) return 'Nepalaikomas formatas';
-  if (isVideoarchitektaiFilename(filename)) return 'Videoarchitektų dokumentas';
-  if (isUuidOnlyImageFilename(filename)) return 'Kvitai be aiškaus pavadinimo';
-  if (isNonImportableFilename(filename)) return 'Ne sąskaita (bankas, kurjeris, sutartis ir pan.)';
-  if (!IMPORTABLE_FILENAME_PATTERNS.some((pattern) => pattern.test(filename))) {
+  const name = normalizeFilename(filename);
+  if (!isSupportedInvoiceFilename(name)) return 'Nepalaikomas formatas';
+  if (isVideoarchitektaiFilename(name)) return 'Videoarchitektų dokumentas';
+  if (isUuidOnlyImageFilename(name)) return 'Kvitai be aiškaus pavadinimo';
+  if (isNonImportableFilename(name)) return 'Ne sąskaita (bankas, kurjeris, sutartis ir pan.)';
+  if (!IMPORTABLE_FILENAME_PATTERNS.some((pattern) => pattern.test(name))) {
     return 'Neatpažintas kaip sąskaita';
   }
   return null;

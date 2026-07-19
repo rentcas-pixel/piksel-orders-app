@@ -58,6 +58,7 @@ import {
   modalBtnSecondary,
 } from '@/lib/portal-ui';
 import { StatusIconButton } from '@/components/StatusIconButton';
+import { OrderMediaCheckModal } from '@/components/OrderMediaCheckModal';
 
 interface EditOrderModalProps {
   order: Order | null;
@@ -118,6 +119,7 @@ export function EditOrderModal({
   const [pendingPrintscreens, setPendingPrintscreens] = useState<FileAttachment[]>([]);
   const [quote, setQuote] = useState<{ link: string; viaduct_link: string } | null>(null);
   const [attachmentUploading, setAttachmentUploading] = useState(false);
+  const [mediaCheckOpen, setMediaCheckOpen] = useState(false);
   const [exportPartners, setExportPartners] = useState<OrderExportPartner[]>([]);
   const [exportPartnersLoading, setExportPartnersLoading] = useState(false);
   const [exportingPartnerId, setExportingPartnerId] = useState<string | null>(null);
@@ -980,7 +982,10 @@ export function EditOrderModal({
 
   if (!isOpen || !order) return null;
 
+  const orderScreenIds = [...new Set((order.screens || []).filter(Boolean))];
+
   return (
+    <>
     <div 
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
       role="dialog"
@@ -1017,6 +1022,17 @@ export function EditOrderModal({
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-1.5">
               <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Media</span>
+              {!isAgency && (
+                <button
+                  type="button"
+                  title="Tikrinti klipų rezoliucijas"
+                  aria-label="Tikrinti klipų rezoliucijas"
+                  onClick={() => setMediaCheckOpen(true)}
+                  className="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-300 transition-colors hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:ring-gray-600 dark:hover:bg-gray-700 dark:hover:text-white"
+                >
+                  Tikrinti
+                </button>
+              )}
               <StatusIconButton
                 active={!!formData.media_received}
                 label={formData.media_received ? 'Media gauta' : 'Media negauta'}
@@ -1812,5 +1828,20 @@ export function EditOrderModal({
         </div>
       </div>
     </div>
+
+    {!isAgency && (
+      <OrderMediaCheckModal
+        isOpen={mediaCheckOpen}
+        orderId={order.id}
+        screenIds={orderScreenIds}
+        mediaReceived={!!formData.media_received}
+        onClose={() => setMediaCheckOpen(false)}
+        onMarkMediaReceived={() => {
+          handleInputChange('media_received', true);
+          setMediaCheckOpen(false);
+        }}
+      />
+    )}
+    </>
   );
 }

@@ -37,6 +37,7 @@ export interface Screen {
   type?: string;
   viaduct?: boolean;
   partner?: string; // Partner ID
+  resolution?: string;
 }
 
 export interface Partner {
