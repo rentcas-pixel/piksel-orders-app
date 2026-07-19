@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildMediaBriefHtml,
+  buildMediaBriefText,
   collectRequiredResolutions,
   evaluateMediaResolutions,
   formatResolution,
@@ -40,6 +42,30 @@ describe('collectRequiredResolutions', () => {
     expect(required[0].key).toBe('1152x576');
     expect(required[0].screenNames).toEqual(['Ozas', 'Senukai']);
     expect(required[1].label).toBe(formatResolution({ width: 448, height: 672 }));
+  });
+});
+
+describe('buildMediaBriefText', () => {
+  it('lists resolutions for email copy-paste', () => {
+    const required = collectRequiredResolutions([
+      { name: 'Ozas', resolution: '1152 x 576' },
+      { name: 'Kalvarijų', resolution: '448 x 672' },
+    ]);
+    const text = buildMediaBriefText(required);
+    expect(text).toBe(
+      [
+        'Reikalingi šie klipai:',
+        '',
+        '• 1152 × 576 — Ozas',
+        '• 448 × 672 — Kalvarijų',
+      ].join('\n')
+    );
+
+    const html = buildMediaBriefHtml(required);
+    expect(html).toContain('<table');
+    expect(html).toContain('1152 × 576');
+    expect(html).toContain('Ozas');
+    expect(html).toContain('Kalvarijų');
   });
 });
 
