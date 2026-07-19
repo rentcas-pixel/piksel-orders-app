@@ -117,31 +117,25 @@ export function buildMediaBriefText(required: RequiredResolution[]): string {
   return lines.join('\n');
 }
 
-/** HTML table for rich paste into Gmail / Docs. */
+/** HTML list for rich paste into Gmail / Docs (no bold, no table). */
 export function buildMediaBriefHtml(required: RequiredResolution[]): string {
-  const rows =
+  const items =
     required.length === 0
-      ? `<tr><td colspan="2">(rezoliucijų sąrašas tuščias)</td></tr>`
+      ? '<li>(rezoliucijų sąrašas tuščias)</li>'
       : required
           .map((item) => {
             const screens =
               item.screenNames.length > 0
-                ? escapeHtml(item.screenNames.join(', '))
-                : '—';
-            return `<tr><td style="padding:6px 10px;border:1px solid #d1d5db;white-space:nowrap;">${escapeHtml(item.label)}</td><td style="padding:6px 10px;border:1px solid #d1d5db;">${screens}</td></tr>`;
+                ? ` — ${escapeHtml(item.screenNames.join(', '))}`
+                : '';
+            return `<li>${escapeHtml(item.label)}${screens}</li>`;
           })
           .join('');
 
   return [
-    '<div>',
-    '<p style="margin:0 0 10px 0;"><strong>Reikalingi šie klipai:</strong></p>',
-    '<table style="border-collapse:collapse;font-family:Arial,sans-serif;font-size:14px;">',
-    '<thead><tr>',
-    '<th style="padding:6px 10px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Rezoliucija (px)</th>',
-    '<th style="padding:6px 10px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Ekranai</th>',
-    '</tr></thead>',
-    `<tbody>${rows}</tbody>`,
-    '</table>',
+    '<div style="font-family:Arial,sans-serif;font-size:14px;">',
+    '<p style="margin:0 0 8px 0;">Reikalingi šie klipai:</p>',
+    `<ul style="margin:0;padding-left:20px;">${items}</ul>`,
     '</div>',
   ].join('');
 }

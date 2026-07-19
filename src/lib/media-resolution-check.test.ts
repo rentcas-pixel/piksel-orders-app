@@ -62,10 +62,11 @@ describe('buildMediaBriefText', () => {
     );
 
     const html = buildMediaBriefHtml(required);
-    expect(html).toContain('<table');
-    expect(html).toContain('1152 × 576');
-    expect(html).toContain('Ozas');
-    expect(html).toContain('Kalvarijų');
+    expect(html).toContain('<ul');
+    expect(html).not.toContain('<strong>');
+    expect(html).not.toContain('<table');
+    expect(html).toContain('1152 × 576 — Ozas');
+    expect(html).toContain('448 × 672 — Kalvarijų');
   });
 });
 
