@@ -173,8 +173,20 @@ export class InvoiceService {
         ? (await this.getById(invoiceHint.id)) ?? invoiceHint
         : null;
 
-    const latest = fromHint ?? (await this.getLatestForOrder(order.id));
+    // Atidaryta konkreti sąskaita (pvz. iš sąrašo) — grąžiname ją.
+    if (fromHint) return fromHint;
+
+    const latest = await this.getLatestForOrder(order.id);
     if (!latest || isStandaloneInvoiceOrder(order.id)) return latest;
+
+    // Metinė / kelių mėnesių: kiekvienam mėnesiui atskira sąskaita.
+    // Jei filtrui mėnesiui dar nėra — null (nauja), ne „paskutinė“.
+    if (isMultiMonthOrder(order)) {
+      if (isFullCampaignInvoice(latest, order)) return latest;
+      if (!resolvedMonth || !resolvedYear) return null;
+      return this.getForOrderBillingMonth(order.id, resolvedMonth, resolvedYear);
+    }
+
     if (!resolvedMonth || !resolvedYear) return latest;
     if (isFullCampaignInvoice(latest, order)) return latest;
 

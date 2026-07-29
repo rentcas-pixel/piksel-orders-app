@@ -35,6 +35,7 @@ import {
   type InvoiceAmountMode,
 } from '@/lib/invoice-utils';
 import { getMonthFilterLabel } from '@/lib/filter-options';
+import { randomId } from '@/lib/random-id';
 import {
   buildLineDescription,
   formatLineDescriptionForLocale,
@@ -59,7 +60,7 @@ interface StandaloneLine {
 
 function createStandaloneLine(overrides: Partial<StandaloneLine> = {}): StandaloneLine {
   return {
-    key: `line-${crypto.randomUUID()}`,
+    key: `line-${randomId()}`,
     description: '',
     amount: 0,
     ...overrides,
@@ -139,16 +140,101 @@ export function InvoiceModal({
   );
 
   const applyBillingMonth = useCallback(
-    (o: Order, monthKey: string, buyerName = '', periods?: OrderBillingPeriod[] | null) => {
+    async (
+      o: Order,
+      monthKey: string,
+      buyerName = '',
+      periods?: OrderBillingPeriod[] | null
+    ) => {
       const periodList = periods ?? billingPeriods;
       const option = getBillingMonthOptions(o, periodList).find((entry) => entry.key === monthKey);
       if (!option) return;
+
+      setAmountMode('monthly');
       setSelectedBillingMonthKey(monthKey);
+
+      const monthInvoice = await InvoiceService.getForOrderBillingMonth(
+        o.id,
+        String(option.month),
+        String(option.year)
+      );
+
+      if (monthInvoice) {
+        if (await InvoiceService.hasInvoiceLines(monthInvoice.id)) {
+          onOpenCombined?.(monthInvoice);
+          onClose();
+          return;
+        }
+
+        // Šiam mėnesiui jau yra sąskaita — atidarome ją (su jos numeriu).
+        setSavedInvoiceId(monthInvoice.id);
+        setSavedInvoicePayment({
+          paid_amount: Number(monthInvoice.paid_amount ?? 0),
+          total_amount: Number(monthInvoice.total_amount),
+          payment_date: monthInvoice.payment_date ?? null,
+        });
+        setInvoiceNumber(monthInvoice.invoice_number);
+        setInvoiceDate(monthInvoice.invoice_date);
+        setDueDate(monthInvoice.due_date);
+        setPaymentDate(
+          monthInvoice.payment_date ? formatDateOnly(monthInvoice.payment_date) : null
+        );
+        setBuyer({
+          name: monthInvoice.buyer_name,
+          company_code: monthInvoice.buyer_company_code ?? '',
+          vat_code: monthInvoice.buyer_vat_code ?? '',
+          address: monthInvoice.buyer_address ?? '',
+        });
+        setBuyerSource('manual');
+        const mode = resolveInvoiceAmountMode(monthInvoice, o);
+        setAmountMode(mode);
+        const resolvedBase = resolveInvoiceAmountAndPeriod(
+          o,
+          monthInvoice.invoice_date,
+          mode,
+          periodList
+        ).amount;
+        const hadDiscount =
+          isOwexxOrder(o) &&
+          resolvedBase > 0 &&
+          Math.abs(
+            monthInvoice.amount -
+              applyPercentDiscount(resolvedBase, OWEXX_CLIENT_DISCOUNT_PERCENT)
+          ) < 0.05;
+        setOwexxDiscount50(hadDiscount);
+        setBaseAmount(
+          resolveSavedInvoiceBaseAmount(monthInvoice.amount, resolvedBase, hadDiscount)
+        );
+        setPeriodFrom(monthInvoice.period_from ?? formatDateOnly(o.from));
+        setPeriodTo(monthInvoice.period_to ?? formatDateOnly(o.to));
+        setLineDescription(
+          monthInvoice.line_description
+            ? formatLineDescriptionForLocale(
+                monthInvoice.line_description,
+                resolveInvoiceLocale({ buyerName: monthInvoice.buyer_name, order: o })
+              )
+            : buildLineDescription(
+                o,
+                monthInvoice.period_from ?? formatDateOnly(o.from),
+                monthInvoice.period_to ?? formatDateOnly(o.to),
+                resolveInvoiceLocale({ buyerName: monthInvoice.buyer_name, order: o })
+              )
+        );
+        setIsEditing(false);
+        return;
+      }
+
+      // Naujas mėnuo — nauja sąskaita su sekančiu numeriu.
+      setSavedInvoiceId(null);
+      setSavedInvoicePayment(null);
+      setPaymentDate(null);
+      setInvoiceNumber(await InvoiceService.getNextInvoiceNumber());
       setInvoiceDate(option.invoiceDate);
       setDueDate(addDays(option.invoiceDate, 30));
       applyAmountAndPeriod(o, option.invoiceDate, 'monthly', buyerName, periodList);
+      setIsEditing(true);
     },
-    [applyAmountAndPeriod, billingPeriods]
+    [applyAmountAndPeriod, billingPeriods, onClose, onOpenCombined]
   );
 
   const billingMonthOptions =
@@ -407,21 +493,17 @@ export function InvoiceModal({
         setSavedInvoiceId(null);
         setSavedInvoicePayment(null);
         setPaymentDate(null);
-        const invoiceDay = pickMonthlyInvoiceDay(o);
-        setInvoiceDate(invoiceDay);
-        setDueDate(addDays(invoiceDay, 30));
-        setInvoiceNumber(await InvoiceService.getNextInvoiceNumber());
-
         setAmountMode('monthly');
 
         const defaultSource: BuyerSource = o.agency?.trim() ? 'agency' : 'client';
         setBuyerSource(defaultSource);
 
         const lookupLabel = defaultSource === 'agency' ? o.agency : o.client;
-        applyAmountAndPeriod(o, invoiceDay, 'monthly', lookupLabel || '', periods);
+        let buyerName = lookupLabel || '';
         const match = await BillingCompanyService.findBestMatch(lookupLabel);
         if (match) {
           applyBuyerFromCompany(match);
+          buyerName = match.full_name;
         } else {
           setBuyer({
             name: lookupLabel || '',
@@ -430,9 +512,55 @@ export function InvoiceModal({
             address: '',
           });
         }
+
+        if (isMultiMonthOrder(o)) {
+          const options = getBillingMonthOptions(o, periods);
+          const preferredKey = resolveDefaultBillingMonthKey(
+            o,
+            billingMonth,
+            billingYear,
+            periods
+          );
+          const orderedKeys = preferredKey
+            ? [preferredKey, ...options.map((entry) => entry.key).filter((key) => key !== preferredKey)]
+            : options.map((entry) => entry.key);
+
+          let targetKey = preferredKey ?? options[options.length - 1]?.key ?? null;
+          for (const key of orderedKeys) {
+            const opt = options.find((entry) => entry.key === key);
+            if (!opt) continue;
+            const monthInvoice = await InvoiceService.getForOrderBillingMonth(
+              o.id,
+              String(opt.month),
+              String(opt.year)
+            );
+            if (!monthInvoice) {
+              targetKey = key;
+              break;
+            }
+          }
+
+          if (targetKey) {
+            await applyBillingMonth(o, targetKey, buyerName, periods);
+          } else {
+            const invoiceDay = pickMonthlyInvoiceDay(o);
+            setInvoiceDate(invoiceDay);
+            setDueDate(addDays(invoiceDay, 30));
+            setInvoiceNumber(await InvoiceService.getNextInvoiceNumber());
+            applyAmountAndPeriod(o, invoiceDay, 'monthly', buyerName, periods);
+            setIsEditing(true);
+          }
+        } else {
+          const invoiceDay = pickMonthlyInvoiceDay(o);
+          setInvoiceDate(invoiceDay);
+          setDueDate(addDays(invoiceDay, 30));
+          setInvoiceNumber(await InvoiceService.getNextInvoiceNumber());
+          applyAmountAndPeriod(o, invoiceDay, 'monthly', buyerName, periods);
+          setIsEditing(true);
+        }
       }
 
-      if (!isStandaloneInvoiceOrder(o.id)) {
+      if (existing && !isStandaloneInvoiceOrder(o.id)) {
         setIsEditing(false);
       }
 
@@ -451,7 +579,7 @@ export function InvoiceModal({
     } finally {
       setLoading(false);
     }
-  }, [applyBuyerFromCompany, applyAmountAndPeriod, onClose, onOpenCombined, billingMonth, billingYear]);
+  }, [applyBuyerFromCompany, applyAmountAndPeriod, applyBillingMonth, onClose, onOpenCombined, billingMonth, billingYear]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -509,7 +637,7 @@ export function InvoiceModal({
       const key =
         selectedBillingMonthKey ?? resolveDefaultBillingMonthKey(order, billingMonth, billingYear, billingPeriods);
       if (key) {
-        applyBillingMonth(order, key, buyer.name);
+        void applyBillingMonth(order, key, buyer.name);
         return;
       }
     }
@@ -948,9 +1076,7 @@ export function InvoiceModal({
                     {billingMonthOptions.map((option) => (
                       <label
                         key={option.key}
-                        className={`flex items-start gap-2 ${
-                          billingScopeLocked ? 'cursor-default opacity-60' : 'cursor-pointer'
-                        }`}
+                        className="flex cursor-pointer items-start gap-2"
                       >
                         <input
                           type="radio"
@@ -958,11 +1084,9 @@ export function InvoiceModal({
                           checked={
                             amountMode === 'monthly' && selectedBillingMonthKey === option.key
                           }
-                          disabled={billingScopeLocked}
                           onChange={() => {
-                            if (billingScopeLocked) return;
                             setAmountMode('monthly');
-                            applyBillingMonth(order, option.key, buyer.name);
+                            void applyBillingMonth(order, option.key, buyer.name);
                           }}
                           className="mt-0.5"
                         />
