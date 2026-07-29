@@ -759,7 +759,17 @@ export function InvoiceModal({
       onClose();
     } catch (error) {
       console.error('save invoice:', error);
-      alert('Nepavyko išsaugoti sąskaitos. Patikrinkite ar Supabase lentelės sukurtos.');
+      const detail =
+        error && typeof error === 'object' && 'message' in error
+          ? String((error as { message?: string }).message || '')
+          : error instanceof Error
+            ? error.message
+            : '';
+      alert(
+        detail
+          ? `Nepavyko išsaugoti sąskaitos.\n\n${detail}`
+          : 'Nepavyko išsaugoti sąskaitos. Patikrinkite ar Supabase lentelės sukurtos.'
+      );
     } finally {
       setLoading(false);
     }
