@@ -14,3 +14,4 @@
 - Feature modules gated by env: OpenAI (`OPENAI_API_KEY`) for the email AI agent, Mistral (`MISTRAL_API_KEY`) for invoice OCR, IMAP/SMTP (`EMAIL_PASSWORD`, `mail.piksel.lt`) for the "Paštas" tab. Optional; not needed to run/lint/test/build.
 - README references a `.env.example` that is not committed (`.env*` is gitignored). Create `.env.local` manually only when testing the gated modules above.
 - `npm run lint` currently reports warnings only (0 errors) — that is the expected baseline.
+- Do not run `npm run build` while `npm run dev` is running: both share `.next` and a concurrent build corrupts the dev server (500s / missing `_buildManifest.js.tmp`). Stop dev first, or `rm -rf .next` and restart dev afterward.
