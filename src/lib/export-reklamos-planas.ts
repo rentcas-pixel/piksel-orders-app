@@ -32,6 +32,43 @@ export type ReklamosPlanasExportMode = 'standard' | 'post-campaign';
 const PIKSEL_LOGO_PATH = '/Piksel-Logotipas-juodas-RGB.jpg';
 const SHEET_NAME = 'Piksel ekranų kainynas';
 
+
+async function loadPikselLogoBuffer(): Promise<ArrayBuffer> {
+  // Browser (hub modal): relative public URL
+  if (typeof window !== 'undefined') {
+    const logoResponse = await fetch(PIKSEL_LOGO_PATH);
+    if (!logoResponse.ok) {
+      throw new Error('Nepavyko užkrauti Piksel logotipo');
+    }
+    return logoResponse.arrayBuffer();
+  }
+
+  // Server (API / Vercel): prefer filesystem, fallback to absolute URL
+  try {
+    const { readFile } = await import('fs/promises');
+    const { join } = await import('path');
+    const filePath = join(process.cwd(), 'public', 'Piksel-Logotipas-juodas-RGB.jpg');
+    const file = await readFile(filePath);
+    return file.buffer.slice(
+      file.byteOffset,
+      file.byteOffset + file.byteLength
+    ) as ArrayBuffer;
+  } catch {
+    // public/ may be absent in serverless bundle
+  }
+
+  const base =
+    process.env.NEXT_PUBLIC_CONFIRM_BASE_URL?.replace(/\/$/, '') ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '') ||
+    'https://hub.piksel.lt';
+  const logoResponse = await fetch(`${base}${PIKSEL_LOGO_PATH}`);
+  if (!logoResponse.ok) {
+    throw new Error('Nepavyko užkrauti Piksel logotipo');
+  }
+  return logoResponse.arrayBuffer();
+}
+
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Cell = any;
 
@@ -1280,11 +1317,7 @@ export async function buildReklamosPlanasXlsxBuffer(
   const filename = buildReklamosPlanasXlsxFilename(order, calc, partnerName);
 
   const xlsxBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-  const logoResponse = await fetch(PIKSEL_LOGO_PATH);
-  if (!logoResponse.ok) {
-    throw new Error('Nepavyko užkrauti Piksel logotipo');
-  }
-  const logoBuffer = await logoResponse.arrayBuffer();
+  const logoBuffer = await loadPikselLogoBuffer();
   let buffer: ArrayBuffer = xlsxBuffer;
   if (mode === 'post-campaign') {
     buffer = await embedLogoInXlsx(xlsxBuffer, logoBuffer, {
