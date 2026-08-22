@@ -7,6 +7,9 @@ import {
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+/** Absoliutus logo — veikia ir per piksel.lt/c proxy */
+const PIKSEL_LOGO_SRC = 'https://hub.piksel.lt/Piksel-logo-black-2023.png';
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -28,7 +31,7 @@ function renderThanksHtml(orderTitle: string): string {
 </head>
 <body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#0f172a;">
   <main style="text-align:center;padding:40px 24px;max-width:640px;">
-    <img src="/Piksel-logo-black-2023.png" alt="Piksel" width="168" style="display:block;margin:0 auto 22px;max-width:min(200px,70vw);height:auto;" />
+    <img src="${PIKSEL_LOGO_SRC}" alt="Piksel" width="168" style="display:block;margin:0 auto 22px;max-width:min(200px,70vw);height:auto;" />
     <div style="display:inline-flex;align-items:center;justify-content:center;gap:10px;max-width:100%;">
       <span aria-hidden="true" style="flex-shrink:0;width:22px;height:22px;border-radius:999px;background:#22c55e;display:inline-flex;align-items:center;justify-content:center;">
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -53,7 +56,7 @@ function renderErrorHtml(heading: string, sub: string): string {
 </head>
 <body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#0f172a;">
   <main style="text-align:center;padding:40px 24px;max-width:420px;">
-    <img src="/Piksel-logo-black-2023.png" alt="Piksel" width="140" style="display:block;margin:0 auto 16px;max-width:min(180px,70vw);height:auto;opacity:0.9;" />
+    <img src="${PIKSEL_LOGO_SRC}" alt="Piksel" width="140" style="display:block;margin:0 auto 16px;max-width:min(180px,70vw);height:auto;opacity:0.9;" />
     <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;">${escapeHtml(heading)}</h1>
     <p style="margin:0;font-size:14px;line-height:1.5;color:#64748b;">${escapeHtml(sub)}</p>
   </main>
