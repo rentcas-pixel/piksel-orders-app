@@ -122,7 +122,7 @@ export async function POST(request: Request) {
         continue;
       }
 
-      const resolved = resolvePartnerPlanEmails(partner.name);
+      const resolved = resolvePartnerPlanEmails(partner.name, partner.slug);
       if (resolved.skipped || !resolved.emails.length) {
         results.push({
           partnerId: partner.id,
