@@ -9,7 +9,11 @@ import {
   resolvePartnerPlanEmails,
   shouldSkipPartnerPlanSend,
 } from '@/lib/partner-contacts';
-import { sendPartnerPlanEmail, formatPartnerPlanPeriod } from '@/lib/partner-plan-email';
+import {
+  sendPartnerPackageEmail,
+  formatPartnerPlanPeriod,
+  sanitizePartnerEmailNote,
+} from '@/lib/partner-plan-email';
 import {
   createPartnerDeliveryToken,
   savePartnerDelivery,
@@ -22,9 +26,20 @@ export const maxDuration = 120;
 
 type SendBody = {
   orderId?: string;
+  clipUrl?: string;
+  note?: string;
   /** Jei nurodyta — tik šiam partneriui; kitaip visiems (be Piksel) */
   partnerId?: string;
 };
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
 
 export async function POST(request: Request) {
   try {
@@ -40,8 +55,16 @@ export async function POST(request: Request) {
 
     const body = (await request.json()) as SendBody;
     const orderId = String(body.orderId || '').trim();
+    const clipUrl = String(body.clipUrl || '').trim();
+    const note = sanitizePartnerEmailNote(body.note);
     if (!orderId) {
       return NextResponse.json({ error: 'Trūksta orderId' }, { status: 400 });
+    }
+    if (!clipUrl || !isHttpUrl(clipUrl)) {
+      return NextResponse.json(
+        { error: 'Įklijuokite galiojančią video nuorodą (http/https).' },
+        { status: 400 }
+      );
     }
 
     const fullOrder = await PocketBaseService.getOrder(orderId);
@@ -117,7 +140,7 @@ export async function POST(request: Request) {
         continue;
       }
 
-      const resolved = resolvePartnerPlanEmails(partner.name);
+      const resolved = resolvePartnerPlanEmails(partner.name, partner.slug);
       if (resolved.skipped || !resolved.emails.length) {
         results.push({
           partnerId: partner.id,
@@ -139,12 +162,14 @@ export async function POST(request: Request) {
 
         const token = createPartnerDeliveryToken();
         const xlsxBase64 = Buffer.from(buffer).toString('base64');
-        const send = await sendPartnerPlanEmail({
+        const send = await sendPartnerPackageEmail({
           to: resolved.emails,
           campaign: campaignLabel,
           planNumber,
           partner: partner.name,
           period,
+          clipUrl,
+          note,
           confirmToken: token,
           filename,
           xlsxBase64,
@@ -173,6 +198,18 @@ export async function POST(request: Request) {
           resendId: send.id,
           token,
         });
+        await savePartnerDelivery({
+          orderId,
+          partnerId: partner.id,
+          partnerName: partner.name,
+          campaignLabel: planNumber
+            ? `Užsakymas: ${campaignLabel} | ${planNumber}`
+            : `Užsakymas: ${campaignLabel}`,
+          stage: 'clips',
+          toEmail: resolved.emails.join(', '),
+          resendId: send.id,
+          token: createPartnerDeliveryToken(),
+        });
 
         results.push({
           partnerId: partner.id,
@@ -200,6 +237,7 @@ export async function POST(request: Request) {
       ok: errors === 0,
       sent,
       errors,
+      clipUrl,
       results,
     });
   } catch (error) {

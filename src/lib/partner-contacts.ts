@@ -53,9 +53,10 @@ export function shouldSkipPartnerPlanSend(nameOrSlug: string): boolean {
  * Be jo — katalogas / PARTNER_EMAIL_* ; nežinomas → skipped.
  */
 export function resolvePartnerPlanEmails(
-  nameOrSlug: string
+  nameOrSlug: string,
+  altNameOrSlug?: string
 ): { emails: string[]; skipped: boolean; reason?: string } {
-  if (shouldSkipPartnerPlanSend(nameOrSlug)) {
+  if (shouldSkipPartnerPlanSend(nameOrSlug) || shouldSkipPartnerPlanSend(altNameOrSlug || '')) {
     return { emails: [], skipped: true, reason: 'Piksel / skip' };
   }
 
@@ -64,15 +65,22 @@ export function resolvePartnerPlanEmails(
     return { emails: [testOverride], skipped: false };
   }
 
-  const key = normalizePartnerKey(nameOrSlug);
-  const fromEnv = envEmailsForPartner(key);
-  if (fromEnv?.length) {
-    return { emails: fromEnv, skipped: false };
-  }
+  const candidates = [nameOrSlug, altNameOrSlug].filter(
+    (value, index, all): value is string =>
+      Boolean(value?.trim()) && all.indexOf(value) === index
+  );
 
-  const contact = DEFAULT_CONTACTS[key];
-  if (contact?.emails?.length) {
-    return { emails: contact.emails, skipped: false };
+  for (const candidate of candidates) {
+    const key = normalizePartnerKey(candidate);
+    const fromEnv = envEmailsForPartner(key);
+    if (fromEnv?.length) {
+      return { emails: fromEnv, skipped: false };
+    }
+
+    const contact = DEFAULT_CONTACTS[key];
+    if (contact?.emails?.length) {
+      return { emails: contact.emails, skipped: false };
+    }
   }
 
   return {

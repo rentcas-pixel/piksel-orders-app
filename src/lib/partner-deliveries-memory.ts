@@ -78,8 +78,13 @@ export function memorySaveDelivery(input: {
 export function memoryConfirmByToken(token: string): PartnerDelivery | null {
   const row = store().get(token);
   if (!row) return null;
-  if (row.confirmed_at) return row;
-  const next = { ...row, confirmed_at: new Date().toISOString() };
-  store().set(token, next);
-  return next;
+  const now = row.confirmed_at || new Date().toISOString();
+  let result: PartnerDelivery | null = null;
+  for (const other of memoryListByOrder(row.order_id)) {
+    if (other.partner_id !== row.partner_id) continue;
+    const next = { ...other, confirmed_at: other.confirmed_at || now };
+    store().set(other.token, next);
+    if (other.token === token) result = next;
+  }
+  return result;
 }

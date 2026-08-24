@@ -127,7 +127,8 @@ export async function confirmPartnerDeliveryByToken(
       await supabase
         .from('partner_deliveries')
         .update({ confirmed_at: mem.confirmed_at })
-        .eq('token', token);
+        .eq('order_id', mem.order_id)
+        .eq('partner_id', mem.partner_id);
     } catch {
       // ignore
     }
@@ -147,14 +148,18 @@ export async function confirmPartnerDeliveryByToken(
       return existing as PartnerDelivery;
     }
 
-    const { data, error } = await supabase
+    await supabase
       .from('partner_deliveries')
       .update({ confirmed_at: now })
-      .eq('token', token)
+      .eq('order_id', existing.order_id)
+      .eq('partner_id', existing.partner_id);
+
+    const { data } = await supabase
+      .from('partner_deliveries')
       .select('*')
+      .eq('token', token)
       .maybeSingle();
-    if (error || !data) return existing as PartnerDelivery;
-    return data as PartnerDelivery;
+    return (data as PartnerDelivery) || ({ ...existing, confirmed_at: now } as PartnerDelivery);
   } catch {
     return null;
   }

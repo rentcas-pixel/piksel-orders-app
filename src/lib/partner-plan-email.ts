@@ -73,6 +73,42 @@ export function buildPartnerClipsEmailText(input: {
   return lines.join('\n');
 }
 
+export const PARTNER_EMAIL_NOTE_MAX = 2000;
+
+export function sanitizePartnerEmailNote(value: string | null | undefined): string {
+  return String(value || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\0/g, '')
+    .trim()
+    .slice(0, PARTNER_EMAIL_NOTE_MAX);
+}
+
+/** Vienas laiškas: planas (XLS) + klipų nuoroda + neprivaloma pastaba. */
+export function buildPartnerPackageEmailText(input: {
+  campaign: string;
+  period?: string;
+  clipUrl: string;
+  note?: string;
+  confirmToken: string;
+}): string {
+  const confirmUrl = buildPartnerConfirmUrl(input.confirmToken);
+  const lines = [
+    'Sveiki,',
+    '',
+    `Siunčiame reklamos planą ir video klipus kampanijai ${input.campaign}.`,
+  ];
+  if (input.period) {
+    lines.push(`Laikotarpis: ${input.period}`);
+  }
+  const note = sanitizePartnerEmailNote(input.note);
+  if (note) {
+    lines.push(note);
+  }
+  lines.push('', 'Klipų nuoroda:', input.clipUrl);
+  lines.push('', 'Patvirtinkite gavimą:', confirmUrl);
+  return lines.join('\n');
+}
+
 export async function sendPartnerPlanEmail(input: {
   to: string[];
   campaign: string;
@@ -135,6 +171,49 @@ export async function sendPartnerClipsEmail(input: {
     text,
     tags: [
       { name: 'kind', value: 'partner-clips' },
+      { name: 'partner', value: input.partner.slice(0, 40) },
+    ],
+  });
+
+  if (!result.ok) return { ok: false, error: result.error };
+  return { ok: true, id: result.id };
+}
+
+export async function sendPartnerPackageEmail(input: {
+  to: string[];
+  campaign: string;
+  planNumber?: string;
+  partner: string;
+  period?: string;
+  clipUrl: string;
+  note?: string;
+  confirmToken: string;
+  filename: string;
+  xlsxBase64: string;
+}): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const text = buildPartnerPackageEmailText({
+    campaign: input.campaign,
+    period: input.period,
+    clipUrl: input.clipUrl,
+    note: input.note,
+    confirmToken: input.confirmToken,
+  });
+
+  const result = await sendResendEmail({
+    to: input.to,
+    from: plansFrom(),
+    subject: orderSubject(input.campaign, input.planNumber),
+    text,
+    attachments: [
+      {
+        filename: input.filename,
+        content: input.xlsxBase64,
+        contentType:
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      },
+    ],
+    tags: [
+      { name: 'kind', value: 'partner-package' },
       { name: 'partner', value: input.partner.slice(0, 40) },
     ],
   });

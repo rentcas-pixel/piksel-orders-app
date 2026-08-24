@@ -9,7 +9,6 @@ import {
   CheckCircleIcon,
   DocumentTextIcon,
   PaperAirplaneIcon,
-  FilmIcon,
   PhotoIcon,
   PlusCircleIcon,
   ArrowsRightLeftIcon,
@@ -128,9 +127,8 @@ export function EditOrderModal({
   const [exportingPostCampaign, setExportingPostCampaign] = useState(false);
   const [exportingAllZip, setExportingAllZip] = useState(false);
   const [sendingPartnerPlans, setSendingPartnerPlans] = useState(false);
-  const [sendingPartnerClips, setSendingPartnerClips] = useState(false);
-  const [deliverySection, setDeliverySection] = useState<'plan' | 'clips'>('plan');
   const [clipsUrl, setClipsUrl] = useState('');
+  const [deliveryNote, setDeliveryNote] = useState('');
   const [partnerDeliveryById, setPartnerDeliveryById] = useState<
     Record<string, { plan?: { sent: boolean; confirmed: boolean }; clips?: { sent: boolean; confirmed: boolean } }>
   >({});
@@ -1010,43 +1008,7 @@ export function EditOrderModal({
   };
 
 
-  const handleSendPartnerPlans = async () => {
-    if (!order || exportPartners.length === 0) return;
-    setExportError(null);
-    setSendingPartnerPlans(true);
-    try {
-      const res = await fetch('/api/partner-plans/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: order.id }),
-      });
-      const data = (await res.json().catch(() => ({}))) as {
-        error?: string;
-        sent?: number;
-        errors?: number;
-        results?: Array<{ partnerName: string; status: string; error?: string }>;
-      };
-      if (!res.ok) {
-        throw new Error(data.error || 'Nepavyko išsiųsti planų');
-      }
-      await loadPartnerDeliveryStatuses(order.id);
-      if ((data.errors || 0) > 0) {
-        const firstErr = data.results?.find((r) => r.status === 'error');
-        setExportError(
-          firstErr?.error ||
-            `Išsiųsta ${data.sent || 0}, klaidų: ${data.errors}`
-        );
-      }
-    } catch (err) {
-      setExportError(
-        err instanceof Error ? err.message : 'Nepavyko išsiųsti planų'
-      );
-    } finally {
-      setSendingPartnerPlans(false);
-    }
-  };
-
-  const handleSendPartnerClips = async () => {
+  const handleSendPartnerPackage = async () => {
     if (!order || exportPartners.length === 0) return;
     const url = clipsUrl.trim();
     if (!url) {
@@ -1054,12 +1016,16 @@ export function EditOrderModal({
       return;
     }
     setExportError(null);
-    setSendingPartnerClips(true);
+    setSendingPartnerPlans(true);
     try {
-      const res = await fetch('/api/partner-plans/send-clips', {
+      const res = await fetch('/api/partner-plans/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: order.id, clipUrl: url }),
+        body: JSON.stringify({
+          orderId: order.id,
+          clipUrl: url,
+          note: deliveryNote.trim() || undefined,
+        }),
       });
       const data = (await res.json().catch(() => ({}))) as {
         error?: string;
@@ -1068,7 +1034,7 @@ export function EditOrderModal({
         results?: Array<{ partnerName: string; status: string; error?: string }>;
       };
       if (!res.ok) {
-        throw new Error(data.error || 'Nepavyko išsiųsti klipų');
+        throw new Error(data.error || 'Nepavyko išsiųsti plano ir klipų');
       }
       await loadPartnerDeliveryStatuses(order.id);
       if ((data.errors || 0) > 0) {
@@ -1080,10 +1046,10 @@ export function EditOrderModal({
       }
     } catch (err) {
       setExportError(
-        err instanceof Error ? err.message : 'Nepavyko išsiųsti klipų'
+        err instanceof Error ? err.message : 'Nepavyko išsiųsti plano ir klipų'
       );
     } finally {
-      setSendingPartnerClips(false);
+      setSendingPartnerPlans(false);
     }
   };
 
@@ -1521,49 +1487,16 @@ export function EditOrderModal({
                 )}
 
                 <div className="rounded-lg border border-dashed border-emerald-300/70 bg-gray-50 p-4 dark:border-emerald-700/60 dark:bg-gray-700/80">
-                  {!isAgency && (
-                    <div className="mb-3 flex flex-wrap gap-1 border-b border-gray-200/80 pb-2 dark:border-gray-600">
-                      <button
-                        type="button"
-                        onClick={() => setDeliverySection('plan')}
-                        className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-semibold transition-colors ${
-                          deliverySection === 'plan'
-                            ? 'bg-white text-gray-900 shadow-sm ring-1 ring-gray-200 dark:bg-gray-800 dark:text-white dark:ring-gray-600'
-                            : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
-                        }`}
-                      >
-                        <TableCellsIcon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                        Reklamos planas
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDeliverySection('clips')}
-                        className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-semibold transition-colors ${
-                          deliverySection === 'clips'
-                            ? 'bg-white text-gray-900 shadow-sm ring-1 ring-gray-200 dark:bg-gray-800 dark:text-white dark:ring-gray-600'
-                            : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
-                        }`}
-                      >
-                        <FilmIcon className="h-4 w-4 text-gray-800 dark:text-gray-200" />
-                        Video klipai
-                      </button>
-                    </div>
-                  )}
-
-                  <div className="mb-3 flex items-start justify-between gap-3">
-                    <div>
-                      {isAgency ? (
-                        <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
-                          <TableCellsIcon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                          Reklamos planas
-                        </h3>
-                      ) : null}
-                      <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                        {deliverySection === 'clips' && !isAgency
-                          ? 'Įklijuokite WeTransfer / disk nuorodą ir išsiųskite owneriams'
-                          : 'Excel parsisiunčiamas iš užsakymo duomenų'}
-                      </p>
-                    </div>
+                  <div className="mb-3">
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
+                      <TableCellsIcon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                      {isAgency ? 'Reklamos planas' : 'Reklamos planas ir klipai'}
+                    </h3>
+                    <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                      {isAgency
+                        ? 'Excel parsisiunčiamas iš užsakymo duomenų'
+                        : 'Vienas laiškas owneriams: Excel planas + video nuoroda'}
+                    </p>
                   </div>
 
                   {exportError && (
@@ -1572,64 +1505,7 @@ export function EditOrderModal({
                     </p>
                   )}
 
-                  {deliverySection === 'clips' && !isAgency ? (
-                    <div className="space-y-3">
-                      <div className="flex flex-wrap gap-2">
-                        {exportPartnersLoading ? (
-                          <p className="self-center text-sm text-gray-500 dark:text-gray-400">
-                            Kraunami partneriai…
-                          </p>
-                        ) : (
-                          exportPartners.map((partner) => {
-                            const delivery = partnerDeliveryById[partner.id]?.clips;
-                            const deliveryClass = delivery?.confirmed
-                              ? 'border-emerald-200/90 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100'
-                              : delivery?.sent
-                                ? 'border-amber-200/90 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100'
-                                : 'border-gray-200/90 bg-white text-gray-800 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200';
-                            return (
-                              <span
-                                key={partner.id}
-                                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium ${deliveryClass}`}
-                              >
-                                {partner.name}
-                                <span className="text-xs opacity-60">
-                                  ({partner.screenCount})
-                                </span>
-                              </span>
-                            );
-                          })
-                        )}
-                      </div>
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                        <input
-                          type="url"
-                          value={clipsUrl}
-                          onChange={(e) => setClipsUrl(e.target.value)}
-                          placeholder="https://we.tl/… arba kita nuoroda"
-                          className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-                        />
-                        <button
-                          type="button"
-                          disabled={
-                            sendingPartnerClips ||
-                            exportPartners.length === 0 ||
-                            !clipsUrl.trim()
-                          }
-                          onClick={() => void handleSendPartnerClips()}
-                          className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-gray-900 bg-white px-3 py-2 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-200 dark:bg-gray-800 dark:text-gray-100"
-                          title="Siųsti video nuorodą visiems owneriams (be Piksel)"
-                        >
-                          {sendingPartnerClips ? (
-                            <span className="h-4 w-4 shrink-0 animate-pulse rounded-full bg-gray-400" />
-                          ) : (
-                            <PaperAirplaneIcon className="h-4 w-4 shrink-0" />
-                          )}
-                          Siųsti
-                        </button>
-                      </div>
-                    </div>
-                  ) : exportPartnersLoading && !isAgency ? (
+                  {exportPartnersLoading && !isAgency ? (
                     <p className="text-sm text-gray-500 dark:text-gray-400">Kraunami partneriai…</p>
                   ) : !isAgency && exportPartners.length === 0 && !campaignEnded ? (
                     <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -1640,10 +1516,16 @@ export function EditOrderModal({
                       {!isAgency &&
                       exportPartners.map((partner) => {
                         const isExporting = exportingPartnerId === partner.id;
-                        const delivery = partnerDeliveryById[partner.id]?.plan;
-                        const deliveryClass = delivery?.confirmed
+                        const delivery = partnerDeliveryById[partner.id];
+                        const confirmed = Boolean(
+                          delivery?.plan?.confirmed || delivery?.clips?.confirmed
+                        );
+                        const sent = Boolean(
+                          delivery?.plan?.sent || delivery?.clips?.sent
+                        );
+                        const deliveryClass = confirmed
                           ? 'border-emerald-200/90 bg-emerald-50 text-emerald-900 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100'
-                          : delivery?.sent
+                          : sent
                             ? 'border-amber-200/90 bg-amber-50 text-amber-950 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100'
                             : 'border-gray-200/90 bg-white text-gray-800 hover:bg-sky-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-sky-950/30';
                         return (
@@ -1724,32 +1606,55 @@ export function EditOrderModal({
                           )}
                         </button>
                       )}
-                      {!isAgency && (
-                      <button
-                        type="button"
-                        disabled={
-                          !!exportingPartnerId ||
-                          exportingCombined ||
-                          exportingPostCampaign ||
-                          exportingAllZip ||
-                          sendingPartnerPlans ||
-                          exportPartners.length === 0
+                    </div>
+                  )}
+
+                  {!isAgency && (
+                    <div className="mt-3 space-y-2">
+                      <input
+                        type="url"
+                        value={clipsUrl}
+                        onChange={(e) => setClipsUrl(e.target.value)}
+                        placeholder="https://we.tl/… video nuoroda"
+                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                      />
+                      <textarea
+                        value={deliveryNote}
+                        onChange={(e) => setDeliveryNote(e.target.value)}
+                        maxLength={2000}
+                        rows={3}
+                        placeholder={
+                          'Pastaba owneriams (neprivaloma), pvz.:\nX klipas 08.09–09.01\nY klipas 09.02–10.01'
                         }
-                        onClick={() => void handleSendPartnerPlans()}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-900 bg-white px-3 py-1.5 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-200 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
-                        title="Siųsti planus visiems owneriams (be Piksel) el. paštu"
-                      >
-                        {sendingPartnerPlans ? (
-                          <span className="h-4 w-4 shrink-0 animate-pulse rounded-full bg-gray-400" />
-                        ) : (
-                          <PaperAirplaneIcon className="h-4 w-4 shrink-0" />
-                        )}
-                        Siųsti
-                        {sendingPartnerPlans && (
-                          <span className="text-xs text-gray-500">…</span>
-                        )}
-                      </button>
-                      )}
+                        className="w-full resize-y rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                      />
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          disabled={
+                            !!exportingPartnerId ||
+                            exportingCombined ||
+                            exportingPostCampaign ||
+                            exportingAllZip ||
+                            sendingPartnerPlans ||
+                            exportPartners.length === 0 ||
+                            !clipsUrl.trim()
+                          }
+                          onClick={() => void handleSendPartnerPackage()}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-900 bg-white px-3 py-1.5 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-200 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
+                          title="Siųsti planą ir klipus visiems owneriams (be Piksel)"
+                        >
+                          {sendingPartnerPlans ? (
+                            <span className="h-4 w-4 shrink-0 animate-pulse rounded-full bg-gray-400" />
+                          ) : (
+                            <PaperAirplaneIcon className="h-4 w-4 shrink-0" />
+                          )}
+                          Siųsti
+                          {sendingPartnerPlans && (
+                            <span className="text-xs text-gray-500">…</span>
+                          )}
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
