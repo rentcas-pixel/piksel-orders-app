@@ -51,7 +51,7 @@ export const statusTabs: FilterOption[] = [
 
 export function getYearTabOptions(referenceDate = new Date()): FilterOption[] {
   const current = referenceDate.getFullYear();
-  return [current, current - 1, current - 2].map((y) => ({
+  return [current + 1, current, current - 1, current - 2].map((y) => ({
     value: String(y),
     label: String(y),
   }));
