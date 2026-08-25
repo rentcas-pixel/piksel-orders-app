@@ -33,6 +33,10 @@ import {
   portalToolbarClass,
 } from '@/lib/portal-ui';
 import { PortalSearchField } from '@/components/PortalSearchField';
+import {
+  daysUntilBroadcastStart,
+  isPartnerConfirmAlertWindow,
+} from '@/lib/partner-confirm-alert';
 
 interface OrdersTableProps {
   searchQuery: string;
@@ -69,6 +73,9 @@ export function OrdersTable({
   const [invoiceStatuses, setInvoiceStatuses] = useState<Record<string, OrderInvoiceStatus>>({});
   const [orderActivityMap, setOrderActivityMap] = useState<Record<string, boolean>>({});
   const [billingPeriodsMap, setBillingPeriodsMap] = useState<Record<string, OrderBillingPeriod[]>>({});
+  const [partnerConfirmAlerts, setPartnerConfirmAlerts] = useState<
+    Record<string, string[]>
+  >({});
 
   // Function to check if media alert should be shown
   const shouldShowMediaAlert = (order: Order): boolean => {
@@ -705,6 +712,7 @@ export function OrdersTable({
         setInvoiceStatuses({});
         setOrderActivityMap({});
         setBillingPeriodsMap({});
+        setPartnerConfirmAlerts({});
         setTotalPages(1);
         setTotalItems(sortedOrders.length);
       } finally {
@@ -717,6 +725,41 @@ export function OrdersTable({
     // buildFilterString, filterMockOrders, sortOrders, calculateSumAsync are derived from these.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, searchQuery, filters.status, filters.month, filters.year, filters.client, filters.agency, filters.media_received, filters.invoice_sent, sortField, sortDirection, portalStyle, periodTab, billingContext?.month, billingContext?.year]);
+
+  useEffect(() => {
+    if (orders.length === 0) {
+      setPartnerConfirmAlerts({});
+      return;
+    }
+    const dueIds = orders
+      .filter((order) =>
+        isPartnerConfirmAlertWindow(daysUntilBroadcastStart(order.from))
+      )
+      .map((order) => order.id);
+    if (dueIds.length === 0) {
+      setPartnerConfirmAlerts({});
+      return;
+    }
+
+    let cancelled = false;
+    const loadAlerts = async () => {
+      try {
+        const res = await fetch(
+          `/api/partner-plans/unconfirmed-alerts?orderIds=${encodeURIComponent(dueIds.join(','))}`
+        );
+        const data = (await res.json().catch(() => ({}))) as {
+          alerts?: Record<string, string[]>;
+        };
+        if (!cancelled) setPartnerConfirmAlerts(data.alerts || {});
+      } catch {
+        if (!cancelled) setPartnerConfirmAlerts({});
+      }
+    };
+    void loadAlerts();
+    return () => {
+      cancelled = true;
+    };
+  }, [orders]);
 
 
 
@@ -893,6 +936,14 @@ export function OrdersTable({
                     <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">
                       <div className="flex items-center gap-2">
                         {order.client}
+                        {partnerConfirmAlerts[order.id]?.length > 0 && (
+                          <span
+                            className="shrink-0 max-w-[10rem] truncate rounded-full bg-red-50 px-1.5 py-0.5 text-[11px] font-semibold text-red-700 dark:bg-red-950/50 dark:text-red-300"
+                            title={`${partnerConfirmAlerts[order.id].join(', ')} nepatvirtino gavimo`}
+                          >
+                            {partnerConfirmAlerts[order.id].join(', ')}
+                          </span>
+                        )}
                         {hasNonContinuousBilling(order) && <BillingGapsIndicator />}
                         {order.is_spec_order && <OrderSpecIndicator />}
                         {hasOrderCommentOrScreenshot(order.id) && (
@@ -1113,6 +1164,14 @@ export function OrdersTable({
                       <span className={`truncate min-w-0 flex-1 ${t.clientFont} text-gray-900 dark:text-white`}>
                         {order.client}
                       </span>
+                      {partnerConfirmAlerts[order.id]?.length > 0 && (
+                        <span
+                          className="shrink-0 max-w-[10rem] truncate rounded-full bg-red-50 px-1.5 py-0.5 text-[11px] font-semibold text-red-700 dark:bg-red-950/50 dark:text-red-300"
+                          title={`${partnerConfirmAlerts[order.id].join(', ')} nepatvirtino gavimo`}
+                        >
+                          {partnerConfirmAlerts[order.id].join(', ')}
+                        </span>
+                      )}
                       {hasNonContinuousBilling(order) && <BillingGapsIndicator />}
                       {order.is_spec_order && <OrderSpecIndicator />}
                       {shouldShowMediaAlert(order) && (

@@ -168,20 +168,29 @@ export async function confirmPartnerDeliveryByToken(
 export async function listPartnerDeliveriesForOrder(
   orderId: string
 ): Promise<PartnerDelivery[]> {
-  const mem = memoryListByOrder(orderId);
+  return listPartnerDeliveriesForOrders([orderId]);
+}
+
+export async function listPartnerDeliveriesForOrders(
+  orderIds: string[]
+): Promise<PartnerDelivery[]> {
+  const ids = [...new Set(orderIds.map((id) => String(id || '').trim()).filter(Boolean))];
+  if (ids.length === 0) return [];
+
+  const mem = ids.flatMap((id) => memoryListByOrder(id));
   try {
     const { data, error } = await supabase
       .from('partner_deliveries')
       .select('*')
-      .eq('order_id', orderId)
+      .in('order_id', ids)
       .order('sent_at', { ascending: false });
     if (!error && data?.length) {
       const byKey = new Map<string, PartnerDelivery>();
       for (const row of data as PartnerDelivery[]) {
-        byKey.set(`${row.partner_id}:${row.stage}`, row);
+        byKey.set(`${row.order_id}:${row.partner_id}:${row.stage}`, row);
       }
       for (const row of mem) {
-        const key = `${row.partner_id}:${row.stage}`;
+        const key = `${row.order_id}:${row.partner_id}:${row.stage}`;
         if (!byKey.has(key)) byKey.set(key, row);
       }
       return [...byKey.values()];
