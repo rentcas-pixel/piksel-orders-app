@@ -850,23 +850,33 @@ export function summarizePlanMediaCoverage(
   };
 }
 
+/** Plano laukai, kurių `Order.details` tipas dar nedeklaruoja, bet runtime juos turi. */
+type OrderClipPlanDetails = {
+  plan?: {
+    screenRows?: Array<{
+      name: string;
+      city?: string;
+      owner?: string;
+      type?: string;
+      resolution?: string;
+      catalogId?: string;
+    }>;
+    screenNames?: string[];
+  };
+};
+
+function orderClipPlan(details: unknown): OrderClipPlanDetails['plan'] {
+  if (!details || typeof details !== 'object') return undefined;
+  const plan = (details as OrderClipPlanDetails).plan;
+  return plan && typeof plan === 'object' ? plan : undefined;
+}
+
 /** Ekranai iš order.details.plan (be PocketBase) — greitam lentelės coverage. */
 export function screensFromOrderPlan(order: {
-  details?: {
-    plan?: {
-      screenRows?: Array<{
-        name: string;
-        city?: string;
-        owner?: string;
-        type?: string;
-        resolution?: string;
-        catalogId?: string;
-      }>;
-      screenNames?: string[];
-    };
-  };
+  details?: OrderClipPlanDetails | NonNullable<Order['details']>;
 }): OrderClipScreen[] {
-  const rows = order.details?.plan?.screenRows || [];
+  const plan = orderClipPlan(order.details);
+  const rows = plan?.screenRows || [];
   if (rows.length > 0) {
     return rows.map((row) => ({
       id: row.catalogId,
@@ -877,7 +887,7 @@ export function screensFromOrderPlan(order: {
       resolution: row.resolution,
     }));
   }
-  return (order.details?.plan?.screenNames || []).map((name) => ({
+  return (plan?.screenNames || []).map((name) => ({
     name,
   }));
 }
@@ -891,7 +901,7 @@ export async function resolveOrderClipScreens(order: Order): Promise<OrderClipSc
 
   if (nextScreens.length === 0 && Array.isArray(order.screens) && order.screens.length > 0) {
     if (isTestOrder(order)) {
-      nextScreens = (order.details?.plan?.screenNames || []).map((name) => ({
+      nextScreens = (orderClipPlan(order.details)?.screenNames || []).map((name) => ({
         name,
       }));
     } else {
