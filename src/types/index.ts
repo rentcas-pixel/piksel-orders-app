@@ -1,3 +1,71 @@
+/** Ekrano eilutė, kurią skaičiuoklė ir play jau rašo į orders.details.plan.screenRows. */
+export interface OrderPlanScreenRow {
+  name: string;
+  city?: string;
+  owner?: string;
+  type?: string;
+  resolution?: string;
+  catalogId?: string;
+  impressions?: number;
+  ots?: number;
+  clipPrice?: number;
+  cpt?: number;
+  gross?: number;
+  screenDiscount?: number;
+  net?: number;
+  from?: string;
+  to?: string;
+  days?: number;
+}
+
+/** Plano snapshot, kurį hub ir play jau saugo orders.details.plan. */
+export interface OrderPlanSnapshot {
+  grid?: boolean[][];
+  clip_duration?: number;
+  intensity?: string;
+  viewsPerHour?: number;
+  days?: number;
+  viaduct?: boolean;
+  viaductFrequency?: number;
+  screenNames?: string[];
+  screenRows?: OrderPlanScreenRow[];
+  volumeDiscount?: number;
+  periodDiscount?: number;
+  total?: number;
+}
+
+/**
+ * orders.details: skaičiuoklės kainos ir play/hub laukai, kuriuos runtime jau rašo.
+ * billingPeriods čia yra play periodai (id/from/to), ne Supabase OrderBillingPeriod.
+ */
+export interface OrderDetails {
+  screenPrices?: Record<string, number>;
+  views?: number;
+  cpt?: number;
+  discount?: number;
+  finalPrice?: number;
+  /** Galutinė kaina po apimties / laikotarpio nuolaidų (iš skaičiuoklės) */
+  total?: number;
+  amountDiscount?: number;
+  periodDiscount?: number;
+  publicToken?: string;
+  billingPeriods?: Array<{ id: string; from: string; to: string }>;
+  plan?: OrderPlanSnapshot;
+  isTest?: boolean;
+  live?: {
+    status?: string;
+  };
+  clockOverlay?: {
+    enabled?: boolean;
+  };
+  mediaCoverage?: {
+    ok: number;
+    total: number;
+    unit?: 'resolution';
+    updatedAt?: string;
+  };
+}
+
 export interface Order {
   id: string;
   client: string;
@@ -16,18 +84,16 @@ export interface Order {
   intensity?: string; // Kas 4, Kas 6, Kas 8, Kas 12, Kas 24
   /** Ekranų ID masyvas iš PocketBase */
   screens?: string[];
-  /** Ekrano kainos pagal ID (jei yra) */
-  details?: {
-    screenPrices?: Record<string, number>;
-    views?: number;
-    cpt?: number;
-    discount?: number;
-    finalPrice?: number;
-    /** Galutinė kaina po apimties / laikotarpio nuolaidų (iš skaičiuoklės) */
-    total?: number;
-    amountDiscount?: number;
-    periodDiscount?: number;
-  };
+  /** Skaičiuoklės / play laukai, kuriuos orderiai jau turi runtime */
+  grid?: boolean[][];
+  clip_duration?: number;
+  viaduct_frequency?: number;
+  invoice_issued?: boolean;
+  on_sale_screens?: string[];
+  on_sale_discount?: number;
+  hidden_screens?: string[];
+  /** Ekrano kainos ir play/hub snapshot (jei yra) */
+  details?: OrderDetails;
 }
 
 export interface Screen {

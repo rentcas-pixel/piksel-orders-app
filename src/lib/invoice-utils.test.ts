@@ -34,7 +34,6 @@ describe('isFullCampaignInvoice', () => {
         {
           period_from: '2026-06-22',
           period_to: '2026-07-05',
-          amount: 500,
         },
         order
       )

@@ -40,7 +40,7 @@ function makeLegacyStatus(
     order_id: orderId,
     invoice_issued: false,
     invoice_sent: false,
-    updated: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z',
     ...patch,
   };
 }
