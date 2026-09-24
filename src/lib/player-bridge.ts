@@ -109,12 +109,21 @@ async function playerAdminSecret(): Promise<string> {
   }
 }
 
-async function withPlayerAdminSecret(
-  headers: Record<string, string>
+export async function withPlayerAdminSecret(
+  headers: Record<string, string> = {}
 ): Promise<Record<string, string>> {
   const secret = await playerAdminSecret();
   if (!secret) return headers;
   return { ...headers, 'x-piksel-secret': secret };
+}
+
+export function playerAdminCallError(
+  status: number,
+  fallback: string,
+  result?: { error?: string }
+): string {
+  if (status === 401) return 'Grotuvo serveris užrakintas.';
+  return result?.error || fallback;
 }
 
 function playerLockedMessage(response: Response, fallback: string, result?: { error?: string }): string {
