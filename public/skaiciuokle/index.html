@@ -1,0 +1,905 @@
+<!doctype html>
+<html lang="lt">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Piksel test orderiai ir skaičiuoklė" />
+    <title>Piksel | Test orderiai</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+    <base href="/skaiciuokle/" />
+    <link rel="stylesheet" href="/skaiciuokle/styles.css?v=20260925-confirmed" />
+    <link rel="preload" href="/skaiciuokle/plan-paint.js?v=20260921-1" as="script" />
+    <link rel="preload" href="/skaiciuokle/screen-catalog.js?v=20260721-photos" as="script" />
+    <link rel="preload" href="/skaiciuokle/app.js?v=20260921-softg" as="script" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="topbar-left">
+          <a class="brand" href="#calculator" aria-label="Piksel pradžia">
+            <img src="/skaiciuokle/assets/piksel-logo.png" alt="Piksel" />
+          </a>
+        </div>
+        <div class="topbar-meta">
+          <span>Klientas: <strong>X</strong></span>
+          <span class="meta-separator">•</span>
+          <span>Agentūra: <strong>X</strong></span>
+          <span class="meta-separator">•</span>
+          <span class="topbar-campaign-no">Kampanijos Nr.: <strong>U-1990</strong></span>
+          <span class="campaign-confirmed" id="publicCampaignNotice" hidden role="status" title="Planas patvirtintas. Redagavimas užrakintas." aria-label="Planas patvirtintas. Redagavimas užrakintas.">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" />
+              <path d="m8 12 2.5 2.5L16 9" />
+            </svg>
+            Patvirtinta
+          </span>
+          <span id="publicCampaignNoticeTitle" hidden>Patvirtinta</span>
+          <span id="publicCampaignNoticeText" hidden></span>
+          <button type="button" class="button secondary" id="copyCampaignButton" hidden>Kopijuoti kampaniją</button>
+          <span class="public-campaign-status" id="publicCampaignStatus" hidden>Redaguojama</span>
+        </div>
+      </div>
+    </header>
+
+    <main class="page-shell app-view" id="calculatorView">
+      <section class="page-heading">
+        <div class="heading-actions">
+          <button class="button secondary" id="resetButton" hidden>← Grįžti į orderį</button>
+          <div class="go-share-link" id="goShareLink">
+            <input
+              id="goShareLinkInput"
+              type="text"
+              readonly
+              value=""
+              placeholder="https://play.piksel.lt/…"
+              aria-label="Kampanijos nuoroda"
+            />
+            <button type="button" id="goShareLinkCopy" class="go-share-copy" title="Kopijuoti nuorodą" aria-label="Kopijuoti nuorodą">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" stroke-width="1.8"/>
+                <path d="M6.5 15H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              </svg>
+            </button>
+          </div>
+          <button class="button secondary icon-button" id="exportButton" type="button" title="Eksportuoti į Excel" aria-label="Eksportuoti į Excel">
+            <svg class="export-icon-download" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M12 3v12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <path d="M8 11l4 4 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M5 19h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+            <svg class="export-icon-file" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M7 3.75h7.2L19 8.6V20.25H7V3.75z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+              <path d="M14.2 3.75V8.6H19" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+            </svg>
+            <span class="export-button-label">Eksportuoti į Excel</span>
+          </button>
+          <button class="button secondary icon-button" id="createOrderButton" type="button" title="Išsaugoti" aria-label="Išsaugoti">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M5 12.5l4.5 4.5L19 7.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+      </section>
+
+      <section class="calculator-layout">
+        <article class="panel screens-panel">
+          <div class="panel-header">
+            <div class="screen-mode-tabs" role="tablist" aria-label="Skaičiuoklės tipas">
+              <button type="button" class="screen-mode-tab active" role="tab" aria-selected="true" data-calc-mode="screens">Ekranai</button>
+              <button type="button" class="screen-mode-tab" role="tab" aria-selected="false" data-calc-mode="viaducts">Viadukai</button>
+            </div>
+            <div class="package-filters" id="packageFilters"></div>
+          </div>
+
+          <div class="filters">
+            <label class="search-box">
+              <span aria-hidden="true">⌕</span>
+              <input id="searchInput" type="search" placeholder="Ieškoti ekrano ar miesto" />
+            </label>
+            <button type="button" class="select-all" id="selectAllButton">Pasirinkti visus</button>
+            <div class="city-filters" id="cityFilters"></div>
+          </div>
+
+          <div class="table-wrap">
+            <table class="screens-table">
+              <thead>
+                <tr>
+                  <th class="screen-col">Ekranas</th>
+                  <th>Parodymai</th>
+                  <th>OTS</th>
+                  <th>Klipo kaina</th>
+                  <th>CPT</th>
+                  <th>Bruto</th>
+                  <th>Nuolaida</th>
+                  <th class="money-col">Kaina</th>
+                </tr>
+              </thead>
+              <tbody id="screensTableBody"></tbody>
+              <tfoot id="screensTableFoot" hidden></tfoot>
+            </table>
+          </div>
+        </article>
+
+        <aside class="panel setup-panel">
+          <div class="panel-header compact">
+            <div>
+              <h2>Išdėstymo informacija</h2>
+              <p>Mock duomenų versija</p>
+            </div>
+          </div>
+
+          <div class="setup-content">
+            <div class="field" id="viaductIntensityField" hidden>
+              <div class="duration-select" id="viaductFrequencyControl">
+                <select id="viaductFrequency" class="duration-select-source" tabindex="-1" aria-hidden="true">
+                  <option value="1" selected>Kas 1 minutę</option>
+                  <option value="2">Kas 2 minutes</option>
+                  <option value="4">Kas 4 minutes</option>
+                </select>
+                <button class="duration-select-trigger" id="viaductFrequencyTrigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="viaductFrequencyMenu">
+                  <span id="viaductFrequencyLabel">Kas 1 minutę</span>
+                  <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5.5 7.5 4.5 4.5 4.5-4.5"/></svg>
+                </button>
+                <div class="duration-select-menu" id="viaductFrequencyMenu" role="listbox" aria-label="Viaduko intensyvumas" hidden>
+                  <button type="button" role="option" data-viaduct-frequency-value="1">Kas 1 minutę</button>
+                  <button type="button" role="option" data-viaduct-frequency-value="2">Kas 2 minutes</button>
+                  <button type="button" role="option" data-viaduct-frequency-value="4">Kas 4 minutes</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="field" id="clipDurationField">
+              <span class="field-heading-row"><span>Klipo trukmė (s)</span><a class="field-help" href="https://www.piksel.lt/klipai" target="_blank" rel="noopener noreferrer">Reikalavimai klipams</a></span>
+              <div class="duration-select" id="clipDurationControl">
+                <select id="clipDuration" class="duration-select-source" tabindex="-1" aria-hidden="true">
+                <option value="5">5 sekundės</option>
+                <option value="10" selected>10 sekundžių</option>
+                <option value="15">15 sekundžių</option>
+                </select>
+                <button class="duration-select-trigger" id="clipDurationTrigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="clipDurationMenu">
+                  <span id="clipDurationLabel">10 sekundžių</span>
+                  <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5.5 7.5 4.5 4.5 4.5-4.5"/></svg>
+                </button>
+                <div class="duration-select-menu" id="clipDurationMenu" role="listbox" aria-label="Klipo trukmė" hidden>
+                  <button type="button" role="option" data-duration-value="5">5 sekundės</button>
+                  <button type="button" role="option" data-duration-value="10">10 sekundžių</button>
+                  <button type="button" role="option" data-duration-value="15">15 sekundžių</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="field period-field">
+              <div class="period-head-row">
+                <button
+                  type="button"
+                  class="period-label-toggle"
+                  id="perScreenDatesToggle"
+                  aria-pressed="false"
+                  title="Skirtingi laikotarpiai ekranams"
+                >
+                  Laikotarpis
+                </button>
+                <button
+                  type="button"
+                  class="period-split-link"
+                  id="campaignWavesOpen"
+                  title="Aktyvios bangos su gap’ais"
+                >
+                  Suskaidyti
+                </button>
+              </div>
+              <span class="date-range-inputs">
+                <span class="iso-date-control">
+                  <input id="dateFrom" type="text" inputmode="numeric" maxlength="10" placeholder="YYYY-MM-DD" autocomplete="off" aria-label="Laikotarpis nuo" />
+                  <button class="date-picker-trigger" type="button" data-date-target="dateFrom" aria-label="Atidaryti pradžios datos kalendorių"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2.5v3M15 2.5v3M3 7.5h14M4.5 4h11A1.5 1.5 0 0 1 17 5.5v10a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 15.5v-10A1.5 1.5 0 0 1 4.5 4Z"/></svg></button>
+                </span>
+                <span class="date-range-arrow" aria-hidden="true">→</span>
+                <span class="iso-date-control">
+                  <input id="dateTo" type="text" inputmode="numeric" maxlength="10" placeholder="YYYY-MM-DD" autocomplete="off" aria-label="Laikotarpis iki" />
+                  <button class="date-picker-trigger" type="button" data-date-target="dateTo" aria-label="Atidaryti pabaigos datos kalendorių"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2.5v3M15 2.5v3M3 7.5h14M4.5 4h11A1.5 1.5 0 0 1 17 5.5v10a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 15.5v-10A1.5 1.5 0 0 1 4.5 4Z"/></svg></button>
+                </span>
+              </span>
+              <p class="campaign-waves-hint" id="campaignWavesHint" hidden></p>
+              <div class="range-calendar" id="rangeCalendar" hidden></div>
+            </div>
+
+            <div class="field" id="screenPresetField">
+              <div class="presets" id="presetButtons">
+                <button data-preset="max">Max</button>
+                <button class="active" data-preset="medi">Medi</button>
+                <button data-preset="min">Min</button>
+                <button data-preset="peak">Pikas</button>
+              </div>
+            </div>
+
+            <div class="schedule-wrap">
+              <table class="schedule" id="scheduleGrid"></table>
+            </div>
+          </div>
+        </aside>
+      </section>
+    </main>
+
+    <main class="orders-shell app-view" id="ordersView" hidden>
+      <section class="orders-filters" aria-label="Orderių filtrai">
+        <div class="orders-view-switch" aria-label="Atvaizdavimo būdas">
+          <button class="orders-view-button active" type="button" aria-pressed="true">
+            <span aria-hidden="true">▦</span> Sąrašas
+          </button>
+          <button class="orders-view-button" id="ordersCalendarButton" type="button" aria-pressed="false">
+            <span aria-hidden="true">□</span> Kalendorius
+          </button>
+        </div>
+
+        <div class="orders-filter-row">
+          <div class="orders-filter-group">
+            <span class="orders-filter-label">Statusas</span>
+            <div class="orders-filter-options" data-orders-filter="status">
+              <button class="active" type="button" data-filter-value="Visi">Visi</button>
+              <button type="button" data-filter-value="Patvirtinta">Patvirtinta</button>
+              <button type="button" data-filter-value="Nepatvirtinta">Nepatvirtinta</button>
+            </div>
+          </div>
+
+          <div class="orders-filter-group orders-month-filter">
+            <span class="orders-filter-label">Mėnuo</span>
+            <div class="orders-month-options">
+              <button class="orders-filter-arrow" type="button" data-month-shift="-1" aria-label="Ankstesnis mėnuo">‹</button>
+              <div class="orders-filter-options" data-orders-filter="month">
+                <button class="active" type="button" data-filter-value="Visi">Visi</button>
+                <button type="button" data-filter-value="06">Birželis</button>
+                <button type="button" data-filter-value="07">Liepa</button>
+                <button type="button" data-filter-value="08">Rugpjūtis</button>
+              </div>
+              <button class="orders-filter-arrow" type="button" data-month-shift="1" aria-label="Kitas mėnuo">›</button>
+            </div>
+          </div>
+
+          <div class="orders-filter-group">
+            <span class="orders-filter-label">Metai</span>
+            <div class="orders-filter-options" data-orders-filter="year">
+              <button class="active" type="button" data-filter-value="2026">2026</button>
+              <button type="button" data-filter-value="2025">2025</button>
+              <button type="button" data-filter-value="2024">2024</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="orders-additional-row">
+          <button class="orders-additional-toggle" id="ordersAdditionalToggle" type="button" aria-expanded="false">
+            <span aria-hidden="true">⌄</span> Papildomi filtrai
+          </button>
+          <div class="orders-advanced-filters" id="ordersAdvancedFilters" hidden>
+            <label>
+              <span>Agentūra</span>
+              <input id="ordersAgencyFilter" type="text" placeholder="Pvz. BPN" />
+            </label>
+            <label>
+              <span>Klientas</span>
+              <input id="ordersClientFilter" type="text" placeholder="Pvz. Maxima" />
+            </label>
+            <label>
+              <span>Media</span>
+              <select id="ordersMediaFilter">
+                <option value="Visi">Visi</option>
+                <option value="Taip">Taip</option>
+                <option value="Ne">Ne</option>
+                <option value="—">Nenurodyta</option>
+              </select>
+            </label>
+            <label>
+              <span>Sąskaita</span>
+              <select id="ordersInvoiceFilter">
+                <option value="Visos">Visos</option>
+                <option value="Išrašyta">Išrašyta</option>
+                <option value="Neišrašyta">Neišrašyta</option>
+              </select>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <section class="orders-panel">
+        <div class="test-orders-banner" role="status">
+          Test orderiai — saugoma tik šiame kompiuteryje (localStorage). Į live orderius / PocketBase nerašoma.
+        </div>
+        <div class="orders-toolbar">
+          <h1>Test orderiai</h1>
+          <div class="orders-tools">
+            <label class="orders-search">
+              <span aria-hidden="true">⌕</span>
+              <input id="ordersSearch" type="search" placeholder="Ieškoti pagal klientą, agentūrą" />
+            </label>
+            <button class="orders-export" id="ordersExportButton" type="button">
+              <span aria-hidden="true">⇩</span> Excel
+            </button>
+            <button class="orders-create" id="newTestOrderButton" type="button">Sukurti</button>
+            <span class="orders-count" id="ordersCount">0 užsakymų</span>
+          </div>
+        </div>
+        <div class="orders-table-wrap">
+          <table class="orders-table">
+            <thead>
+              <tr>
+                <th>Klientas ↕</th>
+                <th>Agentūra ↕</th>
+                <th>Užsakymo Nr. ↕</th>
+                <th>Statusas ↕</th>
+                <th>Data nuo ↕</th>
+                <th>Data iki ↕</th>
+                <th>Media ↕</th>
+                <th>Kaina ↕</th>
+                <th>Sąskaita ↕</th>
+                <th>Išsiųsta ↕</th>
+              </tr>
+            </thead>
+            <tbody id="ordersTableBody"></tbody>
+          </table>
+        </div>
+        <div class="orders-empty" id="ordersEmpty" hidden>Orderių nerasta</div>
+      </section>
+    </main>
+
+    <main class="campaign-shell app-view" id="campaignView" hidden>
+      <button class="campaign-back" id="campaignBackButton" type="button">← Grįžti į orderius</button>
+
+      <section class="campaign-hero">
+        <div class="campaign-hero-copy">
+          <div class="campaign-title-line">
+            <h1 id="campaignTitle">Kampanija</h1>
+            <span class="campaign-state" id="campaignState">Juodraštis</span>
+          </div>
+          <p id="campaignSubtitle">Orderio informacija</p>
+        </div>
+        <div class="campaign-hero-actions">
+          <button class="button secondary" id="campaignEditPlanButton" type="button">Redaguoti planą</button>
+          <button class="button secondary" id="campaignSaveButton" type="button">Išsaugoti</button>
+          <button class="button primary" id="campaignPublishButton" type="button" hidden>Publikuoti į ekranus →</button>
+        </div>
+      </section>
+
+      <section class="campaign-workflow" aria-label="Orderio eiga">
+        <div class="campaign-workflow-steps">
+          <div class="workflow-step" data-workflow-step="plan">
+            <span class="workflow-step-number">1</span>
+            <div><strong>Planas</strong><small data-workflow-status>Paruoštas</small></div>
+          </div>
+          <div class="workflow-step" data-workflow-step="approval">
+            <span class="workflow-step-number">2</span>
+            <div><strong>Patvirtinimas</strong><small data-workflow-status>Laukia</small></div>
+          </div>
+          <div class="workflow-step" data-workflow-step="media">
+            <span class="workflow-step-number">3</span>
+            <div><strong>Klipai</strong><small data-workflow-status>Laukia</small></div>
+          </div>
+          <div class="workflow-step" data-workflow-step="broadcast">
+            <span class="workflow-step-number">4</span>
+            <div><strong>Transliacija</strong><small data-workflow-status>Laukia</small></div>
+          </div>
+        </div>
+        <div class="campaign-workflow-next">
+          <span>Dabartinė būsena</span>
+          <strong id="campaignWorkflowState">Laukia patvirtinimo</strong>
+        </div>
+      </section>
+
+      <section class="campaign-facts campaign-facts-hidden" aria-label="Kampanijos santrauka">
+        <div><span>Orderio Nr.</span><strong id="detailOrderNo">—</strong></div>
+        <div><span>Laikotarpis</span><strong id="detailPeriod">—</strong></div>
+        <div><span>Intensyvumas</span><strong id="detailIntensity">—</strong></div>
+        <div><span>Klipo trukmė</span><strong id="detailDuration">—</strong></div>
+        <div><span>Ekranai</span><strong id="detailScreenCount">—</strong></div>
+      </section>
+
+      <section class="campaign-tabs-card">
+        <nav class="campaign-tabs" aria-label="Orderio skiltys">
+          <button class="campaign-tab active" type="button" data-campaign-tab="info">Pagrindinė informacija</button>
+          <button class="campaign-tab" type="button" data-campaign-tab="clips">Klipai <span id="campaignClipProgress">0</span></button>
+          <button class="campaign-tab" type="button" data-campaign-tab="publish">Publikavimas <span id="campaignPublishTabState">Laukia</span></button>
+        </nav>
+
+        <div class="campaign-tab-panel active" data-campaign-panel="info">
+          <div class="campaign-info-layout">
+            <div class="campaign-info-main">
+              <article class="campaign-card campaign-info-card">
+                <div class="campaign-card-header"><div><h2 id="campaignInfoHeading">Kampanija</h2><p id="campaignInfoSubtitle">Klientas / agentūra · Orderio Nr.</p></div><span class="campaign-state active" id="campaignInfoStatusBadge">Nepatvirtinta</span></div>
+                <div class="campaign-info-form">
+                  <label><span>Pavadinimas</span><input id="campaignInfoName" type="text" /></label>
+                  <label><span>Statusas</span><select id="campaignInfoStatus"><option>Nepatvirtinta</option><option>Patvirtinta</option></select></label>
+                  <label class="campaign-info-period"><span>Transliacijų laikotarpis</span><div><input id="campaignInfoFrom" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" /><b>→</b><input id="campaignInfoTo" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" /></div></label>
+                  <div class="campaign-info-weeks">Savaitės: <strong id="campaignInfoWeeks">—</strong></div>
+                  <label><span>Komentaras</span><textarea id="campaignInfoComment" placeholder="Įrašykite komentarą..."></textarea></label>
+                  <div class="campaign-reminder-fields"><label><span>Priminimas</span><input id="campaignInfoReminderDate" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" /></label><input id="campaignInfoReminderText" type="text" placeholder="Priminimo žinutė..." /></div>
+                </div>
+              </article>
+
+              <section class="order-plan-section">
+                <div class="order-plan-header">
+                  <div><h2>Reklamos planas</h2><p>Skaičiuoklės duomenų kopija šio orderio sukūrimo metu.</p></div>
+                  <span id="orderPlanScreenCount">0 ekranų</span>
+                </div>
+                <div class="order-plan-table-wrap">
+                  <table class="order-plan-table">
+                    <thead><tr><th>Ekranas</th><th>Parodymai</th><th>OTS</th><th>Klipo kaina</th><th>CPT</th><th>Bruto</th><th>Nuolaida</th><th>Kaina</th></tr></thead>
+                    <tbody id="orderPlanTableBody"></tbody>
+                  </table>
+                </div>
+                <div class="order-plan-summary">
+                  <span>Apimties nuolaida <strong id="orderPlanVolume">0%</strong></span><i>•</i>
+                  <span>Laikotarpio nuolaida <strong id="orderPlanPeriod">0%</strong></span><i>•</i>
+                  <span>Viso be PVM <strong id="orderPlanTotal">0,00 €</strong></span>
+                </div>
+              </section>
+            </div>
+            <aside class="campaign-info-side">
+              <article class="campaign-card campaign-public-link-card" id="campaignPublicLinkCard">
+                <h2>Kliento nuoroda</h2>
+                <p id="campaignPublicLinkHint">Nuoroda atidaro šį planą. Kopijuoti ir Atidaryti naudoja tą patį adresą.</p>
+                <div class="campaign-public-link-row">
+                  <input id="campaignPublicLink" type="text" readonly value="—" aria-label="Kliento kampanijos nuoroda" />
+                  <button type="button" id="campaignPublicLinkCopy">Kopijuoti</button>
+                  <button type="button" id="campaignPublicLinkOpen">Atidaryti</button>
+                </div>
+                <button type="button" class="button secondary" id="campaignCopyCampaign" style="margin-top:10px;width:100%">Kopijuoti kampaniją</button>
+              </article>
+              <article class="campaign-card campaign-amount-card"><h2>Sumų paskirstymas</h2><p id="campaignAmountPeriod">—</p><div class="campaign-amount-distribution" id="campaignAmountDistribution"></div></article>
+              <article class="campaign-card campaign-exports-card"><h2>Eksportai</h2><p>Planai ir ataskaitos</p><div><button type="button" id="campaignExportPiksel">⇩ Piksel</button><button type="button" id="campaignExportCommon">⇩ Bendras</button><button type="button">⇩ Ataskaita</button><button type="button">⇩ ZIP</button></div></article>
+              <aside class="order-plan-grid-card campaign-card">
+                <div class="order-plan-grid-heading"><div><h3>Išdėstymas</h3><p id="orderPlanMode">—</p></div><strong id="orderPlanActiveCount">0 aktyvių</strong></div>
+                <div class="order-plan-grid-wrap"><table id="orderPlanGrid"></table></div>
+                <div class="order-plan-frequency"><span><strong>30</strong> rodymų / val.</span><span><strong id="orderPlanDays">0</strong> dienų</span></div>
+              </aside>
+            </aside>
+          </div>
+        </div>
+
+        <div class="campaign-tab-panel" data-campaign-panel="clips" hidden>
+      <section class="campaign-workspace">
+        <div class="campaign-main-column">
+          <article class="campaign-card">
+            <div class="campaign-card-header">
+              <div>
+                <h2>Reklaminiai klipai</h2>
+                <p>Įkelkite failus ir priskirkite juos pasirinktiems ekranams.</p>
+              </div>
+              <div class="media-header-actions"><button class="button secondary compact-button" id="campaignMediaCheckButton" type="button">Tikrinti rezoliucijas</button><button class="button secondary compact-button" id="mediaBrowseButton" type="button">+ Pridėti klipą</button></div>
+              <input id="mediaFileInput" type="file" accept="video/*,image/*" multiple hidden />
+            </div>
+            <button class="media-dropzone" id="mediaDropzone" type="button">
+              <span class="upload-icon">↑</span>
+              <strong>Įkelkite klipus čia</strong>
+              <small>MP4, MOV, JPG arba PNG · iki 500 MB</small>
+            </button>
+            <div class="media-list" id="mediaList"></div>
+            <div class="media-check-summary" id="mediaCheckSummary"></div>
+          </article>
+
+          <article class="campaign-card">
+            <div class="campaign-card-header">
+              <div>
+                <h2>Pasirinkti ekranai</h2>
+                <p>Klipas pagal nutylėjimą bus priskirtas visiems orderio ekranams.</p>
+              </div>
+              <span class="screen-total" id="detailScreenTotal">0 ekranų</span>
+            </div>
+            <div class="detail-screens" id="detailScreens"></div>
+          </article>
+        </div>
+
+        <aside class="campaign-side-column">
+          <article class="campaign-card resolution-overview">
+            <h2>Rezoliucijų patikra</h2>
+            <p>Plano reikalavimai</p>
+            <div id="campaignResolutionOverview"></div>
+          </article>
+          <article class="campaign-card missing-clips-card" id="campaignMissingClipsCard">
+            <h2>⚠ Trūksta klipų</h2>
+            <p id="campaignMissingClipsCount">0 rezoliucijų</p>
+            <div id="campaignMissingClipsList"></div>
+          </article>
+        </aside>
+      </section>
+        </div>
+
+        <div class="campaign-tab-panel" data-campaign-panel="publish" hidden>
+          <section class="campaign-workspace publish-workspace">
+            <div class="campaign-main-column">
+              <article class="campaign-card readiness-card publish-readiness-card">
+                <div class="campaign-card-header"><div><h2>Parengties patikra</h2><p>Prieš siunčiant kampaniją į grotuvus.</p></div><span class="campaign-state active" id="publishStatusBadge">Paruošta</span></div>
+                <div class="readiness-list">
+                  <div class="readiness-row done"><span>✓</span><div><strong>Orderio duomenys</strong><small>Datos ir rodymo grafikas paruošti</small></div></div>
+                  <div class="readiness-row done"><span>✓</span><div><strong>Patvirtinimas</strong><small>Planas patvirtintas</small></div></div>
+                  <div class="readiness-row done"><span>✓</span><div><strong>Ekranai</strong><small id="readinessScreens">Pasirinkti ekranai</small></div></div>
+                  <div class="readiness-row" id="readinessMediaRow"><span>4</span><div><strong>Reklaminiai klipai</strong><small id="readinessMedia">Dar neįkelta</small></div></div>
+                </div>
+              </article>
+              <article class="campaign-card"><div class="campaign-card-header"><div><h2>Pasirinkti ekranai</h2><p>Kampaniją gaus šie grotuvai.</p></div><span class="campaign-state active" id="publishReceiptCount">0 iš 0 gavo</span></div><div class="publish-screen-list" id="publishScreens"></div></article>
+            </div>
+            <aside class="campaign-side-column">
+              <article class="campaign-card campaign-publish-action-card">
+                <div class="campaign-publish-box" id="campaignPublishBox">
+                  <div class="campaign-publish-icon" id="campaignPublishIcon">↑</div>
+                  <h2 id="publishStatusTitle">Paruošta publikuoti</h2>
+                  <p id="publishStatusText">Patikrinkite planą ir perduokite kampaniją grotuvams.</p>
+                  <div class="publish-progress"><progress id="publishProgress" value="0" max="1"></progress></div>
+                  <p class="publish-note" id="publishTimestamp">Dar neišsiųsta</p>
+                  <button class="publish-wide" id="publishWideButton" type="button">Publikuoti į ekranus →</button>
+                </div>
+              </article>
+              <article class="campaign-card schedule-summary">
+                <h2>Transliacijos planas</h2>
+                <div><span>Nuo</span><strong id="scheduleFrom">—</strong></div><div><span>Iki</span><strong id="scheduleTo">—</strong></div><div><span>Režimas</span><strong id="scheduleMode">—</strong></div><div><span>Dažnis</span><strong>30 kartų / val.</strong></div>
+              </article>
+            </aside>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <main class="player-shell app-view" id="playerView" hidden>
+      <section class="player-heading">
+        <div>
+          <div class="player-kicker"><span class="live-dot"></span> Virtualus ekranas prisijungęs</div>
+          <h1>Grotuvo simuliatorius</h1>
+          <p>Taip būsimas Windows grotuvas priims kampanijas ir rodys jas ekrane.</p>
+        </div>
+        <div class="player-heading-actions">
+          <label class="device-select-label">Testo diena
+            <select id="playerDaySelect">
+              <option value="0">Pirmadienis</option><option value="1">Antradienis</option><option value="2">Trečiadienis</option><option value="3">Ketvirtadienis</option><option value="4">Penktadienis</option><option value="5">Šeštadienis</option><option value="6">Sekmadienis</option>
+            </select>
+          </label>
+          <label class="device-select-label">Testo valanda
+            <select id="playerHourSelect"></select>
+          </label>
+          <label class="device-select-label">Ekranas
+            <select id="playerDeviceSelect"></select>
+          </label>
+          <button class="button secondary" id="playerSyncButton" type="button">↻ Sinchronizuoti</button>
+        </div>
+      </section>
+
+      <section class="player-status-strip">
+        <div><span class="status-symbol online">●</span><span><small>Ryšys</small><strong>Prisijungęs</strong></span></div>
+        <div><span class="status-symbol">↻</span><span><small>Paskutinė sinchronizacija</small><strong id="playerLastSync">Ką tik</strong></span></div>
+        <div><span class="status-symbol">↓</span><span><small>Turinys įrenginyje</small><strong id="playerCacheStatus">100% paruošta</strong></span></div>
+        <div><span class="status-symbol">◷</span><span><small>Grotuvo laikas</small><strong id="playerClock">—</strong></span></div>
+      </section>
+
+      <section class="player-layout">
+        <div class="player-main-column">
+          <article class="player-stage-card">
+            <div class="player-stage-toolbar">
+              <div><span>Dabar rodoma</span><strong id="playerScreenName">—</strong></div>
+              <span class="resolution-pill" id="playerResolution">1152 × 576</span>
+            </div>
+            <div class="player-stage" id="playerStage">
+              <div class="player-stage-media" id="playerStageMedia"></div>
+              <div class="player-stage-content">
+                <span class="stage-brand">PIKSEL</span>
+                <strong id="stageCampaignName">Laukiama kampanijos</strong>
+                <small id="stageCampaignMeta">Virtualaus ekrano peržiūra</small>
+              </div>
+              <div class="stage-progress"><span id="stageProgress"></span></div>
+            </div>
+            <div class="player-controls">
+              <button id="playerPlayButton" type="button" aria-label="Paleisti arba sustabdyti">Ⅱ</button>
+              <div class="player-time"><strong id="playerElapsed">00:04</strong><span>/</span><span id="playerDuration">00:10</span></div>
+              <div class="player-control-spacer"></div>
+              <span class="play-count-pill" id="playerPlayCount">Parodyta 0 kartų</span>
+              <span id="playerCampaignCounter">0 kampanijų</span>
+              <button id="playerFullscreenButton" type="button" aria-label="Visas ekranas">⛶</button>
+            </div>
+          </article>
+
+          <article class="player-panel occupancy-panel">
+            <div class="player-panel-header">
+              <div><h2>Valandų užimtumas</h2><p>Žalia spalva rodo laisviausias valandas papildomiems klipams.</p></div>
+              <div class="auto-fill-control">
+                <span>Užpildyti laisvas vietas</span>
+                <label class="switch"><input id="autoFillToggle" type="checkbox" checked /><span></span></label>
+                <button id="autoAllocateButton" type="button">Paskirstyti automatiškai</button>
+              </div>
+            </div>
+            <div class="occupancy-legend"><span><i class="low"></i>Laisva</span><span><i class="medium"></i>Vidutiniškai</span><span><i class="high"></i>Beveik pilna</span><strong>Skaičiuojama iš publikuotų kampanijų</strong></div>
+            <div class="occupancy-hours" id="occupancyHours"></div>
+            <div class="allocation-result" id="allocationResult">Sistema parinks valandas, kuriose yra mažiausias užimtumas.</div>
+          </article>
+        </div>
+
+        <aside class="player-side-column">
+          <article class="player-panel now-playing-card">
+            <div class="player-panel-header"><div><h2>Aktyvios kampanijos</h2><p id="playerCampaignCount">0 šiame ekrane</p></div></div>
+            <div class="player-campaign-list" id="playerCampaignList"></div>
+          </article>
+          <article class="player-panel device-health-card">
+            <div class="player-panel-header"><div><h2>Įrenginio būsena</h2><p>Mock Windows 11 grotuvas</p></div></div>
+            <div class="health-row"><span>Programos versija</span><strong>0.1.0 demo</strong></div>
+            <div class="health-row"><span>Laisva vieta</span><strong>18,4 GB</strong></div>
+            <div class="health-row"><span>Ryšio kokybė</span><strong class="health-good">Puiki</strong></div>
+            <div class="health-row"><span>Paskutinis signalas</span><strong>Prieš 8 s</strong></div>
+          </article>
+        </aside>
+      </section>
+    </main>
+
+    <main class="monitor-shell app-view" id="monitoringView" hidden>
+      <section class="monitor-heading">
+        <div>
+          <div class="player-kicker"><span class="live-dot"></span> Ekranų stebėjimas</div>
+          <h1>Visi ekranai viename lange</h1>
+          <p>Vaizdas automatiškai atnaujinamas iš kiekvieno Windows grotuvo.</p>
+        </div>
+        <div class="monitor-actions">
+          <div class="monitor-updated"><span>Paskutinis atnaujinimas</span><strong id="monitorUpdatedAt">Ką tik</strong></div>
+          <button class="button secondary" id="monitorRefreshButton" type="button">↻ Atnaujinti</button>
+        </div>
+      </section>
+
+      <section class="monitor-summary">
+        <button class="active" data-monitor-filter="all"><strong id="monitorAllCount">19</strong><span>Visi ekranai</span></button>
+        <button data-monitor-filter="online"><strong id="monitorOnlineCount">0</strong><span>Veikia</span></button>
+        <button data-monitor-filter="warning"><strong id="monitorWarningCount">0</strong><span>Reikia dėmesio</span></button>
+        <button data-monitor-filter="offline"><strong id="monitorOfflineCount">0</strong><span>Atsijungę</span></button>
+      </section>
+
+      <section class="monitor-grid" id="monitorGrid"></section>
+    </main>
+
+    <div class="monitor-modal" id="monitorModal" hidden>
+      <section class="monitor-modal-card" role="dialog" aria-modal="true" aria-labelledby="monitorModalTitle">
+        <div class="monitor-modal-header">
+          <div><span id="monitorModalStatus" class="monitor-status online">● Veikia</span><h2 id="monitorModalTitle">Ekranas</h2><p id="monitorModalAddress">—</p></div>
+          <button id="monitorModalClose" type="button" aria-label="Uždaryti">×</button>
+        </div>
+        <div class="monitor-modal-stage" id="monitorModalStage"></div>
+        <div class="monitor-modal-info">
+          <div><span>Dabar rodoma</span><strong id="monitorModalCampaign">—</strong></div>
+          <div><span>Klipas</span><strong id="monitorModalClip">—</strong></div>
+          <div><span>Paskutinis signalas</span><strong id="monitorModalSignal">—</strong></div>
+          <div><span>Grotuvo būsena</span><strong id="monitorModalPlayer">—</strong></div>
+        </div>
+        <div class="monitor-modal-actions"><button class="button secondary" id="monitorModalDone" type="button">Uždaryti</button><button class="button primary" id="monitorLiveButton" type="button">Žiūrėti gyvai</button></div>
+      </section>
+    </div>
+
+    <div class="media-check-modal" id="mediaCheckModal" hidden>
+      <section class="media-check-card" role="dialog" aria-modal="true" aria-labelledby="mediaCheckTitle">
+        <header><h2 id="mediaCheckTitle">Media patikra</h2><button id="mediaCheckClose" type="button" aria-label="Uždaryti">×</button></header>
+        <div class="media-check-content">
+          <div class="media-check-section-title"><strong>Reikalingi klipai</strong><button id="mediaCheckCopy" type="button">▧ Kopijuoti</button></div>
+          <div class="media-requirements-table">
+            <div class="media-requirements-head"><span>Rezoliucija (px)</span><span>Ekranai</span><span>Statusas</span></div>
+            <div id="mediaRequirementsBody"></div>
+          </div>
+
+          <button class="media-check-dropzone" id="mediaCheckDropzone" type="button"><span>▦</span><strong>Numeskite klipus čia arba</strong><small>Pasirinkti failus</small></button>
+          <input id="mediaCheckFileInput" type="file" accept="video/*,image/*" multiple hidden />
+
+          <section class="uploaded-check-section" id="uploadedCheckSection">
+            <h3>Įkelti failai <span id="uploadedCheckCount">(0)</span></h3>
+            <div id="uploadedCheckList"></div>
+          </section>
+
+          <section class="missing-media-panel" id="missingMediaPanel">
+            <div class="media-check-section-title"><strong>⚠ Trūksta klipų</strong><button id="missingMediaCopy" type="button">▧ Kopijuoti</button></div>
+            <div class="missing-media-table" id="missingMediaList"></div>
+          </section>
+        </div>
+        <footer><button class="button secondary" id="mediaCheckDone" type="button">Uždaryti</button></footer>
+      </section>
+    </div>
+
+    <div class="order-quick-modal" id="orderQuickModal" hidden>
+      <section class="order-quick-card hub-order-modal" role="dialog" aria-modal="true" aria-labelledby="orderQuickTitle">
+        <header class="order-quick-header">
+          <div>
+            <h2 id="orderQuickTitle">Orderis</h2>
+            <p><span id="orderQuickAgency">—</span> <span class="hub-sep">|</span> <strong id="orderQuickNumber">U-0000</strong></p>
+          </div>
+          <div class="order-quick-header-actions">
+            <div class="quick-header-status"><span>Media</span><button id="orderQuickMediaCheck" type="button">Tikrinti</button><button class="quick-icon-button" id="orderQuickMediaToggle" type="button" aria-label="Media būsena" title="Media">📷</button></div>
+            <div class="quick-header-status"><span>Sąskaita</span><button class="quick-icon-button" id="orderQuickInvoiceToggle" type="button" aria-label="Sąskaitos būsena" title="Sąskaita">📄</button></div>
+            <div class="quick-header-status"><span>Išsiųsta</span><button class="quick-icon-button" id="orderQuickSentToggle" type="button" aria-label="Išsiuntimo būsena" title="Išsiųsta">✈</button></div>
+            <button class="quick-close-button" id="orderQuickClose" type="button" aria-label="Uždaryti">×</button>
+          </div>
+        </header>
+
+        <div class="order-edit-body">
+          <div class="order-edit-two-cols">
+            <label><span>Pavadinimas</span><input id="orderQuickClientInput" type="text" /></label>
+            <label><span>Statusas</span><select id="orderQuickStatusSelect"><option value="Nepatvirtinta">Nepatvirtinta</option><option value="Patvirtinta">Patvirtinta</option></select></label>
+          </div>
+
+          <div class="order-period-block">
+            <div class="order-edit-label">Transliacijų laikotarpis</div>
+            <div class="order-period-inputs"><input id="orderQuickFromInput" type="text" placeholder="yyyy-mm-dd" /><span>→</span><input id="orderQuickToInput" type="text" placeholder="yyyy-mm-dd" /></div>
+          </div>
+
+          <div class="order-weeks-bar">Savaitės: <strong id="orderQuickWeeks">—</strong></div>
+
+          <section class="order-distribution">
+            <h3>Sumų pasiskirstymas:</h3>
+            <div id="orderQuickMonthDistribution">—</div>
+            <footer>Viso: <strong id="orderQuickPrice">—</strong></footer>
+          </section>
+
+          <section class="order-export-panel">
+            <div class="order-export-heading"><span aria-hidden="true">▦</span><div><h3>Reklamos planas</h3><p>Excel parsisiunčiamas iš šio orderio duomenų</p></div></div>
+            <div class="order-export-buttons" id="orderQuickPartnerExports"></div>
+            <div class="order-export-buttons secondary-row">
+              <button class="combined" id="orderQuickExcel" type="button">⇩ Bendras</button>
+              <button class="report" id="orderQuickReport" type="button">⇩ Ataskaita</button>
+              <button class="zip" id="orderQuickZip" type="button">⇩ ZIP</button>
+              <button class="manage" id="orderQuickManage" type="button">Redaguoti planą</button>
+            </div>
+          </section>
+
+          <div class="order-notes-grid">
+            <label><span>Komentaras</span><textarea id="orderQuickComment" placeholder="Įveskite komentarą…"></textarea></label>
+            <div class="order-attachments"><div><span>Printscreens ir Excel</span><button id="orderQuickAttach" type="button">Prisegti failą</button><input id="orderQuickAttachmentInput" type="file" hidden /></div><p id="orderQuickAttachmentText">Prisegti failą arba į komentarą įklijuoti paveikslėlį</p></div>
+          </div>
+
+          <div class="order-reminder-grid">
+            <label><span>Data</span><span class="iso-date-control standalone"><input id="orderQuickReminderDate" type="text" inputmode="numeric" maxlength="10" placeholder="YYYY-MM-DD" autocomplete="off" /><button class="date-picker-trigger" type="button" data-date-target="orderQuickReminderDate" aria-label="Atidaryti priminimo datos kalendorių"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2.5v3M15 2.5v3M3 7.5h14M4.5 4h11A1.5 1.5 0 0 1 17 5.5v10a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 15.5v-10A1.5 1.5 0 0 1 4.5 4Z"/></svg></button><input class="native-date-picker" type="date" data-date-source="orderQuickReminderDate" tabindex="-1" aria-hidden="true" /></span></label>
+            <label><span>Priminimo žinutė</span><div><input id="orderQuickReminderText" type="text" placeholder="Įveskite priminimo žinutę..." /><button id="orderQuickReminderAdd" type="button">Pridėti</button></div></label>
+          </div>
+        </div>
+
+        <footer class="order-quick-actions">
+          <button class="order-delete-button" id="orderQuickDelete" type="button">Ištrinti</button>
+          <div>
+            <button class="hub-btn hub-btn-secondary" id="orderQuickCancel" type="button">Uždaryti</button>
+            <button class="hub-btn hub-btn-primary" id="orderQuickSave" type="button">Išsaugoti</button>
+          </div>
+        </footer>
+      </section>
+    </div>
+
+    <div class="modal-backdrop" id="createCampaignModal" hidden>
+      <section class="campaign-modal" role="dialog" aria-modal="true" aria-labelledby="createCampaignTitle">
+        <div class="campaign-modal-header">
+          <div><h2 id="createCampaignTitle">Naujas test orderis</h2><p>Įrašykite pavadinimą, pasirinkite agentūrą arba klientą, tada tęskite į skaičiuoklę.</p></div>
+          <button id="closeCampaignModal" type="button" aria-label="Uždaryti">×</button>
+        </div>
+        <div class="campaign-modal-body">
+          <label><span>Pavadinimas</span><input id="newCampaignClient" type="text" placeholder="Pvz. Testinė vasaros kampanija" /></label>
+          <fieldset class="buyer-kind-fieldset">
+            <legend>Tipas</legend>
+            <div class="buyer-kind-options">
+              <label class="buyer-kind-option"><input type="radio" name="buyerKind" id="buyerKindAgency" value="agency" checked /> Agentūra</label>
+              <label class="buyer-kind-option"><input type="radio" name="buyerKind" id="buyerKindClient" value="client" /> Klientas</label>
+            </div>
+          </fieldset>
+          <label id="newCampaignAgencyWrap"><span id="newCampaignAgencyLabel">Agentūra</span>
+            <select id="newCampaignAgencySelect">
+              <option value="">Pasirinkite agentūrą…</option>
+            </select>
+            <input id="newCampaignAgency" type="text" placeholder="Pvz. RIMI" hidden />
+          </label>
+          <label hidden><span>Kampanijos numeris</span><input id="newCampaignNumber" type="text" readonly /></label>
+        </div>
+        <div class="campaign-modal-actions">
+          <button class="button secondary" id="cancelCampaignCreate" type="button">Atšaukti</button>
+          <button class="button primary" id="confirmCampaignCreate" type="button">Išsaugoti ir tęsti</button>
+        </div>
+      </section>
+    </div>
+
+    <div class="screen-detail-modal" id="screenDetailModal" hidden>
+      <section class="screen-detail-card" role="dialog" aria-modal="true" aria-labelledby="screenDetailTitle">
+        <div class="screen-detail-header">
+          <h2 id="screenDetailTitle">Ekranas</h2>
+          <button id="screenDetailClose" type="button" aria-label="Uždaryti">×</button>
+        </div>
+        <div class="screen-detail-body">
+          <div class="screen-detail-media">
+            <div class="screen-detail-photo" id="screenDetailPhoto">
+              <img id="screenDetailImage" alt="" hidden />
+              <div class="screen-detail-photo-empty" id="screenDetailPhotoEmpty">Nuotrauka ruošiama</div>
+            </div>
+            <div class="screen-detail-map">
+              <iframe id="screenDetailMap" title="Ekrano vieta žemėlapyje" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+            </div>
+          </div>
+          <dl class="screen-detail-specs">
+            <div><dt>Tipas</dt><dd id="screenDetailType">—</dd></div>
+            <div><dt>Parametrai (px)</dt><dd id="screenDetailResolution">—</dd></div>
+            <div><dt>Matmenys (m)</dt><dd id="screenDetailDimensions">—</dd></div>
+          </dl>
+          <a class="button primary screen-detail-more" id="screenDetailMore" href="#" target="_blank" rel="noopener noreferrer">Daugiau informacijos</a>
+        </div>
+      </section>
+    </div>
+
+    <footer class="summary-bar" id="calculatorFooter">
+      <div class="package-upsell" id="packageUpsell" hidden></div>
+      <div class="summary-inner">
+        <div class="summary-selection">
+          <span>Pasirinkta:</span>
+          <strong id="footerScreens">0 ekranų</strong>
+        </div>
+        <div class="summary-pricing">
+          <span class="discount-item">Apimties nuolaida: <strong id="volumeDiscount">0%</strong></span>
+          <span class="pricing-separator">•</span>
+          <span class="discount-item">Laikotarpio nuolaida: <strong id="periodDiscount">0%</strong></span>
+          <span class="pricing-separator">•</span>
+          <span>Viso be PVM: <strong id="grandTotal">0,00 €</strong></span>
+        </div>
+      </div>
+    </footer>
+
+    <div class="toast" id="toast" role="status" aria-live="polite">
+      <span class="toast-mark" aria-hidden="true">
+        <svg viewBox="0 0 20 20" fill="none"><path d="M5 10.2 8.2 13.5 15 6.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </span>
+      <div class="toast-copy">
+        <strong class="toast-title"></strong>
+        <p class="toast-detail" hidden></p>
+      </div>
+    </div>
+
+    <div class="screen-period-modal" id="screenPeriodModal" hidden>
+      <section class="screen-period-card" role="dialog" aria-modal="true" aria-labelledby="screenPeriodTitle">
+        <header>
+          <h2 id="screenPeriodTitle">—</h2>
+          <button type="button" id="screenPeriodClose" aria-label="Uždaryti">×</button>
+        </header>
+        <div class="screen-period-inputs">
+          <label>Nuo
+            <span class="iso-date-control standalone">
+              <input id="screenPeriodFrom" type="text" inputmode="numeric" maxlength="10" placeholder="yyyy-mm-dd" autocomplete="off" />
+              <button class="date-picker-trigger" type="button" data-date-target="screenPeriodFrom" aria-label="Atidaryti pradžios datos kalendorių"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2.5v3M15 2.5v3M3 7.5h14M4.5 4h11A1.5 1.5 0 0 1 17 5.5v10a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 15.5v-10A1.5 1.5 0 0 1 4.5 4Z"/></svg></button>
+              <input class="native-date-picker" type="date" data-date-source="screenPeriodFrom" tabindex="-1" aria-hidden="true" />
+            </span>
+          </label>
+          <label>Iki
+            <span class="iso-date-control standalone">
+              <input id="screenPeriodTo" type="text" inputmode="numeric" maxlength="10" placeholder="yyyy-mm-dd" autocomplete="off" />
+              <button class="date-picker-trigger" type="button" data-date-target="screenPeriodTo" aria-label="Atidaryti pabaigos datos kalendorių"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2.5v3M15 2.5v3M3 7.5h14M4.5 4h11A1.5 1.5 0 0 1 17 5.5v10a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 15.5v-10A1.5 1.5 0 0 1 4.5 4Z"/></svg></button>
+              <input class="native-date-picker" type="date" data-date-source="screenPeriodTo" tabindex="-1" aria-hidden="true" />
+            </span>
+          </label>
+        </div>
+        <footer>
+          <button type="button" class="button secondary" id="screenPeriodClear">Išvalyti</button>
+          <div class="screen-period-actions">
+            <button type="button" class="button secondary" id="screenPeriodCancel">Atšaukti</button>
+            <button type="button" class="button primary" id="screenPeriodSave">Išsaugoti</button>
+          </div>
+        </footer>
+      </section>
+    </div>
+
+    <div class="screen-period-modal" id="campaignWavesModal" hidden>
+      <section class="screen-period-card campaign-waves-card" role="dialog" aria-modal="true" aria-labelledby="campaignWavesTitle">
+        <header>
+          <h2 id="campaignWavesTitle">Aktyvios bangos</h2>
+          <button type="button" id="campaignWavesClose" aria-label="Uždaryti">×</button>
+        </header>
+        <p class="campaign-waves-lead" id="campaignWavesLead">
+          Envelope dienos be bangų. Gap’ai tarp bangų neįskaičiuojami į kainą.
+        </p>
+        <div class="campaign-waves-list" id="campaignWavesList"></div>
+        <button type="button" class="campaign-waves-add" id="campaignWavesAdd">+ Pridėti bangą</button>
+        <p class="campaign-waves-gap" id="campaignWavesGapHint" hidden></p>
+        <footer>
+          <button type="button" class="button secondary" id="campaignWavesClear">Išvalyti</button>
+          <div class="screen-period-actions">
+            <button type="button" class="button secondary" id="campaignWavesCancel">Atšaukti</button>
+            <button type="button" class="button primary" id="campaignWavesSave">Išsaugoti</button>
+          </div>
+        </footer>
+      </section>
+    </div>
+
+    <script src="/skaiciuokle/plan-paint.js?v=20260921-1"></script>
+    <script defer src="/skaiciuokle/go-config.js?v=20260721-2"></script>
+    <script defer src="/skaiciuokle/supabase-config.js?v=20260720-1"></script>
+    <script defer src="/skaiciuokle/supabase-client.js?v=20260720-5"></script>
+    <script defer src="/skaiciuokle/screen-catalog.js?v=20260721-photos"></script>
+    <script defer src="/skaiciuokle/app.js?v=20260921-softg"></script>
+  </body>
+</html>
