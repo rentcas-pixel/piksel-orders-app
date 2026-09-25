@@ -45,6 +45,17 @@ export type OrderClipRecord = {
   /** Video zona vs Statinis zona */
   uploadKind: ClipUploadKind;
   createdAt: string;
+  /** Kada failas įkeltas šiame kompe. Seni įrašai šio lauko neturi. */
+  uploadedAt?: string;
+  /** Kada failas realiai nusileido į player serverį. Kelias be šio laiko — ne laikas. */
+  onServerAt?: string;
+  /** Kada Live publikacija įrašė šį klipą į ekranus. */
+  onScreensAt?: string;
+  /** Tikras failo pokytis nuo dabar: naujas arba pakeistas. Tuščia, jei niekas nesikeitė. */
+  fileChange?: {
+    kind: 'added' | 'replaced';
+    at: string;
+  };
   /** Optional override — jei nėra, Live naudoja order.from / order.to */
   displayFrom?: string;
   displayTo?: string;
@@ -454,6 +465,7 @@ export async function addOrderClip(
 ): Promise<OrderClipRecord & { blob: Blob }> {
   const mimeType = guessClipMime(file);
   const owned = new Blob([await file.arrayBuffer()], { type: mimeType });
+  const uploadedAt = new Date().toISOString();
   const record: OrderClipRecord & { blob: Blob } = {
     id: `clip-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
     orderId: String(orderId),
@@ -464,7 +476,8 @@ export async function addOrderClip(
     resolutionKey: null,
     resolutionLabel: null,
     uploadKind,
-    createdAt: new Date().toISOString(),
+    createdAt: uploadedAt,
+    uploadedAt,
     blob: owned,
   };
 
@@ -561,10 +574,38 @@ export async function updateOrderClip(
   }
 }
 
-/** Pažymi, kad failas jau guli player.piksel.lt. */
+/** Pažymi, kad failas ką tik nusileido į player.piksel.lt. Laiką rašo tik šiam įkėlimui. */
 export async function setOrderClipServer(
   clipId: string,
   server: { mediaId: string; path: string }
+): Promise<string | undefined> {
+  const db = await openDb();
+  try {
+    const tx = db.transaction(STORE, 'readwrite');
+    const store = tx.objectStore(STORE);
+    const existing = (await idbRequest(store.get(String(clipId)))) as
+      | (OrderClipRecord & { blob?: Blob })
+      | undefined;
+    if (!existing) return undefined;
+    const onServerAt = existing.onServerAt || new Date().toISOString();
+    await idbRequest(
+      store.put({
+        ...existing,
+        serverMediaId: server.mediaId,
+        serverPath: server.path,
+        onServerAt,
+      })
+    );
+    return onServerAt;
+  } finally {
+    db.close();
+  }
+}
+
+/** Įrašo naujo arba pakeisto failo eilutę. Senų klipų neatgalina. */
+export async function setOrderClipFileChange(
+  clipId: string,
+  fileChange: NonNullable<OrderClipRecord['fileChange']>
 ): Promise<void> {
   const db = await openDb();
   try {
@@ -574,15 +615,30 @@ export async function setOrderClipServer(
       | (OrderClipRecord & { blob?: Blob })
       | undefined;
     if (!existing) return;
-    await idbRequest(
-      store.put({
-        ...existing,
-        serverMediaId: server.mediaId,
-        serverPath: server.path,
-      })
-    );
+    await idbRequest(store.put({ ...existing, fileChange }));
   } finally {
     db.close();
+  }
+}
+
+/** Po sėkmingo Live — tik tiems klipams, kurie tikrai išėjo į ekranus. */
+export async function markOrderClipsOnScreens(clipIds: string[], at: string): Promise<void> {
+  const ids = [...new Set(clipIds.map((id) => String(id || '').trim()).filter(Boolean))];
+  const stampedAt = String(at || '').trim();
+  if (!ids.length || !stampedAt) return;
+  for (const id of ids) {
+    const db = await openDb();
+    try {
+      const tx = db.transaction(STORE, 'readwrite');
+      const store = tx.objectStore(STORE);
+      const existing = (await idbRequest(store.get(id))) as
+        | (OrderClipRecord & { blob?: Blob })
+        | undefined;
+      if (!existing) continue;
+      await idbRequest(store.put({ ...existing, onScreensAt: stampedAt }));
+    } finally {
+      db.close();
+    }
   }
 }
 

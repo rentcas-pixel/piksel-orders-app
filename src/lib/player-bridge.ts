@@ -1,5 +1,6 @@
 import {
   listOrderClips,
+  markOrderClipsOnScreens,
   resolveClipDisplayRange,
   setOrderClipServer,
   type OrderClipRecord,
@@ -174,6 +175,7 @@ async function uploadClip(
   kind: string;
   duration?: number;
   forScreens?: string[];
+  onServerAt?: string;
 }> {
   if (!clip.blob) throw new Error(`Klipas be failo: ${clip.filename}`);
   const mediaId = orderClipMediaId(orderId, clip.id);
@@ -198,19 +200,22 @@ async function uploadClip(
     height: clip.height || undefined,
     duration: kind === 'image' ? 10 : undefined,
   };
-  await setOrderClipServer(clip.id, { mediaId: uploaded.id, path: uploaded.path });
-  return uploaded;
+  const onServerAt = await setOrderClipServer(clip.id, {
+    mediaId: uploaded.id,
+    path: uploaded.path,
+  });
+  return { ...uploaded, onServerAt };
 }
 
 /** Įkelia failą į player.piksel.lt iškart (ne per Live). */
 export async function pushClipToPlayer(
   orderId: string,
   clip: OrderClipRecord & { blob?: Blob }
-): Promise<{ id: string; path: string }> {
+): Promise<{ id: string; path: string; onServerAt?: string }> {
   const existing = uploadedFromClip(orderId, clip);
-  if (existing) return existing;
+  if (existing) return { id: existing.id, path: existing.path, onServerAt: clip.onServerAt };
   const uploaded = await uploadClip(getPlayerApiBase(), orderId, clip);
-  return { id: uploaded.id, path: uploaded.path };
+  return { id: uploaded.id, path: uploaded.path, onServerAt: uploaded.onServerAt };
 }
 
 /** Publikuoti kampaniją į piksel-api-server — Windows playeriai patys pasiima playlist. */
@@ -285,6 +290,15 @@ export async function publishOrderToPlayer(
   const result = await response.json().catch(() => ({}));
   if (!response.ok || !result.ok) {
     throw new Error(playerLockedMessage(response, 'API nepriėmė kampanijos', result));
+  }
+
+  try {
+    await markOrderClipsOnScreens(
+      clips.map((clip) => clip.id),
+      new Date().toISOString()
+    );
+  } catch {
+    /* Live jau priimtas — trūkstama laiko eilutė publikacijos neatšaukia. */
   }
 
   return {
