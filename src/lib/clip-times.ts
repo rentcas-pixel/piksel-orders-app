@@ -61,6 +61,15 @@ export function formatClipTime(iso: string | null | undefined): string | null {
   return `${year}-${month}-${day} ${hour}:${minute}`;
 }
 
+/** Pranešimo eilutė: 2026-09-25, 20:08. Tuščia, jei laiko nėra. */
+export function formatNoticeChangeTime(iso: string | null | undefined): string | null {
+  const formatted = formatClipTime(iso);
+  if (!formatted) return null;
+  const space = formatted.indexOf(' ');
+  if (space < 0) return null;
+  return `${formatted.slice(0, space)}, ${formatted.slice(space + 1)}`;
+}
+
 /**
  * Įkėlimo laikas, jei jis jau įrašytas.
  * Nauji failai turi `uploadedAt`. Senesni šio kompo įkėlimai tą pačią akimirką laiko `createdAt`.
@@ -118,16 +127,15 @@ export function clipTimeLines(
   return { times, change };
 }
 
-/** Pirma to tipo byla — be pakeitimo eilutės. Ta pati rezoliucija — pakeitimas. Kita — naujas failas. */
+/** Įdėtas failas — „Naujas failas“. Ta pati rezoliucija jau buvo — „Pakeistas failas“. */
 export function classifyNewClipChange(
   existing: Array<Pick<OrderClipRecord, 'id' | 'uploadKind' | 'mimeType' | 'resolutionKey'>>,
   next: Pick<OrderClipRecord, 'id' | 'uploadKind' | 'mimeType' | 'resolutionKey'>
-): ClipFileChange['kind'] | null {
+): ClipFileChange['kind'] {
   const kind = resolveClipUploadKind(next);
   const others = existing.filter(
     (clip) => clip.id !== next.id && resolveClipUploadKind(clip) === kind
   );
-  if (others.length === 0) return null;
   if (next.resolutionKey && others.some((clip) => clip.resolutionKey === next.resolutionKey)) {
     return 'replaced';
   }

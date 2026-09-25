@@ -18,7 +18,15 @@ export function notifyTestOrdersChanged(orderId?: string): void {
   }
 }
 
-export function subscribeTestOrders(onChange: (orderId?: string) => void): () => void {
+export type SubscribeTestOrdersOptions = {
+  /** Kai false — neskaito play kampanijų ir neperrašo localStorage. */
+  hydrateFromCampaigns?: boolean;
+};
+
+export function subscribeTestOrders(
+  onChange: (orderId?: string) => void,
+  options?: SubscribeTestOrdersOptions
+): () => void {
   if (typeof window === 'undefined') return () => {};
 
   const onStorage = (event: StorageEvent) => {
@@ -32,6 +40,7 @@ export function subscribeTestOrders(onChange: (orderId?: string) => void): () =>
   const onVisibility = () => {
     if (document.visibilityState === 'visible') pullFromServer();
   };
+  const hydrateFromCampaigns = options?.hydrateFromCampaigns !== false;
 
   let channel: BroadcastChannel | null = null;
   try {
@@ -45,13 +54,17 @@ export function subscribeTestOrders(onChange: (orderId?: string) => void): () =>
   }
 
   window.addEventListener('storage', onStorage);
-  window.addEventListener('focus', onFocus);
-  document.addEventListener('visibilitychange', onVisibility);
+  if (hydrateFromCampaigns) {
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+  }
 
   return () => {
     window.removeEventListener('storage', onStorage);
-    window.removeEventListener('focus', onFocus);
-    document.removeEventListener('visibilitychange', onVisibility);
+    if (hydrateFromCampaigns) {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+    }
     channel?.close();
   };
 }
@@ -241,7 +254,11 @@ export function getTestOrder(id: string): TestOrder | null {
   return listTestOrders().find((order) => String(order.id) === String(id)) || null;
 }
 
-export function upsertTestOrder(order: TestOrder): TestOrder {
+export function upsertTestOrder(
+  order: TestOrder,
+  options?: { keepUpdated?: boolean }
+): TestOrder {
+  const keptUpdated = options?.keepUpdated ? String(order.updated || '').trim() : '';
   const next = normalizeTestOrder({
     ...order,
     id: order.id || `test-${Date.now()}`,
@@ -249,7 +266,7 @@ export function upsertTestOrder(order: TestOrder): TestOrder {
       ...(order.details || { isTest: true }),
       isTest: true,
     },
-    updated: new Date().toISOString(),
+    updated: keptUpdated || new Date().toISOString(),
   });
   const others = listTestOrders().filter((item) => String(item.id) !== String(next.id));
   localStorage.setItem(STORAGE_KEY, JSON.stringify([next, ...others]));
@@ -591,7 +608,7 @@ export async function hydrateTestOrderFromPlayCampaign(
     if (testOrderCampaignFingerprint(current) === testOrderCampaignFingerprint(merged)) {
       return current;
     }
-    return upsertTestOrder(merged);
+    return upsertTestOrder({ ...merged, updated: current.updated }, { keepUpdated: true });
   } catch {
     return current;
   }

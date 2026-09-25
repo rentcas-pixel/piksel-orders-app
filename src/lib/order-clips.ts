@@ -582,20 +582,23 @@ export async function setOrderClipServer(
   const db = await openDb();
   try {
     const tx = db.transaction(STORE, 'readwrite');
+    const done = waitForTransaction(tx);
     const store = tx.objectStore(STORE);
     const existing = (await idbRequest(store.get(String(clipId)))) as
       | (OrderClipRecord & { blob?: Blob })
       | undefined;
-    if (!existing) return undefined;
+    if (!existing) {
+      await done;
+      return undefined;
+    }
     const onServerAt = existing.onServerAt || new Date().toISOString();
-    await idbRequest(
-      store.put({
-        ...existing,
-        serverMediaId: server.mediaId,
-        serverPath: server.path,
-        onServerAt,
-      })
-    );
+    store.put({
+      ...existing,
+      serverMediaId: server.mediaId,
+      serverPath: server.path,
+      onServerAt,
+    });
+    await done;
     return onServerAt;
   } finally {
     db.close();
@@ -610,12 +613,17 @@ export async function setOrderClipFileChange(
   const db = await openDb();
   try {
     const tx = db.transaction(STORE, 'readwrite');
+    const done = waitForTransaction(tx);
     const store = tx.objectStore(STORE);
     const existing = (await idbRequest(store.get(String(clipId)))) as
       | (OrderClipRecord & { blob?: Blob })
       | undefined;
-    if (!existing) return;
-    await idbRequest(store.put({ ...existing, fileChange }));
+    if (!existing) {
+      await done;
+      return;
+    }
+    store.put({ ...existing, fileChange });
+    await done;
   } finally {
     db.close();
   }
@@ -630,12 +638,17 @@ export async function markOrderClipsOnScreens(clipIds: string[], at: string): Pr
     const db = await openDb();
     try {
       const tx = db.transaction(STORE, 'readwrite');
+      const done = waitForTransaction(tx);
       const store = tx.objectStore(STORE);
       const existing = (await idbRequest(store.get(id))) as
         | (OrderClipRecord & { blob?: Blob })
         | undefined;
-      if (!existing) continue;
-      await idbRequest(store.put({ ...existing, onScreensAt: stampedAt }));
+      if (!existing) {
+        await done;
+        continue;
+      }
+      store.put({ ...existing, onScreensAt: stampedAt });
+      await done;
     } finally {
       db.close();
     }

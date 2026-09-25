@@ -39,15 +39,13 @@ import {
   type OrderClipRecord,
   type OrderClipScreen,
 } from '@/lib/order-clips';
-import { publishOrderLive, unpublishOrderLive, clipIdsFromLiveStamp, orderLiveClipStamp, type OrderLiveState } from '@/lib/order-live';
+import { publishOrderLive, unpublishOrderLive, clipIdsFromLiveStamp, orderLiveClipStamp, type LiveClipFact, type LiveClipRemoval, type OrderLiveState } from '@/lib/order-live';
 import {
   classifyNewClipChange,
   clipTimeLines,
   listClipRemovals,
-  looseRemovals,
+  storedUploadTime,
   recordClipRemoval,
-  removalChangeLine,
-  removalsForSlot,
   type ClipRemovalNotice,
 } from '@/lib/clip-times';
 import { getTestOrder, isTestOrder, upsertTestOrder } from '@/lib/test-orders';
@@ -90,6 +88,8 @@ type OrderClipsPanelProps = {
   /** Dabartinio Live publikacijos laikas, jei orderis dabar ekranuose. */
   livePublishedAt?: string;
   onClipStampChange?: (stamp: string) => void;
+  onLiveClipFacts?: (clips: LiveClipFact[]) => void;
+  onLiveRemovals?: (removals: LiveClipRemoval[]) => void;
   onLivePublishBusy?: (busy: boolean) => void;
   onLiveNeedsUpdate?: () => void;
   /** Po per-publish kai keičiasi klipo datos Live ON */
@@ -110,6 +110,8 @@ export function OrderClipsPanel({
   publishedClipStamp,
   livePublishedAt,
   onClipStampChange,
+  onLiveClipFacts,
+  onLiveRemovals,
   onLivePublishBusy,
   onLiveNeedsUpdate,
   onLiveChange,
@@ -152,6 +154,29 @@ export function OrderClipsPanel({
   useEffect(() => {
     onClipStampChange?.(clipStamp);
   }, [clipStamp, onClipStampChange]);
+
+  useEffect(() => {
+    onLiveClipFacts?.(
+      clips.map((clip) => ({
+        id: clip.id,
+        filename: clip.filename,
+        uploadedAt: clip.uploadedAt || undefined,
+        onScreensAt: clip.onScreensAt,
+        fileChange: clip.fileChange?.kind ?? null,
+        changedAt: clip.fileChange?.at || storedUploadTime(clip),
+      }))
+    );
+  }, [clips, onLiveClipFacts]);
+
+  useEffect(() => {
+    onLiveRemovals?.(
+      removals.map((row) => ({
+        id: row.clipId,
+        filename: row.filename,
+        at: row.at,
+      }))
+    );
+  }, [removals, onLiveRemovals]);
 
   useEffect(() => {
     setRemovals(listClipRemovals(order.id));
@@ -540,7 +565,7 @@ export function OrderClipsPanel({
     setUploadingKind(uploadKind);
     setError(null);
     setMessage(list.length === 1 ? 'Saugoma…' : `Saugoma 0/${list.length}…`);
-    const existingBefore = clips;
+    const seenBefore = [...clips];
     const added: Array<OrderClipRecord & { blob?: Blob }> = [];
     const saveErrors: string[] = [];
     try {
@@ -569,13 +594,14 @@ export function OrderClipsPanel({
       for (let i = 0; i < added.length; i += 1) {
         const clip = added[i];
         const measured = await measureOrderClip(clip).catch(() => clip);
-        const changeKind = classifyNewClipChange(existingBefore, measured);
+        const changeKind = classifyNewClipChange(seenBefore, measured);
+        seenBefore.push(measured);
+        const fileChange = {
+          kind: changeKind,
+          at: measured.uploadedAt || measured.createdAt,
+        };
         let stamped = measured;
-        if (changeKind) {
-          const fileChange = {
-            kind: changeKind,
-            at: measured.uploadedAt || measured.createdAt,
-          };
+        if (fileChange.at) {
           try {
             await setOrderClipFileChange(measured.id, fileChange);
             stamped = { ...measured, fileChange };
@@ -906,11 +932,6 @@ export function OrderClipsPanel({
           ))}
         </div>
       ) : null;
-    const clipChange = timeline.change ? (
-      <div className="mt-1.5 inline-block rounded-lg bg-[#fff6e8] px-2 py-1.5 text-[12.5px] leading-snug text-[#8a5a12] dark:bg-amber-950/40 dark:text-amber-200">
-        {timeline.change.label} · {timeline.change.at}
-      </div>
-    ) : null;
     return (
       <div
         key={clip.id}
@@ -954,7 +975,6 @@ export function OrderClipsPanel({
             )}
           </div>
           {clipTimes}
-          {clipChange}
         </div>
         <button
           type="button"
@@ -1146,58 +1166,20 @@ export function OrderClipsPanel({
                             );
                           })}
                         </ul>
-                        {slot.clips.length > 0 ||
-                        removalsForSlot(removals, section.kind, slot.resolutionKey).length > 0 ? (
+                        {slot.clips.length > 0 ? (
                           <div className="mt-3 space-y-2">
                             {slot.clips.map(renderClipCard)}
-                            {removalsForSlot(removals, section.kind, slot.resolutionKey).map(
-                              (notice) => {
-                                const line = removalChangeLine(notice);
-                                if (!line) return null;
-                                return (
-                                  <div
-                                    key={`${notice.clipId}-${notice.at}`}
-                                    className="inline-block rounded-lg bg-[#fff6e8] px-2 py-1.5 text-[12.5px] leading-snug text-[#8a5a12] dark:bg-amber-950/40 dark:text-amber-200"
-                                  >
-                                    {line.label} · {line.at}
-                                  </div>
-                                );
-                              }
-                            )}
                           </div>
                         ) : null}
                       </div>
                     );
                   })}
-                  {section.leftover.length > 0 ||
-                  looseRemovals(
-                    removals,
-                    section.kind,
-                    section.slots.map((slot) => slot.resolutionKey)
-                  ).length > 0 ? (
+                  {section.leftover.length > 0 ? (
                     <div className="space-y-2">
-                      {section.leftover.length > 0 ? (
-                        <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
-                          {section.title} klipai, kurie dar neprisiskyrė prie rezoliucijos
-                        </p>
-                      ) : null}
+                      <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                        {section.title} klipai, kurie dar neprisiskyrė prie rezoliucijos
+                      </p>
                       {section.leftover.map(renderClipCard)}
-                      {looseRemovals(
-                        removals,
-                        section.kind,
-                        section.slots.map((slot) => slot.resolutionKey)
-                      ).map((notice) => {
-                        const line = removalChangeLine(notice);
-                        if (!line) return null;
-                        return (
-                          <div
-                            key={`${notice.clipId}-${notice.at}`}
-                            className="inline-block rounded-lg bg-[#fff6e8] px-2 py-1.5 text-[12.5px] leading-snug text-[#8a5a12] dark:bg-amber-950/40 dark:text-amber-200"
-                          >
-                            {line.label} · {line.at}
-                          </div>
-                        );
-                      })}
                     </div>
                   ) : null}
                 </section>

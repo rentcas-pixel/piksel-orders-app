@@ -9,25 +9,25 @@ import {
   CheckCircleIcon,
   DocumentTextIcon,
   PaperAirplaneIcon,
-  FilmIcon,
-  PhotoIcon,
   PlusCircleIcon,
   ArrowsRightLeftIcon,
   BanknotesIcon,
+  CalendarDaysIcon,
+  ChartBarIcon,
+  FilmIcon,
 } from '@heroicons/react/24/outline';
 import {
   downloadReklamosPlanas,
   downloadReklamosPlanasCombined,
-  downloadReklamosPlanasPostCampaign,
-  downloadReklamosPlanasZip,
 } from '@/lib/export-reklamos-planas';
-import { isCampaignEnded } from '@/lib/reklamos-planas-post-campaign';
+import { OrderAtaskaitaModal } from '@/components/OrderAtaskaitaModal';
 import {
   toCampaignOrderInput,
   toCampaignScreen,
 } from '@/lib/reklamos-planas-data';
 import Image from 'next/image';
 import { Order, Comment, Reminder, FileAttachment } from '@/types';
+import { usePlaySandboxEnabled } from '@/hooks/usePlaySandboxEnabled';
 import { PocketBaseService } from '@/lib/pocketbase';
 import { SupabaseService } from '@/lib/supabase-service';
 import { formatDateInputValue, parseDateOnlyLocal } from '@/lib/date-utils';
@@ -59,7 +59,23 @@ import {
   modalBtnSecondary,
 } from '@/lib/portal-ui';
 import { StatusIconButton } from '@/components/StatusIconButton';
-import { OrderMediaCheckModal } from '@/components/OrderMediaCheckModal';
+import { OrderClipsPanel } from '@/components/OrderClipsPanel';
+import { useOrderScreenAlerts } from '@/hooks/useOrderScreenAlerts';
+import {
+  deleteTestOrder,
+  getTestOrder,
+  hydrateTestOrderFromPlayCampaign,
+  isTestOrder,
+  upsertTestOrder,
+  type TestOrder,
+} from '@/lib/test-orders';
+import { getOrderLiveState, reconcileOrderLiveState, publishOrderLive, unpublishOrderLive, orderLiveContentKey, orderLiveNeedsUpdate, buildOrderLiveSnapshot, describeLiveUpdateNotice, snapshotFromLiveState, clipIdsFromLiveStamp, type LiveClipFact, type LiveClipRemoval, type OrderLiveState } from '@/lib/order-live';
+import { LivePublishStatus } from '@/components/LivePublishStatus';
+import { fetchMonitoring } from '@/lib/player-devices';
+import { orderLiveSeenOnPlayer } from '@/lib/screen-clip-alert';
+import { unpublishOrderFromPlayer } from '@/lib/player-bridge';
+import { setPlayPublicPlanLock } from '@/lib/play-public-plan-lock';
+import { resolvePlanChangedAt } from '@/lib/plan-changed-at';
 
 interface EditOrderModalProps {
   order: Order | null;
@@ -72,12 +88,47 @@ interface EditOrderModalProps {
   billingYear?: string;
 }
 
+function calculatorEditHref(orderId: string, isLocalTest: boolean, playSandbox: boolean): string {
+  if (playSandbox && !isLocalTest) {
+    return `/skaiciuokle/index.html?liveOrderId=${encodeURIComponent(orderId)}#calculator`;
+  }
+  if (isLocalTest) {
+    return `/skaiciuokle/index.html?testOrderId=${encodeURIComponent(orderId)}&from=hub#calculator`;
+  }
+  return `/calculator/${encodeURIComponent(orderId)}`;
+}
+
 type OrderExportPartner = {
   id: string;
   name: string;
   slug: string;
   screenCount: number;
 };
+
+function LiveStatusBadge({
+  alerts,
+  className,
+}: {
+  alerts: { name: string; alert: { label: string; title: string } }[];
+  className: string;
+}) {
+  const hasAlert = alerts.length > 0;
+  const title = hasAlert
+    ? alerts.map((item) => `${item.name}: ${item.alert.label}`).join('\n')
+    : 'Transliacija aktyvi Piksel ekranuose';
+  return (
+    <span className={className} title={title}>
+      {hasAlert ? (
+        <span className="animate-pulse" aria-hidden>
+          ⚠️
+        </span>
+      ) : (
+        <span className="h-1.5 w-1.5 rounded-full bg-white" aria-hidden />
+      )}
+      Live
+    </span>
+  );
+}
 
 export function EditOrderModal({
   order,
@@ -90,16 +141,15 @@ export function EditOrderModal({
   billingYear = '',
 }: EditOrderModalProps) {
   const isAgency = variant === 'agency';
+  const isLocalTest = isTestOrder(order);
+  const playSandbox = usePlaySandboxEnabled();
+  const exportScreenIdsKey = [...new Set(order?.screens?.filter(Boolean) || [])].join(',');
   const billingContext = useMemo(
     (): BillingMonthContext | null => resolveBillingContext(billingMonth, billingYear),
     [billingMonth, billingYear]
   );
   const multiMonthOrder = useMemo(
     () => (order ? isMultiMonthOrder(order) : false),
-    [order]
-  );
-  const campaignEnded = useMemo(
-    () => (order ? isCampaignEnded(order) : false),
     [order]
   );
   const collaborationScope = isAgency ? 'agency' : 'internal';
@@ -120,21 +170,26 @@ export function EditOrderModal({
   const [pendingPrintscreens, setPendingPrintscreens] = useState<FileAttachment[]>([]);
   const [quote, setQuote] = useState<{ link: string; viaduct_link: string } | null>(null);
   const [attachmentUploading, setAttachmentUploading] = useState(false);
-  const [mediaCheckOpen, setMediaCheckOpen] = useState(false);
+  const [modalSection, setModalSection] = useState<'details' | 'clips'>('details');
+  const [liveState, setLiveState] = useState<OrderLiveState>({ status: 'idle' });
+  const [liveOpenNotice, setLiveOpenNotice] = useState('');
+  const liveScreenAlerts = useOrderScreenAlerts(
+    isOpen ? order : null,
+    liveState.status === 'live',
+    liveState.screenNames
+  );
   const [exportPartners, setExportPartners] = useState<OrderExportPartner[]>([]);
   const [exportPartnersLoading, setExportPartnersLoading] = useState(false);
   const [exportingPartnerId, setExportingPartnerId] = useState<string | null>(null);
   const [exportingCombined, setExportingCombined] = useState(false);
-  const [exportingPostCampaign, setExportingPostCampaign] = useState(false);
-  const [exportingAllZip, setExportingAllZip] = useState(false);
   const [sendingPartnerPlans, setSendingPartnerPlans] = useState(false);
-  const [sendingPartnerClips, setSendingPartnerClips] = useState(false);
-  const [deliverySection, setDeliverySection] = useState<'plan' | 'clips'>('plan');
   const [clipsUrl, setClipsUrl] = useState('');
+  const [deliveryNote, setDeliveryNote] = useState('');
   const [partnerDeliveryById, setPartnerDeliveryById] = useState<
     Record<string, { plan?: { sent: boolean; confirmed: boolean }; clips?: { sent: boolean; confirmed: boolean } }>
   >({});
   const [exportError, setExportError] = useState<string | null>(null);
+  const [ataskaitaOpen, setAtaskaitaOpen] = useState(false);
   const [cityOtsRows, setCityOtsRows] = useState<CityOtsRow[]>([]);
   const [otsLoading, setOtsLoading] = useState(false);
   const [customBillingPeriodsEnabled, setCustomBillingPeriodsEnabled] = useState(false);
@@ -143,6 +198,21 @@ export function EditOrderModal({
   const [isSpecOrder, setIsSpecOrder] = useState(false);
   const [specOrderPanelOpen, setSpecOrderPanelOpen] = useState(false);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const openedOrderIdRef = useRef<string | null>(null);
+  const liveContentKeyRef = useRef<string | null>(null);
+  const skipLiveDirtyRef = useRef(false);
+  const [liveDirty, setLiveDirty] = useState(false);
+  const [liveUpdating, setLiveUpdating] = useState(false);
+  const [liveClipStamp, setLiveClipStamp] = useState('');
+  const [liveClipFacts, setLiveClipFacts] = useState<LiveClipFact[]>([]);
+  const [liveRemovals, setLiveRemovals] = useState<LiveClipRemoval[]>([]);
+  const [liveReceipt, setLiveReceipt] = useState<{ server: boolean; player: boolean } | null>(
+    null
+  );
+  const [approvalBusy, setApprovalBusy] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const deleteConfirmRef = useRef<HTMLDivElement>(null);
 
   const scheduleOrder = useMemo((): Order | null => {
     if (!order) return null;
@@ -154,49 +224,203 @@ export function EditOrderModal({
     };
   }, [order, formData.from, formData.to, formData.final_price]);
 
-  const loadQuote = useCallback(async () => {
-    if (!order) return;
-    
-    try {
-      // Prefer real order ID and keep invoice fallback for legacy quote records.
-      const quoteData =
-        await PocketBaseService.getQuoteByOrderId(order.id) ??
-        await PocketBaseService.getQuoteByOrderId(order.invoice_id);
-      setQuote(quoteData);
-    } catch {
-      console.log('No quote found for order:', order.id, order.invoice_id);
-    }
-  }, [order]);
+  const liveViewOrder = useMemo(() => {
+    if (!order) return null;
+    return {
+      ...order,
+      client: String(formData.client ?? order.client),
+      from: String(formData.from ?? order.from),
+      to: String(formData.to ?? order.to),
+      intensity: String(formData.intensity ?? order.intensity ?? ''),
+    };
+  }, [order, formData.client, formData.from, formData.to, formData.intensity]);
+
+  const liveContentKey = useMemo(() => {
+    if (!liveViewOrder) return '';
+    return orderLiveContentKey(liveViewOrder);
+  }, [liveViewOrder]);
+
+  const liveChangeLines = useMemo(() => {
+    if (!isOpen || !order || !liveViewOrder || liveState.status !== 'live') return [];
+    const published = snapshotFromLiveState(liveState, order);
+    const current = buildOrderLiveSnapshot(liveViewOrder, liveClipStamp);
+    const publishedIntensity =
+      published?.intensity ||
+      (!liveState.publishedSnapshot && !liveState.publishedContentKey
+        ? String(order.intensity || order.details?.plan?.intensity || '')
+        : '');
+    return describeLiveUpdateNotice(published, current, {
+      publishedClipCount: liveState.clipCount,
+      publishedAt: liveState.publishedAt,
+      intensityPublished: publishedIntensity,
+      intensityCurrent: String(
+        liveViewOrder.intensity || order.details?.plan?.intensity || ''
+      ),
+      planChangedAt: order.details?.planChangedAt,
+      clips: liveClipFacts,
+      removals: liveRemovals,
+    });
+  }, [isOpen, order, liveViewOrder, liveState, liveClipStamp, liveClipFacts, liveRemovals]);
 
   useEffect(() => {
-    if (!order) return;
+    if (!isOpen || liveState.status !== 'live') {
+      liveContentKeyRef.current = null;
+      skipLiveDirtyRef.current = false;
+      setLiveDirty(false);
+      if (!isOpen) setLiveReceipt(null);
+      return;
+    }
+    if (skipLiveDirtyRef.current) {
+      liveContentKeyRef.current = liveContentKey;
+      skipLiveDirtyRef.current = false;
+      setLiveDirty(false);
+      return;
+    }
+    if (liveContentKeyRef.current == null) {
+      const published = String(liveState.publishedContentKey || '');
+      liveContentKeyRef.current = published || liveContentKey;
+      if (published ? published !== liveContentKey : order ? orderLiveNeedsUpdate(order) : false) {
+        setLiveDirty(true);
+      }
+      return;
+    }
+    if (liveContentKey !== liveContentKeyRef.current) {
+      setLiveDirty(true);
+    }
+  }, [isOpen, liveState.status, liveState.publishedContentKey, liveContentKey, order]);
+
+  useEffect(() => {
+    if (liveDirty) setLiveReceipt(null);
+  }, [liveDirty]);
+
+  useEffect(() => {
+    if (!liveReceipt?.server || liveDirty) return;
+    const ms = liveReceipt.player ? 4000 : 8000;
+    const timer = window.setTimeout(() => setLiveReceipt(null), ms);
+    return () => window.clearTimeout(timer);
+  }, [liveReceipt, liveDirty]);
+
+  useEffect(() => {
+    if (!isOpen || !order || !liveReceipt?.server || liveReceipt.player) return;
+    let cancelled = false;
+    const tick = async () => {
+      const monitoring = await fetchMonitoring();
+      if (cancelled) return;
+      if (
+        orderLiveSeenOnPlayer(
+          monitoring.ok ? monitoring.data?.screens : null,
+          order.id,
+          liveState.screenNames,
+          clipIdsFromLiveStamp(liveState.publishedSnapshot?.clipStamp)
+        )
+      ) {
+        setLiveReceipt({ server: true, player: true });
+      }
+    };
+    void tick();
+    const timer = window.setInterval(() => void tick(), 4000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [isOpen, order, liveReceipt, liveState.screenNames, liveState.publishedSnapshot?.clipStamp]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    [
+      '/skaiciuokle/styles.css?v=20260921-softg',
+      '/skaiciuokle/plan-paint.js?v=20260921-1',
+      '/skaiciuokle/app.js?v=20260925-planat',
+      '/skaiciuokle/screen-catalog.js?v=20260721-photos',
+    ].forEach((href) => {
+      if (document.querySelector(`link[rel="prefetch"][href="${href}"]`)) return;
+      const link = document.createElement('link');
+      link.rel = 'prefetch';
+      link.href = href;
+      document.head.appendChild(link);
+    });
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !order) {
+      openedOrderIdRef.current = null;
+      setLiveOpenNotice('');
+      return;
+    }
+
+    const orderId = order.id;
+    openedOrderIdRef.current = orderId;
 
     let cancelled = false;
 
     const loadOrderForm = async () => {
-      const specPrice = await SupabaseService.getOrderSpecPrice(order.id);
+      const specPrice = await SupabaseService.getOrderSpecPrice(orderId);
       if (cancelled) return;
 
+      let latest = order;
+      if (isTestOrder(order)) {
+        latest = (await hydrateTestOrderFromPlayCampaign(orderId)) || getTestOrder(orderId) || order;
+      } else if (playSandbox) {
+        try {
+          latest = await PocketBaseService.getOrder(orderId);
+        } catch {
+          latest = order;
+        }
+      }
+      if (cancelled) return;
+      if (latest !== order) onOrderUpdated?.(latest);
       const hasSpecPrice = specPrice != null && specPrice > 0;
       setIsSpecOrder(hasSpecPrice);
       setSpecOrderPanelOpen(hasSpecPrice);
 
       setFormData({
-        client: order.client,
-        agency: order.agency,
-        invoice_id: order.invoice_id,
-        from: order.from,
-        to: order.to,
-        final_price: hasSpecPrice ? specPrice : resolveOrderPrice(order) || 0,
-        approved: order.approved,
-        media_received: order.media_received,
-        viaduct: order.viaduct,
+        client: latest.client,
+        agency: latest.agency,
+        invoice_id: latest.invoice_id,
+        from: latest.from,
+        to: latest.to,
+        final_price: hasSpecPrice ? specPrice : resolveOrderPrice(latest) || 0,
+        approved: latest.approved,
+        media_received: latest.media_received,
+        viaduct: latest.viaduct,
       });
+      setModalSection('details');
+      setLiveState({ status: 'idle' });
+      setLiveOpenNotice('');
+      let reconciled = getOrderLiveState(latest);
+      try {
+        const result = await reconcileOrderLiveState(latest);
+        reconciled = result.state;
+        if (!cancelled && result.notice) setLiveOpenNotice(result.notice);
+      } catch {
+        if (!cancelled) {
+          setLiveOpenNotice('Live būsena nekeista. Užsakymą galima redaguoti.');
+        }
+      }
+      if (cancelled) return;
+      setLiveState(reconciled);
+      if (
+        reconciled.status === 'idle' &&
+        latest.details?.live?.status === 'live' &&
+        isTestOrder(latest)
+      ) {
+        const updated = getTestOrder(orderId);
+        if (updated) onOrderUpdated?.(updated);
+      }
     };
 
     void loadOrderForm();
-    loadQuote();
-    void SupabaseService.getOrderBillingPeriod(order.id).then((entries) => {
+    void (async () => {
+      try {
+        const quoteData =
+          (await PocketBaseService.getQuoteByOrderId(orderId)) ??
+          (await PocketBaseService.getQuoteByOrderId(order.invoice_id));
+        if (!cancelled) setQuote(quoteData);
+      } catch {
+        if (!cancelled) setQuote(null);
+      }
+    })();
+    void SupabaseService.getOrderBillingPeriod(orderId).then((entries) => {
       if (cancelled) return;
       setBillingPeriods(entries);
       const hasCustomPeriods = entries.length > 0;
@@ -207,10 +431,45 @@ export function EditOrderModal({
     return () => {
       cancelled = true;
     };
-  }, [order, loadQuote]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- tik naujam orderio ID, ne kiekvienam plano patch'ui
+  }, [isOpen, order?.id]);
 
   useEffect(() => {
-    if (!order || !isOpen || isAgency || isSpecOrder) return;
+    if (!isOpen || !order) return;
+    if (openedOrderIdRef.current !== order.id) return;
+
+    setFormData((prev) => {
+      const nextPrice = isSpecOrder ? prev.final_price : resolveOrderPrice(order) || 0;
+      if (
+        prev.client === order.client &&
+        prev.agency === order.agency &&
+        prev.invoice_id === order.invoice_id &&
+        prev.from === order.from &&
+        prev.to === order.to &&
+        prev.approved === order.approved &&
+        prev.media_received === order.media_received &&
+        prev.viaduct === order.viaduct &&
+        prev.final_price === nextPrice
+      ) {
+        return prev;
+      }
+      return {
+        ...prev,
+        client: order.client,
+        agency: order.agency,
+        invoice_id: order.invoice_id,
+        from: order.from,
+        to: order.to,
+        approved: order.approved,
+        media_received: order.media_received,
+        viaduct: order.viaduct,
+        final_price: nextPrice,
+      };
+    });
+  }, [isOpen, order, isSpecOrder]);
+
+  useEffect(() => {
+    if (!order || !isOpen || isAgency || isSpecOrder || isTestOrder(order)) return;
 
     let cancelled = false;
     void PocketBaseService.syncOrderPriceIfNeeded(order).then((synced) => {
@@ -235,10 +494,11 @@ export function EditOrderModal({
     let cancelled = false;
 
     const loadExportPartners = async () => {
-      setExportPartnersLoading(true);
+      const hadPartners = exportPartners.length > 0;
+      if (!hadPartners) setExportPartnersLoading(true);
       try {
         let screenIds = [...new Set(order.screens?.filter(Boolean) || [])];
-        if (screenIds.length === 0) {
+        if (screenIds.length === 0 && !isLocalTest) {
           const fullOrder = await PocketBaseService.getOrder(order.id);
           screenIds = [...new Set(fullOrder.screens?.filter(Boolean) || [])];
         }
@@ -286,7 +546,7 @@ export function EditOrderModal({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, order, isAgency]);
+  }, [isOpen, isAgency, order?.id, exportScreenIdsKey, isLocalTest]);
 
   useEffect(() => {
     if (!isOpen || !order || !isAgency) {
@@ -396,7 +656,6 @@ export function EditOrderModal({
     }
   }, [order, collaborationScope]);
 
-
   const loadPartnerDeliveryStatuses = useCallback(async (orderId: string) => {
     try {
       const res = await fetch(
@@ -460,19 +719,155 @@ export function EditOrderModal({
   }, [order, isOpen, isAgency, loadComments, loadReminders, loadPrintScreens, loadInvoiceStatus, billingContext]);
 
   useEffect(() => {
+    if (!isOpen) {
+      setAtaskaitaOpen(false);
+      setDeleteConfirmOpen(false);
+      setDeleting(false);
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!deleteConfirmOpen) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!deleteConfirmRef.current?.contains(event.target as Node)) {
+        setDeleteConfirmOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [deleteConfirmOpen]);
+
+  useEffect(() => {
+    setClipsUrl('');
+    setDeliveryNote('');
+  }, [order?.id]);
+
+  useEffect(() => {
+    if (!formData.approved) setAtaskaitaOpen(false);
+  }, [formData.approved]);
+
+  useEffect(() => {
     if (!isOpen) return;
     const handler = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (deleteConfirmOpen) {
+        setDeleteConfirmOpen(false);
+        return;
+      }
+      if (ataskaitaOpen) {
+        setAtaskaitaOpen(false);
+        return;
+      }
+      onClose();
     };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [isOpen, onClose]);
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
+  }, [isOpen, onClose, ataskaitaOpen, deleteConfirmOpen]);
 
   const handleInputChange = (field: keyof Order, value: string | number | boolean) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
     }));
+    if (field === 'client' && isLocalTest && order) {
+      const fresh = getTestOrder(order.id) || (order as TestOrder);
+      upsertTestOrder({ ...fresh, client: String(value) });
+    }
+  };
+
+  const handleUpdateLive = async () => {
+    if (!order || isAgency || liveUpdating || liveState.status !== 'live') return;
+    setLiveUpdating(true);
+    try {
+      const liveOrder = {
+        ...(isLocalTest ? getTestOrder(order.id) || order : order),
+        client: String(formData.client ?? order.client),
+        from: String(formData.from ?? order.from),
+        to: String(formData.to ?? order.to),
+      };
+      const result = await publishOrderLive(liveOrder);
+      setLiveState(result.live);
+      skipLiveDirtyRef.current = true;
+      liveContentKeyRef.current = liveContentKey;
+      setLiveDirty(false);
+      setLiveReceipt({ server: true, player: false });
+      handleInputChange('media_received', true);
+      if (isLocalTest) {
+        const updated = getTestOrder(order.id);
+        if (updated) onOrderUpdated?.(updated);
+      } else {
+        onOrderUpdated?.({
+          ...order,
+          media_received: true,
+          details: {
+            ...(order.details || {}),
+            live: result.live,
+          },
+        });
+      }
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Nepavyko atnaujinti Live.');
+    } finally {
+      setLiveUpdating(false);
+    }
+  };
+
+  /** Patvirtinus — iškart įrašom (test); nuimant — tik po sėkmingo Live atšaukimo. */
+  const handleApprovedChange = (nextApproved: boolean) => {
+    if (!order || approvalBusy) return;
+
+    if (nextApproved) {
+      handleInputChange('approved', true);
+      if (isLocalTest) {
+        const fresh = getTestOrder(order.id) || (order as TestOrder);
+        const saved = upsertTestOrder({ ...fresh, approved: true });
+        onOrderUpdated?.(saved);
+      } else {
+        onOrderUpdated?.({ ...order, approved: true });
+      }
+      void setPlayPublicPlanLock(order.id, true);
+      return;
+    }
+
+    if (!formData.approved && liveState.status !== 'live') return;
+
+    const previousLive = liveState;
+    setApprovalBusy(true);
+    void (async () => {
+      try {
+        if (isLocalTest) {
+          await unpublishOrderLive({ ...order, approved: false });
+          const updated = getTestOrder(order.id);
+          if (updated) onOrderUpdated?.(updated);
+        } else {
+          await unpublishOrderFromPlayer(order.id);
+          onOrderUpdated?.({
+            ...order,
+            approved: false,
+            details: {
+              ...(order.details || {}),
+              live: { status: 'idle' },
+            },
+          });
+        }
+        handleInputChange('approved', false);
+        setLiveState({ status: 'idle' });
+        if (modalSection === 'clips') {
+          setModalSection('details');
+        }
+        await setPlayPublicPlanLock(order.id, false);
+      } catch (err) {
+        handleInputChange('approved', true);
+        setLiveState(previousLive);
+        window.alert(
+          err instanceof Error ? err.message : 'Nepavyko nuimti Live — patvirtinimas paliktas.'
+        );
+      } finally {
+        setApprovalBusy(false);
+      }
+    })();
   };
 
   const handleToggleInvoiceStatus = async (
@@ -521,6 +916,62 @@ export function EditOrderModal({
     
     setLoading(true);
     try {
+      if (isLocalTest) {
+        const fresh = getTestOrder(order.id) || (order as TestOrder);
+        const nextApproved =
+          typeof formData.approved === 'boolean' ? formData.approved : fresh.approved;
+        const nextLive: OrderLiveState =
+          nextApproved && liveState.status === 'live' ? liveState : { status: 'idle' };
+        if (!nextApproved && (fresh.details?.live?.status === 'live' || liveState.status === 'live')) {
+          await unpublishOrderFromPlayer(order.id);
+        }
+        const nextFrom = String(formData.from ?? fresh.from);
+        const nextTo = String(formData.to ?? fresh.to);
+        const nextIntensity = formData.intensity ?? fresh.intensity;
+        const planChangedAt = resolvePlanChangedAt(
+          fresh,
+          { ...fresh, from: nextFrom, to: nextTo, intensity: nextIntensity },
+          new Date().toISOString()
+        );
+        const saved = upsertTestOrder({
+          ...fresh,
+          client: String(formData.client ?? fresh.client),
+          agency: fresh.agency,
+          invoice_id: fresh.invoice_id,
+          approved: nextApproved,
+          from: nextFrom,
+          to: nextTo,
+          media_received: !!formData.media_received,
+          final_price: Number(formData.final_price ?? fresh.final_price) || 0,
+          invoice_sent: invoiceStatus.invoice_sent,
+          invoice_issued: invoiceStatus.invoice_issued,
+          intensity: nextIntensity,
+          screens: fresh.screens,
+          grid: fresh.grid,
+          clip_duration: fresh.clip_duration ?? fresh.details?.plan?.clip_duration ?? 10,
+          viaduct_frequency:
+            fresh.viaduct_frequency ?? fresh.details?.plan?.viaductFrequency ?? 1,
+          on_sale_screens: fresh.on_sale_screens || [],
+          on_sale_discount: fresh.on_sale_discount ?? 0,
+          hidden_screens: fresh.hidden_screens || [],
+          viaduct: typeof formData.viaduct === 'boolean' ? formData.viaduct : fresh.viaduct,
+          details: {
+            ...(fresh.details || {}),
+            ...(planChangedAt ? { planChangedAt } : {}),
+            isTest: true,
+            discount: fresh.details?.discount ?? 80,
+            total: Number(formData.final_price ?? fresh.final_price) || 0,
+            finalPrice: Number(formData.final_price ?? fresh.final_price) || 0,
+            live: nextLive,
+            clockOverlay:
+              formData.details?.clockOverlay ?? fresh.details?.clockOverlay,
+          },
+        });
+        onOrderUpdated?.(saved);
+        onClose();
+        return;
+      }
+
       const nextApproved =
         typeof formData.approved === 'boolean' ? formData.approved : order.approved;
       const wasApproved = !!order.approved;
@@ -588,6 +1039,9 @@ export function EditOrderModal({
       }
 
       onOrderUpdated?.(displayOrder);
+      if (nextApproved !== wasApproved) {
+        void setPlayPublicPlanLock(order.id, nextApproved);
+      }
       onClose();
     } catch {
       console.error('Error updating order');
@@ -597,16 +1051,23 @@ export function EditOrderModal({
   };
 
   const handleDelete = async () => {
-    if (!order) return;
-    
-    if (confirm('Ar tikrai norite ištrinti šį užsakymą?')) {
-      try {
-        await PocketBaseService.deleteOrder(order.id);
+    if (!order || deleting) return;
+    setDeleting(true);
+    try {
+      if (isLocalTest) {
+        await unpublishOrderFromPlayer(order.id);
+        deleteTestOrder(order.id);
         onOrderUpdated?.(order);
         onClose();
-      } catch {
-        console.error('Error deleting order');
+        return;
       }
+      await PocketBaseService.deleteOrder(order.id);
+      onOrderUpdated?.(order);
+      onClose();
+    } catch {
+      console.error('Error deleting order');
+      setDeleting(false);
+      setDeleteConfirmOpen(false);
     }
   };
 
@@ -985,68 +1446,7 @@ export function EditOrderModal({
     }
   };
 
-  const handlePostCampaignPlanExcelExport = async () => {
-    if (!order) return;
-    setExportError(null);
-    setExportingPostCampaign(true);
-    try {
-      const { campaignOrder, screens, bundles } = await loadCampaignExportData(
-        order.id
-      );
-      await downloadReklamosPlanasPostCampaign({
-        order: campaignOrder,
-        screens,
-        bundles,
-      });
-    } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : 'Nepavyko sugeneruoti ataskaitos Excel failo';
-      setExportError(message);
-    } finally {
-      setExportingPostCampaign(false);
-    }
-  };
-
-
-  const handleSendPartnerPlans = async () => {
-    if (!order || exportPartners.length === 0) return;
-    setExportError(null);
-    setSendingPartnerPlans(true);
-    try {
-      const res = await fetch('/api/partner-plans/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: order.id }),
-      });
-      const data = (await res.json().catch(() => ({}))) as {
-        error?: string;
-        sent?: number;
-        errors?: number;
-        results?: Array<{ partnerName: string; status: string; error?: string }>;
-      };
-      if (!res.ok) {
-        throw new Error(data.error || 'Nepavyko išsiųsti planų');
-      }
-      await loadPartnerDeliveryStatuses(order.id);
-      if ((data.errors || 0) > 0) {
-        const firstErr = data.results?.find((r) => r.status === 'error');
-        setExportError(
-          firstErr?.error ||
-            `Išsiųsta ${data.sent || 0}, klaidų: ${data.errors}`
-        );
-      }
-    } catch (err) {
-      setExportError(
-        err instanceof Error ? err.message : 'Nepavyko išsiųsti planų'
-      );
-    } finally {
-      setSendingPartnerPlans(false);
-    }
-  };
-
-  const handleSendPartnerClips = async () => {
+  const handleSendPartnerPackage = async () => {
     if (!order || exportPartners.length === 0) return;
     const url = clipsUrl.trim();
     if (!url) {
@@ -1054,12 +1454,16 @@ export function EditOrderModal({
       return;
     }
     setExportError(null);
-    setSendingPartnerClips(true);
+    setSendingPartnerPlans(true);
     try {
-      const res = await fetch('/api/partner-plans/send-clips', {
+      const res = await fetch('/api/partner-plans/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: order.id, clipUrl: url }),
+        body: JSON.stringify({
+          orderId: order.id,
+          clipUrl: url,
+          note: deliveryNote.trim() || undefined,
+        }),
       });
       const data = (await res.json().catch(() => ({}))) as {
         error?: string;
@@ -1068,7 +1472,7 @@ export function EditOrderModal({
         results?: Array<{ partnerName: string; status: string; error?: string }>;
       };
       if (!res.ok) {
-        throw new Error(data.error || 'Nepavyko išsiųsti klipų');
+        throw new Error(data.error || 'Nepavyko išsiųsti plano ir klipų');
       }
       await loadPartnerDeliveryStatuses(order.id);
       if ((data.errors || 0) > 0) {
@@ -1080,61 +1484,80 @@ export function EditOrderModal({
       }
     } catch (err) {
       setExportError(
-        err instanceof Error ? err.message : 'Nepavyko išsiųsti klipų'
+        err instanceof Error ? err.message : 'Nepavyko išsiųsti plano ir klipų'
       );
     } finally {
-      setSendingPartnerClips(false);
+      setSendingPartnerPlans(false);
     }
   };
 
-  const handleAllPartnersZipExport = async () => {
-    if (!order || exportPartners.length === 0) return;
-    setExportError(null);
-    setExportingAllZip(true);
-    try {
-      const { campaignOrder, screens, bundles } = await loadCampaignExportData(
-        order.id
-      );
-      await downloadReklamosPlanasZip({
-        order: campaignOrder,
-        screens,
-        bundles,
-        partners: exportPartners.map((p) => ({
-          id: p.id,
-          name: p.name,
-        })),
-      });
-    } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : 'Nepavyko sugeneruoti ZIP archyvo';
-      setExportError(message);
-    } finally {
-      setExportingAllZip(false);
+  const isOrderApproved = formData.approved ?? order?.approved ?? false;
+  const orderForPanels = order
+    ? {
+        ...(isLocalTest ? getTestOrder(order.id) || order : order),
+        client: String(formData.client ?? order.client),
+        from: String(formData.from ?? order.from),
+        to: String(formData.to ?? order.to),
+        approved: !!isOrderApproved,
+        media_received:
+          typeof formData.media_received === 'boolean'
+            ? formData.media_received
+            : !!(isLocalTest ? getTestOrder(order.id)?.media_received : order.media_received),
+      }
+    : null;
+
+  useEffect(() => {
+    if (!isOrderApproved && modalSection === 'clips') {
+      setModalSection('details');
     }
-  };
+  }, [isOrderApproved, modalSection]);
 
   if (!isOpen || !order) return null;
-
-  const orderScreenIds = [...new Set((order.screens || []).filter(Boolean))];
 
   return (
     <>
     <div 
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 z-50 flex justify-end bg-black/40"
       role="dialog"
       aria-modal="true"
+      onClick={onClose}
     >
+      <div className="flex h-full min-w-0">
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onClose();
+          }}
+          className="m-4 mt-5 flex h-10 w-10 shrink-0 items-center justify-center self-start rounded-full bg-white text-gray-700 shadow-md ring-1 ring-black/5 transition-colors hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+          title="Uždaryti (Esc)"
+          aria-label="Uždaryti"
+        >
+          <XMarkIcon className="h-5 w-5" />
+        </button>
       <div
-        className={`bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-h-[90vh] overflow-y-auto ${
-          isAgency ? 'max-w-[45rem]' : 'max-w-4xl'
+        className={`relative flex h-full shrink-0 flex-col overflow-hidden bg-white shadow-2xl dark:bg-gray-800 ${
+          isAgency
+            ? 'w-[45rem] max-w-[calc(100vw-5.5rem)]'
+            : 'w-[56rem] max-w-[calc(100vw-5.5rem)]'
         }`}
+        onClick={(event) => event.stopPropagation()}
       >
+        {liveState.status === 'live' ? (
+          <div
+            className="pointer-events-none absolute inset-x-0 top-0 z-20 h-1 bg-emerald-500"
+            aria-hidden
+          />
+        ) : null}
+        <div className="min-h-0 flex-1 overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{order.client}</h2>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                {formData.client || order.client}
+              </h2>
+            </div>
             <p className="text-gray-600 dark:text-gray-400">{order.agency} | {order.invoice_id}</p>
             {formData.approved && !isAgency && (
               <div className="mt-1 flex flex-wrap items-center gap-1.5">
@@ -1155,28 +1578,37 @@ export function EditOrderModal({
           </div>
           
           <div className="flex items-center gap-4">
-            <div className="flex items-center gap-1.5">
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Media</span>
-              {!isAgency && (
-                <button
-                  type="button"
-                  title="Tikrinti klipų rezoliucijas"
-                  aria-label="Tikrinti klipų rezoliucijas"
-                  onClick={() => setMediaCheckOpen(true)}
-                  className="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-300 transition-colors hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:ring-gray-600 dark:hover:bg-gray-700 dark:hover:text-white"
-                >
-                  Tikrinti
-                </button>
-              )}
-              <StatusIconButton
-                active={!!formData.media_received}
-                label={formData.media_received ? 'Media gauta' : 'Media negauta'}
-                icon={PhotoIcon}
-                activeTone="green"
-                disabled={isAgency}
-                onClick={() => handleInputChange('media_received', !formData.media_received)}
-              />
-            </div>
+            <button
+              type="button"
+              onClick={() => {
+                window.open(
+                  calculatorEditHref(order.id, isLocalTest, playSandbox),
+                  '_blank',
+                  'noopener,noreferrer'
+                );
+              }}
+              className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-gray-700 ring-1 ring-inset ring-gray-300 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:ring-gray-600 dark:hover:bg-gray-700"
+              title="Redaguoti planą skaičiuoklėje (naujas langas)"
+            >
+              <CalendarDaysIcon className="h-4 w-4" />
+              Planas
+            </button>
+            {isOrderApproved && (
+              <button
+                type="button"
+                onClick={() => setModalSection((s) => (s === 'clips' ? 'details' : 'clips'))}
+                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors ${
+                  modalSection === 'clips'
+                    ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900'
+                    : 'text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 dark:text-gray-300 dark:ring-gray-600 dark:hover:bg-gray-700'
+                }`}
+                title="Klipai Piksel ekranams"
+                aria-pressed={modalSection === 'clips'}
+              >
+                <FilmIcon className="h-4 w-4" />
+                Klipai
+              </button>
+            )}
 
             <div className="flex items-center gap-1.5">
               <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Sąskaita</span>
@@ -1233,18 +1665,142 @@ export function EditOrderModal({
               />
             </div>
             )}
-            
-          <button
-              type="button"
-            onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors ml-4"
-          >
-            <XMarkIcon className="w-6 h-6" />
-          </button>
         </div>
         </div>
+        {!isAgency && liveState.status === 'live' ? (
+          <LivePublishStatus
+            variant={
+              liveUpdating
+                ? 'sending'
+                : liveChangeLines.length
+                  ? 'pending'
+                  : liveReceipt
+                    ? 'receipt'
+                    : 'hidden'
+            }
+            changes={liveChangeLines}
+            serverAccepted={!!liveReceipt?.server}
+            playerAccepted={!!liveReceipt?.player}
+            liveBusy={liveUpdating}
+            onLive={
+              liveChangeLines.length || liveUpdating
+                ? () => void handleUpdateLive()
+                : undefined
+            }
+          />
+        ) : null}
 
         <div className="p-6 space-y-3">
+          {isOrderApproved && orderForPanels ? (
+          <div className={modalSection === 'clips' ? '' : 'hidden'}>
+            <OrderClipsPanel
+              order={orderForPanels}
+              liveActive={liveState.status === 'live'}
+              liveSentScreenNames={liveState.screenNames}
+              liveNeedsUpdate={liveDirty}
+              livePublishBusy={liveUpdating}
+              publishedClipStamp={liveState.publishedSnapshot?.clipStamp}
+              livePublishedAt={liveState.status === 'live' ? liveState.publishedAt : undefined}
+              onClipStampChange={setLiveClipStamp}
+              onLiveClipFacts={setLiveClipFacts}
+              onLiveRemovals={setLiveRemovals}
+              onLivePublishBusy={setLiveUpdating}
+              onLiveNeedsUpdate={() => setLiveDirty(true)}
+              onLiveChange={(next) => {
+                setLiveState(next);
+                if (next.status === 'live') {
+                  skipLiveDirtyRef.current = true;
+                  liveContentKeyRef.current = liveContentKey;
+                  setLiveDirty(false);
+                  setLiveReceipt({ server: true, player: false });
+                } else {
+                  liveContentKeyRef.current = null;
+                  setLiveDirty(false);
+                  setLiveReceipt(null);
+                }
+                handleInputChange('media_received', next.status === 'live' ? true : !!formData.media_received);
+                if (isLocalTest) {
+                  const updated = getTestOrder(order.id);
+                  if (updated) onOrderUpdated?.(updated);
+                } else {
+                  onOrderUpdated?.({
+                    ...order,
+                    media_received: next.status === 'live' ? true : order.media_received,
+                    details: {
+                      ...(order.details || {}),
+                      live: next,
+                    },
+                  });
+                }
+              }}
+              onClockOverlayChange={(enabled) => {
+                const clockOverlay = { enabled, zone: 'bottom' as const };
+                setFormData((prev) => ({
+                  ...prev,
+                  details: {
+                    ...(prev.details || order.details || {}),
+                    clockOverlay,
+                  },
+                }));
+                if (isLocalTest) {
+                  const updated = getTestOrder(order.id);
+                  if (updated) onOrderUpdated?.(updated);
+                } else {
+                  onOrderUpdated?.({
+                    ...order,
+                    details: {
+                      ...(order.details || {}),
+                      clockOverlay,
+                    },
+                  });
+                }
+              }}
+              onMediaCoverageChange={(coverage) => {
+                const mediaCoverage = {
+                  ok: coverage.ok,
+                  total: coverage.total,
+                  unit: 'resolution' as const,
+                  updatedAt: new Date().toISOString(),
+                };
+                setFormData((prev) => ({
+                  ...prev,
+                  details: {
+                    ...(prev.details || order.details || {}),
+                    mediaCoverage,
+                  },
+                }));
+                if (isLocalTest) {
+                  const fresh = getTestOrder(order.id);
+                  if (fresh) {
+                    const updated = upsertTestOrder({
+                      ...fresh,
+                      details: {
+                        ...fresh.details,
+                        isTest: true,
+                        mediaCoverage,
+                      },
+                    });
+                    onOrderUpdated?.(updated);
+                  }
+                  return;
+                }
+                void PocketBaseService.updateOrder(order.id, {
+                  details: {
+                    ...(order.details || {}),
+                    mediaCoverage,
+                  },
+                })
+                  .then((updated) => onOrderUpdated?.(updated))
+                  .catch((err) => {
+                    console.error('Nepavyko išsaugoti mediaCoverage:', err);
+                  });
+              }}
+              allowLivePublish={!isAgency}
+            />
+          </div>
+          ) : null}
+          {modalSection !== 'clips' ? (
+          <>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -1267,33 +1823,70 @@ export function EditOrderModal({
                       <div
                         className={`flex items-center gap-2 w-full px-3 py-2 border rounded-lg ${
                           formData.approved
-                            ? 'border-green-300 bg-green-50 text-green-800 dark:bg-green-900/30 dark:border-green-700 dark:text-green-200'
+                            ? 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:bg-emerald-900/30 dark:border-emerald-700 dark:text-emerald-200'
                             : 'border-amber-300 bg-amber-50 text-amber-800 dark:bg-amber-900/30 dark:border-amber-700 dark:text-amber-200'
                         }`}
                       >
                         {formData.approved && (
-                          <CheckCircleIcon className="w-5 h-5 text-green-600 dark:text-green-400 shrink-0" />
+                          <CheckCircleIcon className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                         )}
                         <span className="text-sm font-medium">
                           {formData.approved ? 'Patvirtinta' : 'Nepatvirtinta'}
                         </span>
+                        {liveState.status === 'live' && formData.approved ? (
+                          <LiveStatusBadge
+                            alerts={liveScreenAlerts}
+                            className="ml-auto inline-flex h-[25px] items-center gap-1 rounded-full bg-emerald-600 px-2 text-[10px] font-bold uppercase leading-none tracking-wide text-white"
+                          />
+                        ) : null}
                       </div>
                     ) : (
-                      <select
-                        value={formData.approved ? 'taip' : 'ne'}
-                        onChange={(e) => handleInputChange('approved', e.target.value === 'taip')}
-                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 dark:text-white ${readOnlyFieldClass} ${
-                          formData.approved
-                            ? 'border-emerald-200 bg-emerald-50/70 dark:border-emerald-900/50 dark:bg-emerald-950/25'
-                            : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700'
-                        }`}
+                      <div
+                        className="relative inline-flex w-full rounded-lg border border-gray-200 bg-gray-50 p-1 dark:border-gray-600 dark:bg-gray-900/50"
+                        role="group"
+                        aria-label="Kampanijos statusas"
                       >
-                        <option value="ne">Nepatvirtinta</option>
-                        <option value="taip">Patvirtinta</option>
-                      </select>
+                        {liveState.status === 'live' && formData.approved ? (
+                          <LiveStatusBadge
+                            alerts={liveScreenAlerts}
+                            className="absolute -right-1.5 -top-2 z-10 inline-flex h-[25px] -translate-x-[20px] items-center gap-1 rounded-full bg-emerald-600 px-2 text-[10px] font-bold uppercase leading-none tracking-wide text-white shadow-sm"
+                          />
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => handleApprovedChange(false)}
+                          disabled={approvalBusy}
+                          aria-pressed={!formData.approved}
+                          className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:opacity-60 ${
+                            !formData.approved
+                              ? 'bg-amber-50 text-amber-800 shadow-sm ring-1 ring-amber-200/80 dark:bg-amber-950/40 dark:text-amber-200 dark:ring-amber-800/60'
+                              : 'text-gray-500 hover:bg-white/70 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-800/60 dark:hover:text-gray-200'
+                          }`}
+                        >
+                          {approvalBusy ? 'Stabdoma…' : 'Nepatvirtinta'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleApprovedChange(true)}
+                          disabled={approvalBusy}
+                          aria-pressed={!!formData.approved}
+                          className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:opacity-60 ${
+                            formData.approved
+                              ? 'bg-emerald-50 text-emerald-800 shadow-sm ring-1 ring-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-200 dark:ring-emerald-800/60'
+                              : 'text-gray-500 hover:bg-white/70 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-800/60 dark:hover:text-gray-200'
+                          }`}
+                        >
+                          Patvirtinta
+                        </button>
+                      </div>
                     )}
                   </div>
                   </div>
+          {liveOpenNotice ? (
+            <p className="text-sm text-gray-600 dark:text-gray-300" role="status">
+              {liveOpenNotice}
+            </p>
+          ) : null}
 
           <div className="space-y-2">
                   <div>
@@ -1521,49 +2114,16 @@ export function EditOrderModal({
                 )}
 
                 <div className="rounded-lg border border-dashed border-emerald-300/70 bg-gray-50 p-4 dark:border-emerald-700/60 dark:bg-gray-700/80">
-                  {!isAgency && (
-                    <div className="mb-3 flex flex-wrap gap-1 border-b border-gray-200/80 pb-2 dark:border-gray-600">
-                      <button
-                        type="button"
-                        onClick={() => setDeliverySection('plan')}
-                        className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-semibold transition-colors ${
-                          deliverySection === 'plan'
-                            ? 'bg-white text-gray-900 shadow-sm ring-1 ring-gray-200 dark:bg-gray-800 dark:text-white dark:ring-gray-600'
-                            : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
-                        }`}
-                      >
-                        <TableCellsIcon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                        Reklamos planas
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDeliverySection('clips')}
-                        className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-semibold transition-colors ${
-                          deliverySection === 'clips'
-                            ? 'bg-white text-gray-900 shadow-sm ring-1 ring-gray-200 dark:bg-gray-800 dark:text-white dark:ring-gray-600'
-                            : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
-                        }`}
-                      >
-                        <FilmIcon className="h-4 w-4 text-gray-800 dark:text-gray-200" />
-                        Video klipai
-                      </button>
-                    </div>
-                  )}
-
-                  <div className="mb-3 flex items-start justify-between gap-3">
-                    <div>
-                      {isAgency ? (
-                        <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
-                          <TableCellsIcon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                          Reklamos planas
-                        </h3>
-                      ) : null}
-                      <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                        {deliverySection === 'clips' && !isAgency
-                          ? 'Įklijuokite WeTransfer / disk nuorodą ir išsiųskite owneriams'
-                          : 'Excel parsisiunčiamas iš užsakymo duomenų'}
-                      </p>
-                    </div>
+                  <div className="mb-3">
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
+                      <TableCellsIcon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                      Reklamos planas ir klipai
+                    </h3>
+                    <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                      {isAgency
+                        ? 'Excel parsisiunčiamas iš užsakymo duomenų'
+                        : 'Vienas laiškas owneriams: Excel planas + video nuoroda'}
+                    </p>
                   </div>
 
                   {exportError && (
@@ -1572,187 +2132,144 @@ export function EditOrderModal({
                     </p>
                   )}
 
-                  {deliverySection === 'clips' && !isAgency ? (
-                    <div className="space-y-3">
-                      <div className="flex flex-wrap gap-2">
-                        {exportPartnersLoading ? (
-                          <p className="self-center text-sm text-gray-500 dark:text-gray-400">
-                            Kraunami partneriai…
-                          </p>
-                        ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {!isAgency && formData.approved && (
+                      <button
+                        type="button"
+                        onClick={() => setAtaskaitaOpen(true)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200/90 bg-white px-3 py-1.5 text-sm font-medium text-amber-900 transition-colors hover:bg-amber-50 dark:border-amber-800 dark:bg-gray-800 dark:text-amber-200 dark:hover:bg-amber-950/30"
+                        title="Parodymų ataskaita — Piksel ekranai (Panorama = realūs)"
+                      >
+                        <ChartBarIcon className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                        Ataskaita
+                      </button>
+                    )}
+                    {exportPartnersLoading && !isAgency ? (
+                      <p className="self-center text-sm text-gray-500 dark:text-gray-400">
+                        Kraunami partneriai…
+                      </p>
+                    ) : (
+                      <>
+                        {!isAgency &&
                           exportPartners.map((partner) => {
-                            const delivery = partnerDeliveryById[partner.id]?.clips;
-                            const deliveryClass = delivery?.confirmed
-                              ? 'border-emerald-200/90 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100'
-                              : delivery?.sent
-                                ? 'border-amber-200/90 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100'
-                                : 'border-gray-200/90 bg-white text-gray-800 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200';
+                            const isExporting = exportingPartnerId === partner.id;
+                            const delivery = partnerDeliveryById[partner.id];
+                            const confirmed = Boolean(
+                              delivery?.plan?.confirmed || delivery?.clips?.confirmed
+                            );
+                            const sent = Boolean(
+                              delivery?.plan?.sent || delivery?.clips?.sent
+                            );
+                            const deliveryClass = confirmed
+                              ? 'border-emerald-200/90 bg-emerald-50 text-emerald-900 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100'
+                              : sent
+                                ? 'border-amber-200/90 bg-amber-50 text-amber-950 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100'
+                                : 'border-gray-200/90 bg-white text-gray-800 hover:bg-sky-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-sky-950/30';
                             return (
-                              <span
+                              <button
                                 key={partner.id}
-                                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium ${deliveryClass}`}
+                                type="button"
+                                disabled={
+                                  !!exportingPartnerId ||
+                                  exportingCombined ||
+                                  sendingPartnerPlans
+                                }
+                                onClick={() => handlePartnerPlanExcelExport(partner)}
+                                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50 ${deliveryClass}`}
+                                title={`${partner.name}: atsisiųsti Excel (${partner.screenCount} ekr.)`}
                               >
-                                {partner.name}
+                                {isExporting ? (
+                                  <span className="h-4 w-4 shrink-0 animate-pulse rounded-full bg-sky-400" />
+                                ) : (
+                                  <ArrowDownTrayIcon className="h-4 w-4 shrink-0 text-sky-600 dark:text-sky-400" />
+                                )}
+                                <span>{partner.name}</span>
+                                {isExporting && (
+                                  <span className="text-xs text-gray-500">…</span>
+                                )}
                                 <span className="text-xs opacity-60">
                                   ({partner.screenCount})
                                 </span>
-                              </span>
+                              </button>
                             );
-                          })
-                        )}
-                      </div>
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                        <input
-                          type="url"
-                          value={clipsUrl}
-                          onChange={(e) => setClipsUrl(e.target.value)}
-                          placeholder="https://we.tl/… arba kita nuoroda"
-                          className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-                        />
-                        <button
-                          type="button"
-                          disabled={
-                            sendingPartnerClips ||
-                            exportPartners.length === 0 ||
-                            !clipsUrl.trim()
-                          }
-                          onClick={() => void handleSendPartnerClips()}
-                          className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-gray-900 bg-white px-3 py-2 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-200 dark:bg-gray-800 dark:text-gray-100"
-                          title="Siųsti video nuorodą visiems owneriams (be Piksel)"
-                        >
-                          {sendingPartnerClips ? (
-                            <span className="h-4 w-4 shrink-0 animate-pulse rounded-full bg-gray-400" />
-                          ) : (
-                            <PaperAirplaneIcon className="h-4 w-4 shrink-0" />
-                          )}
-                          Siųsti
-                        </button>
-                      </div>
-                    </div>
-                  ) : exportPartnersLoading && !isAgency ? (
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Kraunami partneriai…</p>
-                  ) : !isAgency && exportPartners.length === 0 && !campaignEnded ? (
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                      Šiame užsakyme nėra ekranų — partnerių eksportui nerasta.
-                    </p>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {!isAgency &&
-                      exportPartners.map((partner) => {
-                        const isExporting = exportingPartnerId === partner.id;
-                        const delivery = partnerDeliveryById[partner.id]?.plan;
-                        const deliveryClass = delivery?.confirmed
-                          ? 'border-emerald-200/90 bg-emerald-50 text-emerald-900 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100'
-                          : delivery?.sent
-                            ? 'border-amber-200/90 bg-amber-50 text-amber-950 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100'
-                            : 'border-gray-200/90 bg-white text-gray-800 hover:bg-sky-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-sky-950/30';
-                        return (
-                          <button
-                            key={partner.id}
-                            type="button"
-                            disabled={
-                              !!exportingPartnerId ||
-                              exportingCombined ||
-                              exportingPostCampaign ||
-                              exportingAllZip ||
-                              sendingPartnerPlans
-                            }
-                            onClick={() => handlePartnerPlanExcelExport(partner)}
-                            className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50 ${deliveryClass}`}
-                            title={`${partner.name}: atsisiųsti Excel (${partner.screenCount} ekr.)`}
-                          >
-                            {isExporting ? (
-                              <span className="h-4 w-4 shrink-0 animate-pulse rounded-full bg-sky-400" />
-                            ) : (
-                              <ArrowDownTrayIcon className="h-4 w-4 shrink-0 text-sky-600 dark:text-sky-400" />
-                            )}
-                            <span>{partner.name}</span>
-                            {isExporting && (
-                              <span className="text-xs text-gray-500">…</span>
-                            )}
-                            <span className="text-xs opacity-60">
-                              ({partner.screenCount})
-                            </span>
-                          </button>
-                        );
-                      })}
-                      <button
-                        type="button"
-                        disabled={
-                          !!exportingPartnerId ||
-                          exportingCombined ||
-                          exportingPostCampaign ||
-                          exportingAllZip ||
-                          sendingPartnerPlans
-                        }
-                        onClick={handleCombinedPlanExcelExport}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200/90 bg-white px-3 py-1.5 text-sm font-medium text-violet-800 transition-colors hover:bg-violet-50 disabled:opacity-50 dark:border-violet-800 dark:bg-gray-800 dark:text-violet-200 dark:hover:bg-violet-950/30"
-                        title={isAgency ? 'Atsisiųsti Excel' : 'Visi tiekėjai viename Excel faile'}
-                      >
-                        {exportingCombined ? (
-                          <span className="h-4 w-4 shrink-0 animate-pulse rounded-full bg-violet-400" />
-                        ) : (
-                          <ArrowDownTrayIcon className="h-4 w-4 shrink-0 text-violet-600 dark:text-violet-400" />
-                        )}
-                        {isAgency ? '.xls' : 'Bendras'}
-                        {exportingCombined && (
-                          <span className="text-xs text-gray-500">…</span>
-                        )}
-                      </button>
-                      {!isAgency && campaignEnded && (
+                          })}
                         <button
                           type="button"
                           disabled={
                             !!exportingPartnerId ||
                             exportingCombined ||
-                            exportingPostCampaign ||
-                            exportingAllZip ||
                             sendingPartnerPlans
                           }
-                          onClick={handlePostCampaignPlanExcelExport}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200/90 bg-white px-3 py-1.5 text-sm font-medium text-amber-900 transition-colors hover:bg-amber-50 disabled:opacity-50 dark:border-amber-800 dark:bg-gray-800 dark:text-amber-200 dark:hover:bg-amber-950/30"
-                          title="Parodymų ataskaita po kampanijos — visi tiekėjai viename faile"
+                          onClick={handleCombinedPlanExcelExport}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200/90 bg-white px-3 py-1.5 text-sm font-medium text-violet-800 transition-colors hover:bg-violet-50 disabled:opacity-50 dark:border-violet-800 dark:bg-gray-800 dark:text-violet-200 dark:hover:bg-violet-950/30"
+                          title={
+                            isAgency
+                              ? 'Atsisiųsti Excel'
+                              : 'Visi tiekėjai viename Excel faile'
+                          }
                         >
-                          {exportingPostCampaign ? (
-                            <span className="h-4 w-4 shrink-0 animate-pulse rounded-full bg-amber-400" />
+                          {exportingCombined ? (
+                            <span className="h-4 w-4 shrink-0 animate-pulse rounded-full bg-violet-400" />
                           ) : (
-                            <ArrowDownTrayIcon className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                            <ArrowDownTrayIcon className="h-4 w-4 shrink-0 text-violet-600 dark:text-violet-400" />
                           )}
-                          Ataskaita
-                          {exportingPostCampaign && (
+                          {isAgency ? '.xls' : 'Bendras'}
+                          {exportingCombined && (
                             <span className="text-xs text-gray-500">…</span>
                           )}
                         </button>
-                      )}
-                      {!isAgency && (
-                      <button
-                        type="button"
-                        disabled={
-                          !!exportingPartnerId ||
-                          exportingCombined ||
-                          exportingPostCampaign ||
-                          exportingAllZip ||
-                          sendingPartnerPlans ||
-                          exportPartners.length === 0
+                      </>
+                    )}
+                  </div>
+
+                  {!isAgency && (
+                    <div className="mt-3 space-y-2">
+                      <input
+                        type="url"
+                        value={clipsUrl}
+                        onChange={(e) => setClipsUrl(e.target.value)}
+                        placeholder="https://we.tl/… video nuoroda"
+                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                      />
+                      <textarea
+                        value={deliveryNote}
+                        onChange={(e) => setDeliveryNote(e.target.value)}
+                        maxLength={2000}
+                        rows={3}
+                        placeholder={
+                          'Pastaba owneriams (neprivaloma), pvz.:\nX klipas 08.09–09.01\nY klipas 09.02–10.01'
                         }
-                        onClick={() => void handleSendPartnerPlans()}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-900 bg-white px-3 py-1.5 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-200 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
-                        title="Siųsti planus visiems owneriams (be Piksel) el. paštu"
-                      >
-                        {sendingPartnerPlans ? (
-                          <span className="h-4 w-4 shrink-0 animate-pulse rounded-full bg-gray-400" />
-                        ) : (
-                          <PaperAirplaneIcon className="h-4 w-4 shrink-0" />
-                        )}
-                        Siųsti
-                        {sendingPartnerPlans && (
-                          <span className="text-xs text-gray-500">…</span>
-                        )}
-                      </button>
-                      )}
+                        className="w-full resize-y rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                      />
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          disabled={
+                            !!exportingPartnerId ||
+                            exportingCombined ||
+                            sendingPartnerPlans ||
+                            exportPartners.length === 0 ||
+                            !clipsUrl.trim()
+                          }
+                          onClick={() => void handleSendPartnerPackage()}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-900 bg-white px-3 py-1.5 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-200 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
+                          title="Siųsti planą ir klipus visiems owneriams (be Piksel)"
+                        >
+                          {sendingPartnerPlans ? (
+                            <span className="h-4 w-4 shrink-0 animate-pulse rounded-full bg-gray-400" />
+                          ) : (
+                            <PaperAirplaneIcon className="h-4 w-4 shrink-0" />
+                          )}
+                          Siųsti
+                          {sendingPartnerPlans && (
+                            <span className="text-xs text-gray-500">…</span>
+                          )}
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
+
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div>
@@ -2028,17 +2545,48 @@ export function EditOrderModal({
               </div>
             </div>
           )}
+          </>
+          ) : null}
+        </div>
         </div>
 
-        <div className={`flex items-center gap-3 p-6 border-t border-gray-200 dark:border-gray-700 ${isAgency ? 'justify-end' : 'justify-between'}`}>
+        <div className={`flex shrink-0 items-center gap-3 p-6 border-t border-gray-200 dark:border-gray-700 ${isAgency ? 'justify-end' : 'justify-between'}`}>
           {!isAgency && (
-          <button
-            type="button"
-            onClick={handleDelete}
-            className={modalBtnDanger}
-          >
-            Ištrinti
-          </button>
+          <div className="relative" ref={deleteConfirmRef}>
+            <button
+              type="button"
+              onClick={() => setDeleteConfirmOpen((open) => !open)}
+              disabled={deleting}
+              className={modalBtnDanger}
+            >
+              Ištrinti
+            </button>
+            {deleteConfirmOpen && (
+              <div className="absolute bottom-full left-0 z-30 mb-2 w-64 rounded-xl border border-gray-200 bg-white p-3 shadow-xl dark:border-gray-700 dark:bg-gray-900">
+                <p className="text-sm font-medium text-gray-900 dark:text-white">
+                  Ar tikrai ištrinti šį užsakymą?
+                </p>
+                <div className="mt-3 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDeleteConfirmOpen(false)}
+                    disabled={deleting}
+                    className={modalBtnSecondary}
+                  >
+                    Atšaukti
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleDelete()}
+                    disabled={deleting}
+                    className="px-4 py-2 text-sm font-medium rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
+                  >
+                    {deleting ? 'Trinama...' : 'Ištrinti'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
           )}
           
           <div className="flex gap-2 sm:gap-3 ml-auto">
@@ -2062,21 +2610,13 @@ export function EditOrderModal({
           </div>
         </div>
       </div>
+      </div>
     </div>
-
-    {!isAgency && (
-      <OrderMediaCheckModal
-        isOpen={mediaCheckOpen}
-        orderId={order.id}
-        screenIds={orderScreenIds}
-        mediaReceived={!!formData.media_received}
-        onClose={() => setMediaCheckOpen(false)}
-        onMarkMediaReceived={() => {
-          handleInputChange('media_received', true);
-          setMediaCheckOpen(false);
-        }}
-      />
-    )}
+    <OrderAtaskaitaModal
+      isOpen={ataskaitaOpen}
+      order={order}
+      onClose={() => setAtaskaitaOpen(false)}
+    />
     </>
   );
 }

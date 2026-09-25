@@ -41,3 +41,23 @@ export function daysInclusiveBetween(start: Date, end: Date): number {
   const diff = endUtc - startUtc;
   return Math.floor(diff / (1000 * 60 * 60 * 24)) + 1;
 }
+
+/**
+ * Kalendorinės dienos iki kampanijos pabaigos (imtinai šiandieną neskaičiuojant
+ * kaip praėjusios). Jei šiandien = pabaigos diena → 0. Jei jau pasibaigė → 0.
+ */
+export function daysLeftUntilCampaignEnd(
+  toDate: string,
+  today: Date = new Date()
+): number | null {
+  const end = parseDateOnlyLocal(toDate);
+  if (!end) return null;
+  const todayUtc = Date.UTC(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate()
+  );
+  const endUtc = Date.UTC(end.getFullYear(), end.getMonth(), end.getDate());
+  const diff = Math.floor((endUtc - todayUtc) / (1000 * 60 * 60 * 24));
+  return Math.max(0, diff);
+}

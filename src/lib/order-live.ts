@@ -9,6 +9,7 @@ import {
 import { getTestOrder, isTestOrder, upsertTestOrder, type TestOrder } from '@/lib/test-orders';
 import { publishOrderToPlayer, unpublishOrderFromPlayer } from '@/lib/player-bridge';
 import { parseDateOnlyLocal } from '@/lib/date-utils';
+import { formatNoticeChangeTime } from '@/lib/clip-times';
 
 export type OrderLiveSnapshot = {
   client: string;
@@ -22,6 +23,24 @@ export type OrderLiveSnapshot = {
   clipStamp: string;
   rowStamp: string;
   gridKey: string;
+  /** Max / Medi / Min / Pikas — tik jei žinomas publikacijos metu. */
+  intensity?: string;
+};
+
+export type LiveClipFact = {
+  id: string;
+  filename: string;
+  uploadedAt?: string | null;
+  onScreensAt?: string | null;
+  fileChange?: 'added' | 'replaced' | null;
+  /** Tikras šio pokyčio laikas. Tuščia — eilutėje laiko nėra. */
+  changedAt?: string | null;
+};
+
+export type LiveClipRemoval = {
+  id: string;
+  filename: string;
+  at?: string | null;
 };
 
 export type OrderLiveState = {
@@ -193,6 +212,7 @@ export function buildOrderLiveSnapshot(order: Order, clipStamp = ''): OrderLiveS
     clipStamp: String(clipStamp || ''),
     rowStamp: planRowStamp(order),
     gridKey: planGridKey(order),
+    intensity: String(order.intensity || plan?.intensity || '').trim(),
   };
 }
 
@@ -321,12 +341,213 @@ export function describeOrderLiveChanges(
 export function describeLiveDirtyFallback(
   published: OrderLiveSnapshot | null | undefined,
   current: OrderLiveSnapshot,
-  options?: { assumeClipChange?: boolean }
+  options?: {
+    assumeClipChange?: boolean;
+    publishedClipCount?: number;
+    publishedAt?: string | null;
+    intensityPublished?: string | null;
+    intensityCurrent?: string | null;
+    clips?: LiveClipFact[];
+  }
 ): string[] {
-  const lines = describeOrderLiveChanges(published, current);
-  if (lines.length) return lines;
-  if (options?.assumeClipChange) return ['Pakeistas klipas.'];
-  return ['Pakeistas transliacijų planas.'];
+  return describeLiveUpdateNotice(published, current, options);
+}
+
+/** Failo vardas pranešime: „JAU_10_METU_su_laikmaciu.mp4“ → „Jau 10 metų...“. */
+export function shortClipNoticeName(filename: string): string {
+  const base = String(filename || '')
+    .replace(/\.[^.]+$/, '')
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const words = base
+    .split(' ')
+    .filter(Boolean)
+    .map((word, index) => {
+      const lower = word.toLocaleLowerCase('lt-LT');
+      const token = lower === 'metu' ? 'metų' : lower;
+      const shouting =
+        word === word.toLocaleUpperCase('lt-LT') && word !== word.toLocaleLowerCase('lt-LT');
+      if (index === 0) {
+        return token.charAt(0).toLocaleUpperCase('lt-LT') + token.slice(1);
+      }
+      if (shouting) return token;
+      return word;
+    });
+  if (words.length > 3) return `${words.slice(0, 3).join(' ')}...`;
+  return words.join(' ');
+}
+
+function clipNoticeSentence(
+  kind: 'new' | 'additional' | 'replaced' | 'deleted',
+  filename: string,
+  at?: string | null
+): string | null {
+  const name = shortClipNoticeName(filename);
+  if (!name) return null;
+  const quoted = `„${name}“`;
+  const action =
+    kind === 'new'
+      ? `Įkeltas naujas klipas ${quoted}`
+      : kind === 'additional'
+        ? `Įkeltas papildomas klipas ${quoted}`
+        : kind === 'replaced'
+          ? `Pakeistas klipas ${quoted}`
+          : `Ištrintas klipas ${quoted}`;
+  const when = formatNoticeChangeTime(at);
+  return when ? `${action} ${when}` : action;
+}
+
+function parseClipStamp(stamp: string | null | undefined): Array<{ id: string; filename: string }> {
+  if (!stamp) return [];
+  return stamp
+    .split(';')
+    .map((part) => {
+      const [id, filename] = part.split('|');
+      return { id: String(id || '').trim(), filename: String(filename || '').trim() };
+    })
+    .filter((entry) => entry.id || entry.filename);
+}
+
+function sameScreenSet(left: string[] | null | undefined, right: string[] | null | undefined): boolean {
+  const a = screenNameList(left).map((name) => name.toLocaleLowerCase('lt-LT'));
+  const b = screenNameList(right).map((name) => name.toLocaleLowerCase('lt-LT'));
+  if (!a.length || !b.length) return true;
+  if (a.length !== b.length) return false;
+  const known = new Set(a);
+  return b.every((name) => known.has(name));
+}
+
+function broadcastPlanChanged(
+  published: OrderLiveSnapshot | null | undefined,
+  current: OrderLiveSnapshot,
+  intensityPublished?: string | null,
+  intensityCurrent?: string | null
+): boolean {
+  if (!published) return false;
+  const dates =
+    Boolean(published.from && current.from && published.from !== current.from) ||
+    Boolean(published.to && current.to && published.to !== current.to) ||
+    Boolean(
+      published.rowStamp && current.rowStamp && published.rowStamp !== current.rowStamp
+    );
+  const screens = !sameScreenSet(published.screenNames, current.screenNames);
+  const publishedIntensity = String(intensityPublished ?? published.intensity ?? '').trim();
+  const currentIntensity = String(intensityCurrent ?? current.intensity ?? '').trim();
+  const intensity =
+    Boolean(publishedIntensity && currentIntensity) &&
+    publishedIntensity.toLocaleLowerCase('lt-LT') !== currentIntensity.toLocaleLowerCase('lt-LT');
+  return dates || screens || intensity;
+}
+
+function storedClipChangeTime(clip: LiveClipFact | undefined): string | null {
+  const at = String(clip?.changedAt || clip?.uploadedAt || '').trim();
+  return at || null;
+}
+
+function clipActionLines(
+  published: OrderLiveSnapshot | null | undefined,
+  current: OrderLiveSnapshot,
+  options?: {
+    publishedClipCount?: number;
+    publishedAt?: string | null;
+    clips?: LiveClipFact[];
+    removals?: LiveClipRemoval[];
+  }
+): string[] {
+  const publishedEntries = parseClipStamp(published?.clipStamp);
+  const currentEntries = parseClipStamp(current.clipStamp);
+  const clips = options?.clips || [];
+  const factById = new Map(clips.map((clip) => [String(clip.id), clip]));
+  const removalById = new Map((options?.removals || []).map((row) => [String(row.id), row]));
+  const publishedCount = options?.publishedClipCount ?? publishedEntries.length;
+  const hadClips = publishedCount > 0 || publishedEntries.length > 0;
+  const lines: string[] = [];
+
+  const push = (
+    kind: 'new' | 'additional' | 'replaced' | 'deleted',
+    filename: string,
+    at?: string | null
+  ) => {
+    const line = clipNoticeSentence(kind, filename, at);
+    if (line && !lines.includes(line)) lines.push(line);
+  };
+
+  if (publishedEntries.length) {
+    const currentById = new Map(currentEntries.map((entry) => [entry.id, entry]));
+    for (const entry of publishedEntries) {
+      if (entry.id && !currentById.has(entry.id)) {
+        push('deleted', entry.filename, removalById.get(entry.id)?.at);
+      }
+    }
+    for (const entry of currentEntries) {
+      const prev = publishedEntries.find((item) => item.id === entry.id);
+      const fact = factById.get(entry.id);
+      const at = storedClipChangeTime(fact);
+      if (!prev) {
+        push(
+          fact?.fileChange === 'replaced' ? 'replaced' : hadClips ? 'additional' : 'new',
+          entry.filename,
+          at
+        );
+      } else if (prev.filename !== entry.filename || fact?.fileChange === 'replaced') {
+        push('replaced', entry.filename || prev.filename, storedClipChangeTime(fact));
+      }
+    }
+    return lines;
+  }
+
+  const publishedAt = Date.parse(String(options?.publishedAt || ''));
+  const pending = clips
+    .filter((clip) => {
+      if (clip.onScreensAt) return false;
+      if (clip.fileChange === 'replaced') return true;
+      const uploaded = Date.parse(String(clip.uploadedAt || ''));
+      if (Number.isFinite(publishedAt) && Number.isFinite(uploaded)) return uploaded > publishedAt;
+      return clip.fileChange === 'added';
+    })
+    .sort((a, b) => Date.parse(String(a.uploadedAt || '')) - Date.parse(String(b.uploadedAt || '')));
+
+  for (const clip of pending) {
+    const at = storedClipChangeTime(clip);
+    if (clip.fileChange === 'replaced') push('replaced', clip.filename, clip.changedAt || at);
+    else push(hadClips ? 'additional' : 'new', clip.filename, at);
+  }
+  return lines;
+}
+
+/**
+ * Geltonas pranešimas: planas — tik datos, intensyvumas ar ekranai.
+ * Klipas — atskira eilutė su trumpu vardu.
+ */
+export function describeLiveUpdateNotice(
+  published: OrderLiveSnapshot | null | undefined,
+  current: OrderLiveSnapshot,
+  options?: {
+    assumeClipChange?: boolean;
+    publishedClipCount?: number;
+    publishedAt?: string | null;
+    intensityPublished?: string | null;
+    intensityCurrent?: string | null;
+    planChangedAt?: string | null;
+    clips?: LiveClipFact[];
+    removals?: LiveClipRemoval[];
+  }
+): string[] {
+  const lines: string[] = [];
+  if (
+    broadcastPlanChanged(
+      published,
+      current,
+      options?.intensityPublished,
+      options?.intensityCurrent
+    )
+  ) {
+    const when = formatNoticeChangeTime(options?.planChangedAt);
+    lines.push(when ? `Pakeistas transliacijų planas. ${when}` : 'Pakeistas transliacijų planas.');
+  }
+  lines.push(...clipActionLines(published, current, options));
+  return lines;
 }
 
 /** Ką Live turi atitikti — ta pati tvarka kaip publishOrderToPlayer. */

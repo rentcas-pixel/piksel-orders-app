@@ -101,13 +101,13 @@ describe('clipTimeLines', () => {
 });
 
 describe('classifyNewClipChange', () => {
-  it('stays quiet for the first file of a kind', () => {
+  it('marks the first file of a kind as a new file', () => {
     expect(
       classifyNewClipChange(
         [{ ...localClip, uploadKind: 'video', id: 'clip-1' }],
         { ...localClip, id: 'clip-2' }
       )
-    ).toBeNull();
+    ).toBe('added');
   });
 
   it('marks the same resolution as a replacement and a different one as a new file', () => {

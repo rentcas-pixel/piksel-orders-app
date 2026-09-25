@@ -1181,6 +1181,112 @@ function notifyHubTestOrdersChanged(orderId) {
   }
 }
 
+function hubPlanText(value) {
+  return String(value ?? "").trim();
+}
+
+function hubPlanLower(value) {
+  return hubPlanText(value).toLocaleLowerCase("lt-LT");
+}
+
+function hubPlanSortedUnique(values) {
+  return [...new Set(values.filter(Boolean))].sort();
+}
+
+function hubPlanIntensity(order) {
+  return hubPlanLower(order.intensity || order.details?.plan?.intensity);
+}
+
+function hubPlanScreenIds(order) {
+  const direct = (order.screens || []).map((id) => hubPlanText(id)).filter(Boolean);
+  if (direct.length) return hubPlanSortedUnique(direct);
+  const rows = order.details?.plan?.screenRows || [];
+  return hubPlanSortedUnique(rows.map((row) => hubPlanText(row.catalogId)));
+}
+
+function hubPlanScreenNames(order) {
+  const rows = order.details?.plan?.screenRows || [];
+  const fromRows = rows.map((row) => hubPlanLower(row.name)).filter(Boolean);
+  if (fromRows.length) return hubPlanSortedUnique(fromRows);
+  return hubPlanSortedUnique((order.details?.plan?.screenNames || []).map((name) => hubPlanLower(name)));
+}
+
+function hubPlanRowStamp(order) {
+  const rows = order.details?.plan?.screenRows || [];
+  const from = hubPlanText(order.from);
+  const to = hubPlanText(order.to);
+  return rows
+    .map((row) => {
+      const name = hubPlanLower(row.name);
+      if (!name) return "";
+      return [name, hubPlanText(row.from) || from, hubPlanText(row.to) || to].join("|");
+    })
+    .filter(Boolean)
+    .sort()
+    .join(";");
+}
+
+function hubBroadcastPlanFieldsDiffer(before, after) {
+  const beforeFrom = hubPlanText(before.from);
+  const afterFrom = hubPlanText(after.from);
+  const beforeTo = hubPlanText(before.to);
+  const afterTo = hubPlanText(after.to);
+  const dates =
+    Boolean(beforeFrom && afterFrom && beforeFrom !== afterFrom) ||
+    Boolean(beforeTo && afterTo && beforeTo !== afterTo);
+  const beforeRows = hubPlanRowStamp(before);
+  const afterRows = hubPlanRowStamp(after);
+  const rowDates = Boolean(beforeRows && afterRows && beforeRows !== afterRows);
+  const beforeIds = hubPlanScreenIds(before);
+  const afterIds = hubPlanScreenIds(after);
+  const beforeNames = hubPlanScreenNames(before);
+  const afterNames = hubPlanScreenNames(after);
+  let screens = false;
+  if (beforeNames.length && afterNames.length) {
+    screens = beforeNames.join(";") !== afterNames.join(";");
+  } else if (beforeIds.length && afterIds.length) {
+    screens = beforeIds.join(";") !== afterIds.join(";");
+  } else if (
+    (beforeIds.length > 0 || beforeNames.length > 0) !==
+    (afterIds.length > 0 || afterNames.length > 0)
+  ) {
+    screens = true;
+  }
+  const beforeIntensity = hubPlanIntensity(before);
+  const afterIntensity = hubPlanIntensity(after);
+  const intensity =
+    Boolean(beforeIntensity && afterIntensity) && beforeIntensity !== afterIntensity;
+  return dates || rowDates || screens || intensity;
+}
+
+function hubPlanChangedAt(existing, plan, nowIso) {
+  const existingDetails = existing.details && typeof existing.details === "object" ? existing.details : {};
+  const kept = hubPlanText(existingDetails.planChangedAt);
+  if (!existing.id) return kept;
+  const screens = (plan.screens || []).filter((screen) => screen.active);
+  const next = {
+    id: existing.id,
+    from: plan.from,
+    to: plan.to,
+    intensity: plan.intensity || existing.intensity || "",
+    screens: screens.map((screen) => screen.catalogId || screen.id).filter(Boolean),
+    details: {
+      plan: {
+        intensity: plan.intensity,
+        screenNames: screens.map((screen) => screen.name),
+        screenRows: screens.map((screen) => ({
+          name: screen.name,
+          catalogId: screen.catalogId || "",
+          from: screen.from || undefined,
+          to: screen.to || undefined,
+        })),
+      },
+    },
+  };
+  if (!hubBroadcastPlanFieldsDiffer(existing, next)) return kept;
+  return hubPlanText(nowIso) || new Date().toISOString();
+}
+
 function upsertHubTestOrderFromPlan(plan, meta) {
   const id = String(meta.id || `test-${Date.now()}`);
   const orderId = id.startsWith("test-") ? id : `test-${id}`;
@@ -1196,6 +1302,7 @@ function upsertHubTestOrderFromPlan(plan, meta) {
   const viaductFrequency = Number(plan.viaductFrequency) || 1;
   const existing = readHubTestOrders().find((item) => String(item.id) === String(orderId)) || {};
   const existingDetails = existing.details && typeof existing.details === "object" ? existing.details : {};
+  const planChangedAt = hubPlanChangedAt(existing, plan);
   const order = {
     ...existing,
     id: orderId,
@@ -1226,6 +1333,7 @@ function upsertHubTestOrderFromPlan(plan, meta) {
     hidden_screens: existing.hidden_screens || [],
     details: {
       ...existingDetails,
+      ...(planChangedAt ? { planChangedAt } : {}),
       isTest: true,
       discount: typeof existingDetails.discount === "number" ? existingDetails.discount : 80,
       total,
