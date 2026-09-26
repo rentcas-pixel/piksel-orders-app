@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { Suspense, useState, useMemo, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useDebounce, useDebouncedSearchQuery } from '@/hooks/useDebounce';
 import { useAppSession } from '@/hooks/useAppSession';
 import { canAccessAppTab, canAccessInvoicesSubTab, hasAdminFinanceAccess } from '@/lib/app-permissions';
@@ -13,7 +14,8 @@ import { AgencyAnalysis } from '@/components/AgencyAnalysis';
 import { ChartsAnalysis } from '@/components/ChartsAnalysis';
 import { RecentApprovedOrders } from '@/components/RecentApprovedOrders';
 import { OrderAnalyticsDashboard } from '@/components/OrderAnalyticsDashboard';
-import { Header } from '@/components/Header';
+import { AppShell } from '@/components/AppShell';
+import { usePlaySandboxState } from '@/hooks/usePlaySandboxEnabled';
 import { AppTabsNav } from '@/components/AppTabsNav';
 import { AppBreadcrumb } from '@/components/AppBreadcrumb';
 import { PortalFiltersBar } from '@/components/PortalFiltersBar';
@@ -52,12 +54,15 @@ import {
 import { Order } from '@/types';
 import type { Invoice, ReceivedInvoice } from '@/types';
 import type { AppTab, BankSubTab, InvoicesSubTab } from '@/lib/app-navigation';
-import { getAppBreadcrumb } from '@/lib/app-navigation';
+import { getAppBreadcrumb, parseAppTab, appTabHref } from '@/lib/app-navigation';
 import type { OrdersViewMode } from '@/lib/orders-filters';
 import type { IssuedInvoicePaymentFilter } from '@/lib/issued-invoice-filters';
 
-export default function Home() {
+function Home() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { session, loading: sessionLoading, error: sessionError } = useAppSession();
+  const { ready: playReady, enabled: playSandbox } = usePlaySandboxState();
   const [isWeekNumbersModalOpen, setIsWeekNumbersModalOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [invoicingOrder, setInvoicingOrder] = useState<Order | null>(null);
@@ -108,15 +113,23 @@ export default function Home() {
   const visibleTabs = session?.visibleTabs ?? [];
   const visibleInvoicesSubTabs = session?.visibleInvoicesSubTabs ?? ['issued'];
 
+  const tabFromUrl = parseAppTab(searchParams.get('tab'));
+
   useEffect(() => {
     if (!session) return;
-    if (!canAccessAppTab(session.role, activeTab)) {
-      setActiveTab('orders');
+    if (tabFromUrl && canAccessAppTab(session.role, tabFromUrl)) {
+      setActiveTab(tabFromUrl);
+      return;
     }
+    setActiveTab('orders');
+  }, [session, tabFromUrl]);
+
+  useEffect(() => {
+    if (!session) return;
     if (!canAccessInvoicesSubTab(session.role, invoicesSubTab)) {
       setInvoicesSubTab('issued');
     }
-  }, [session, activeTab, invoicesSubTab]);
+  }, [session, invoicesSubTab]);
 
   const breadcrumb = useMemo(
     () =>
@@ -128,7 +141,7 @@ export default function Home() {
     [activeTab, invoicesSubTab, bankSubTab, ordersViewMode]
   );
 
-  if (sessionLoading) {
+  if (sessionLoading || !playReady) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
         <p className="text-sm text-gray-500 dark:text-gray-400">Kraunama…</p>
@@ -220,15 +233,20 @@ export default function Home() {
 
   return (
     <>
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-        <Header onAddOrder={() => setIsWeekNumbersModalOpen(true)} userEmail={session.email} />
+      <div className={`min-h-screen bg-gray-50 dark:bg-gray-900 ${playSandbox ? 'play-vertical-grid' : ''}`}>
+        <AppShell onAddOrder={() => setIsWeekNumbersModalOpen(true)} userEmail={session.email}>
         <main className="container mx-auto px-4 py-6">
           <AppBreadcrumb segments={breadcrumb} />
-          <AppTabsNav
-            activeTab={activeTab}
-            visibleTabs={visibleTabs}
-            onTabChange={setActiveTab}
-          />
+          {playSandbox ? null : (
+            <AppTabsNav
+              activeTab={activeTab}
+              visibleTabs={visibleTabs}
+              onTabChange={(tab) => {
+                setActiveTab(tab);
+                router.replace(appTabHref(tab), { scroll: false });
+              }}
+            />
+          )}
 
           {activeTab !== 'latest' &&
             activeTab !== 'orders' &&
@@ -465,6 +483,7 @@ export default function Home() {
           )}
 
         </main>
+        </AppShell>
       </div>
 
       <EditOrderModal
@@ -548,5 +567,19 @@ export default function Home() {
 
       {isAdmin && <BankImportProgressToast />}
     </>
+  );
+}
+
+export default function HomePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-gray-50 text-sm text-gray-500 dark:bg-gray-900 dark:text-gray-400">
+          Kraunama…
+        </div>
+      }
+    >
+      <Home />
+    </Suspense>
   );
 }

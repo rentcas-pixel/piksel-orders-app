@@ -11,6 +11,7 @@ import { downloadExcel } from '@/lib/export-excel';
 import type { TableTheme } from '@/lib/order-design-variants';
 import { getTableTheme } from '@/lib/table-theme';
 import { buildOrdersListFilter, resolveListMonthYear, isSplitAwareOrdersPeriodTab, orderBroadcastCoversDay, resolveLiveFilterDay, type OrdersListFilters, type OrdersPeriodTab } from '@/lib/orders-filters';
+import { resolveOrderPrice } from '@/lib/order-price';
 import { fetchHubOrdersForPeriodTab } from '@/lib/hub-orders';
 import { isMultiMonthOrder } from '@/lib/invoice-utils';
 import { orderMatchesBillingPeriodFilter, orderHasNonContinuousBilling } from '@/lib/order-billing-periods';
@@ -379,8 +380,8 @@ export function OrdersTable({
           bValue = (b[sortField as keyof Order] as string)?.toLowerCase() || '';
           break;
         case 'final_price':
-          aValue = Number(a.final_price) || 0;
-          bValue = Number(b.final_price) || 0;
+          aValue = resolveOrderPrice(a);
+          bValue = resolveOrderPrice(b);
           break;
         case 'from':
         case 'to':
@@ -542,7 +543,7 @@ export function OrdersTable({
             format(new Date(order.from), 'yyyy-MM-dd'),
             format(new Date(order.to), 'yyyy-MM-dd'),
             order.media_received ? 'Taip' : 'Ne',
-            order.final_price ?? 0,
+            resolveOrderPrice(order),
             order.invoice_issued ? 'Taip' : 'Ne',
             order.invoice_sent ? 'Taip' : 'Ne',
           ]),
@@ -595,7 +596,7 @@ export function OrdersTable({
           format(new Date(o.from), 'yyyy-MM-dd'),
           format(new Date(o.to), 'yyyy-MM-dd'),
           o.media_received ? 'Taip' : 'Ne',
-          o.final_price ?? 0,
+          resolveOrderPrice(o),
           readInvoiceStatusField(o, statusMap[o.id], 'invoice_issued') ? 'Taip' : 'Ne',
           readInvoiceStatusField(o, statusMap[o.id], 'invoice_sent') ? 'Taip' : 'Ne',
         ]),
@@ -991,7 +992,7 @@ export function OrdersTable({
                     <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{formatDate(order.to)}</td>
                     <td className="px-4 py-3">{portalMediaBadge(order)}</td>
                     <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white tabular-nums">
-                      {formatPrice(order.final_price)}
+                      {formatPrice(resolveOrderPrice(order))}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
@@ -1233,7 +1234,7 @@ export function OrdersTable({
                 </td>
                 <td className={`${t.tdPad} whitespace-nowrap`}>
                   <div className={`${t.cellText} font-medium text-gray-900 dark:text-white tabular-nums`}>
-                    {formatPrice(order.final_price)}
+                    {formatPrice(resolveOrderPrice(order))}
                   </div>
                 </td>
                 <td className={`${t.tdPad} whitespace-nowrap`}>

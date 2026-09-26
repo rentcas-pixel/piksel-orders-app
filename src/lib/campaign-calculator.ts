@@ -1,4 +1,4 @@
-import { differenceInCalendarDays, getISODay, parseISO, startOfDay } from 'date-fns';
+import { addDays, differenceInCalendarDays, getISODay, parseISO, startOfDay } from 'date-fns';
 
 /** PocketBase ekranas su kainų lentele (kaip skaičiuoklėje) */
 export interface CampaignScreen {
@@ -45,6 +45,11 @@ export interface CampaignOrderInput {
   details_amount_discount?: number;
   details_period_discount?: number;
   details_screen_prices?: Record<string, number>;
+  /** Per-screen laikotarpiai (catalogId → from/to/days) */
+  details_screen_periods?: Record<
+    string,
+    { from?: string; to?: string; days?: number }
+  >;
   /** Suma po ekranų nuolaidų (details.finalPrice) */
   details_final_price?: number;
   /** Galutinė kaina po apimties/laikotarpio nuolaidų (details.total) */
@@ -126,26 +131,61 @@ export function createCampaignCalculator(
     return perDay;
   };
 
-  const getAverageViews = (screen: CampaignScreen): number => {
+  const getAverageViewsForRange = (
+    screen: CampaignScreen,
+    screenRange: { from: Date; to: Date } | null
+  ): number => {
     if (screen.viaduct) {
       return GRID_ROW_COUNT * (VIEWS_PER_HOUR_VIADUCT / order.viaduct_frequency);
     }
-    if (!range) return 0;
+    if (!screenRange) return 0;
     const perDay = getGridViewsPerDay();
     let sum = 0;
     let dayCount = 0;
-    let cursor = range.from;
-    while (cursor <= range.to) {
+    let cursor = screenRange.from;
+    while (cursor <= screenRange.to) {
       const weekdayIndex = getISODay(cursor) - 1;
       sum += perDay[weekdayIndex] || 0;
       dayCount++;
-      cursor = startOfDay(new Date(cursor.getTime() + 86400000));
+      cursor = addDays(cursor, 1);
     }
     return dayCount <= 0 ? 0 : sum / dayCount;
   };
 
+  const formatDate = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  const screenPeriod = (screen: CampaignScreen) => {
+    const override = order.details_screen_periods?.[screen.id];
+    if (override?.from && override?.to) {
+      const parsed = parseOrderRange(override.from, override.to);
+      if (parsed) {
+        const screenDays =
+          typeof override.days === 'number' && override.days > 0
+            ? override.days
+            : differenceInCalendarDays(parsed.to, parsed.from) + 1;
+        return {
+          range: parsed,
+          days: screenDays,
+          formatFrom: formatDate(parsed.from),
+          formatTo: formatDate(parsed.to),
+        };
+      }
+    }
+    return {
+      range,
+      days,
+      formatFrom: range ? formatDate(range.from) : '',
+      formatTo: range ? formatDate(range.to) : '',
+    };
+  };
+
   const screenPrice = (screen: CampaignScreen): number => {
-    const avg = getAverageViews(screen);
+    const avg = getAverageViewsForRange(screen, screenPeriod(screen).range);
     let price = 0;
     for (const [threshold, value] of Object.entries(screen.price || {})) {
       const minViews = parseInt(threshold, 10);
@@ -158,11 +198,18 @@ export function createCampaignCalculator(
 
   const campaignDiscount = order.discount;
 
+  /** Paketo nuolaida galioja tik kai plane yra VISI to paketo ekranai. */
+  const isBundleFullySelected = (bundle: CampaignBundle): boolean =>
+    bundle.screens.length > 0 &&
+    bundle.screens.every((id) => selectedScreenIds.has(id));
+
   const getScreenDiscount = (screen: CampaignScreen): number => {
     if (onSaleScreenIds.has(screen.id)) return onSaleDiscount;
     // Partnerio plane — tik kampanijos nuolaida iš PB (details.discount), be bundles
     if (partnerId) return campaignDiscount;
-    const bundle = bundles.find((b) => b.screens.includes(screen.id));
+    const bundle = bundles.find(
+      (b) => b.screens.includes(screen.id) && isBundleFullySelected(b)
+    );
     return bundle ? bundle.discount : campaignDiscount;
   };
 
@@ -178,7 +225,10 @@ export function createCampaignCalculator(
   const isInactive = (screen: CampaignScreen) =>
     isScreenDisabled(screen) || !isPartnerScreen(screen);
 
-  const views = (screen: CampaignScreen) => getAverageViews(screen) * days;
+  const views = (screen: CampaignScreen) => {
+    const period = screenPeriod(screen);
+    return getAverageViewsForRange(screen, period.range) * period.days;
+  };
   const ots = (screen: CampaignScreen) => views(screen) * screen.ots;
   const totalPrice = (screen: CampaignScreen) =>
     screenPrice(screen) * durationIncrement * views(screen);
@@ -276,13 +326,6 @@ export function createCampaignCalculator(
     return result;
   };
 
-  const formatDate = (d: Date) => {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
-  };
-
   return {
     partnerId,
     range,
@@ -305,6 +348,7 @@ export function createCampaignCalculator(
     totalPrice,
     discountPrice,
     getScreenDiscount,
+    screenPeriod,
     totals,
     formatFrom: range ? formatDate(range.from) : '',
     formatTo: range ? formatDate(range.to) : '',
