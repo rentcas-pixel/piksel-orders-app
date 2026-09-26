@@ -19,7 +19,6 @@ import { POST_CAMPAIGN_EXPORT_LABEL } from '@/lib/reklamos-planas-post-campaign'
 import { fetchCampaignPlays } from '@/lib/player-devices';
 import { loadCampaignExportData } from '@/lib/agency-orders';
 import { listOrderClips } from '@/lib/order-clips';
-import { isTestOrder } from '@/lib/test-orders';
 import { modalBtnPrimary, modalBtnSecondary } from '@/lib/portal-ui';
 import {
   daysLeftUntilCampaignEnd,
@@ -73,13 +72,10 @@ export function OrderAtaskaitaModal({
       setError(null);
       setPlaysHint(null);
       try {
-        const testOrder = isTestOrder(order);
-        const [{ campaignOrder, screens, bundles, fullOrder, reportSource }, playsResult, clips] =
+        const [{ campaignOrder, screens, bundles, fullOrder }, playsResult, clips] =
           await Promise.all([
             loadCampaignExportData(order.id, order),
-            testOrder
-              ? Promise.resolve({ ok: false as const, error: '' })
-              : fetchCampaignPlays(order.id),
+            fetchCampaignPlays(order.id),
             listOrderClips(order.id).catch(() => []),
           ]);
         const livePlays = playsResult.ok ? playsResult.data || null : null;
@@ -102,13 +98,7 @@ export function OrderAtaskaitaModal({
         setPeriodLabel(from && to ? `${from} – ${to}` : '');
         setDaysLeft(daysLeftUntilCampaignEnd(campaignOrder.to || order.to));
         const liveCount = nextRows.filter((r) => r.source === 'live').length;
-        if (testOrder) {
-          setPlaysHint(
-            reportSource === 'supabase'
-              ? 'Ekranai ir parodymai iš Supabase.'
-              : 'Ekranai ir parodymai iš šio testinio užsakymo. Supabase įrašo šiam numeriui nėra.'
-          );
-        } else if (!playsResult.ok) {
+        if (!playsResult.ok) {
           setPlaysHint(
             playsResult.error ||
               'Nepavyko gauti realių parodymų — rodomi apskaičiuoti.'
@@ -171,9 +161,7 @@ export function OrderAtaskaitaModal({
       const [{ campaignOrder, screens, bundles, fullOrder }, playsResult] =
         await Promise.all([
           loadCampaignExportData(order.id, order),
-          isTestOrder(order)
-            ? Promise.resolve({ ok: false as const, error: '' })
-            : fetchCampaignPlays(order.id),
+          fetchCampaignPlays(order.id),
         ]);
       const livePlays = playsResult.ok ? playsResult.data || null : null;
       const exportRows = buildPikselPostCampaignReportRows({
