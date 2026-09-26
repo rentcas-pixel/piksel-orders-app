@@ -74,7 +74,7 @@ export function OrderAtaskaitaModal({
       try {
         const [{ campaignOrder, screens, bundles, fullOrder }, playsResult, clips] =
           await Promise.all([
-            loadCampaignExportData(order.id, order),
+            loadCampaignExportData(order.id),
             fetchCampaignPlays(order.id),
             listOrderClips(order.id).catch(() => []),
           ]);
@@ -160,7 +160,7 @@ export function OrderAtaskaitaModal({
     try {
       const [{ campaignOrder, screens, bundles, fullOrder }, playsResult] =
         await Promise.all([
-          loadCampaignExportData(order.id, order),
+          loadCampaignExportData(order.id),
           fetchCampaignPlays(order.id),
         ]);
       const livePlays = playsResult.ok ? playsResult.data || null : null;
