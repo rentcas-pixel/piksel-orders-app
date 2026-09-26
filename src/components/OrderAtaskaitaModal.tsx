@@ -101,16 +101,18 @@ export function OrderAtaskaitaModal({
         if (!playsResult.ok) {
           setPlaysHint(
             playsResult.error ||
-              'Nepavyko gauti realių parodymų — rodomi apskaičiuoti.'
+              'Nepavyko gauti parodymų iš grotuvo. Plano skaičiai parodyti nebus.'
           );
-        } else if (liveCount > 0) {
+        } else if (liveCount === 0) {
           setPlaysHint(
-            `${liveCount} ekr. su realiais parodymais iš playerio (pvz. Panorama).`
+            'Grotuvas negrąžino parodymų šiam užsakymui. Plano skaičiai parodyti nebus.'
+          );
+        } else if (liveCount < nextRows.length) {
+          setPlaysHint(
+            `${liveCount} ekr. su parodymais iš grotuvo. Kitiems ekranams duomenų nėra.`
           );
         } else {
-          setPlaysHint(
-            'Nėra prijungtų Piksel playerių šiam užsakymui — parodymai apskaičiuoti.'
-          );
+          setPlaysHint(`${liveCount} ekr. su parodymais iš grotuvo.`);
         }
       } catch (err) {
         if (!cancelled) {
@@ -134,15 +136,17 @@ export function OrderAtaskaitaModal({
   }, [isOpen, order]);
 
   const totals = useMemo(() => {
-    return rows.reduce(
-      (acc, row) => {
-        acc.planned += row.plannedViews;
-        acc.shown += row.shownViews;
-        acc.diff += row.difference;
-        return acc;
-      },
-      { planned: 0, shown: 0, diff: 0 }
-    );
+    const shownRows = rows.filter((row) => row.shownViews != null);
+    const complete = rows.length > 0 && shownRows.length === rows.length;
+    return {
+      planned: rows.reduce((sum, row) => sum + row.plannedViews, 0),
+      shown: complete
+        ? shownRows.reduce((sum, row) => sum + (row.shownViews || 0), 0)
+        : null,
+      diff: complete
+        ? shownRows.reduce((sum, row) => sum + (row.difference || 0), 0)
+        : null,
+    };
   }, [rows]);
 
   const toggleExpanded = (screenId: string) => {
@@ -290,8 +294,8 @@ export function OrderAtaskaitaModal({
                                   Live
                                 </span>
                               ) : (
-                                <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:bg-gray-900 dark:text-gray-400">
-                                  Skaič.
+                                <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
+                                  Nėra
                                 </span>
                               )}
                             </div>
@@ -305,17 +309,20 @@ export function OrderAtaskaitaModal({
                             {formatReportViews(row.plannedViews)}
                           </td>
                           <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums font-medium text-gray-900 dark:text-white">
-                            {formatReportViews(row.shownViews)}
+                            {row.shownViews == null ? '—' : formatReportViews(row.shownViews)}
                           </td>
                           <td
                             className={`whitespace-nowrap px-3 py-2 text-right tabular-nums ${
-                              row.difference >= 0
-                                ? 'text-emerald-700 dark:text-emerald-400'
-                                : 'text-amber-700 dark:text-amber-400'
+                              row.difference == null
+                                ? 'text-gray-400'
+                                : row.difference >= 0
+                                  ? 'text-emerald-700 dark:text-emerald-400'
+                                  : 'text-amber-700 dark:text-amber-400'
                             }`}
                           >
-                            {row.difference >= 0 ? '+' : ''}
-                            {formatReportViews(row.difference)}
+                            {row.difference == null
+                              ? '—'
+                              : `${row.difference >= 0 ? '+' : ''}${formatReportViews(row.difference)}`}
                           </td>
                           <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-gray-700 dark:text-gray-200">
                             {daysLeft === null ? '—' : formatReportViews(daysLeft)}
@@ -358,17 +365,20 @@ export function OrderAtaskaitaModal({
                       {formatReportViews(totals.planned)}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2 text-right text-sm font-semibold tabular-nums text-gray-900 dark:text-white">
-                      {formatReportViews(totals.shown)}
+                      {totals.shown == null ? '—' : formatReportViews(totals.shown)}
                     </td>
                     <td
                       className={`whitespace-nowrap px-3 py-2 text-right text-sm font-semibold tabular-nums ${
-                        totals.diff >= 0
-                          ? 'text-emerald-700 dark:text-emerald-400'
-                          : 'text-amber-700 dark:text-amber-400'
+                        totals.diff == null
+                          ? 'text-gray-400'
+                          : totals.diff >= 0
+                            ? 'text-emerald-700 dark:text-emerald-400'
+                            : 'text-amber-700 dark:text-amber-400'
                       }`}
                     >
-                      {totals.diff >= 0 ? '+' : ''}
-                      {formatReportViews(totals.diff)}
+                      {totals.diff == null
+                        ? '—'
+                        : `${totals.diff >= 0 ? '+' : ''}${formatReportViews(totals.diff)}`}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2 text-right text-sm font-semibold tabular-nums text-gray-700 dark:text-gray-200">
                       {daysLeft === null ? '—' : formatReportViews(daysLeft)}

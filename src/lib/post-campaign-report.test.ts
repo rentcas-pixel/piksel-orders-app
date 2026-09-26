@@ -191,4 +191,56 @@ describe('buildPikselPostCampaignReportRows', () => {
       { mediaId: mediaB, name: 'banner-b.mp4', shownViews: 40 },
     ]);
   });
+
+  it('does not replace missing player impressions with the planned air figure', () => {
+    const days = Array.from({ length: 7 }, () => Array(17).fill(true));
+    const campaignOrder = toCampaignOrderInput({
+      id: 'test-1790443431611',
+      client: 'Test sumos',
+      agency: 'BPM',
+      invoice_id: '1790443431611',
+      viaduct: false,
+      from: '2026-09-26',
+      to: '2026-10-02',
+      screens: ['panorama', 'saltoniskiu', 'pc-panorama'],
+      grid: days,
+      clip_duration: 10,
+      discount: 80,
+      details: {
+        isTest: true,
+        plan: {
+          screenRows: [
+            { name: 'Panorama', catalogId: 'panorama', impressions: 3570 },
+            { name: 'Saltoniškių', catalogId: 'saltoniskiu', impressions: 3570 },
+            { name: 'PC Panorama', catalogId: 'pc-panorama', impressions: 3570 },
+          ],
+        },
+      },
+    });
+    const screens = [
+      makeScreen({ id: 'panorama', name: 'Panorama' }),
+      makeScreen({ id: 'saltoniskiu', name: 'Saltoniškių' }),
+      makeScreen({ id: 'pc-panorama', name: 'PC Panorama' }),
+    ];
+    const rows = buildPikselPostCampaignReportRows({
+      order: {
+        ...campaignOrder,
+        details: {
+          plan: {
+            screenRows: [
+              { name: 'Panorama', catalogId: 'panorama', impressions: 3570 },
+              { name: 'Saltoniškių', catalogId: 'saltoniskiu', impressions: 3570 },
+              { name: 'PC Panorama', catalogId: 'pc-panorama', impressions: 3570 },
+            ],
+          },
+        },
+      },
+      screens,
+      bundles: [],
+    });
+    expect(rows.map((row) => row.plannedViews)).toEqual([3570, 3570, 3570]);
+    expect(rows.map((row) => row.shownViews)).toEqual([null, null, null]);
+    expect(rows.every((row) => row.source === 'missing')).toBe(true);
+    expect(rows.some((row) => row.shownViews === 4653 || row.shownViews === 4320 || row.shownViews === 4470)).toBe(false);
+  });
 });

@@ -18,7 +18,6 @@ import { resolveCampaignIntensityLabel } from '@/lib/campaign-intensity';
 import { buildReklamosPlanasFilename, buildPostCampaignSheetName } from '@/lib/reklamos-planas-data';
 import {
   computePostCampaignDifference,
-  computePostCampaignShownViews,
   POST_CAMPAIGN_EXPORT_LABEL,
 } from '@/lib/reklamos-planas-post-campaign';
 import {
@@ -695,34 +694,34 @@ function writeScreenPair(
 
     if (mode === 'post-campaign') {
       const override = shownViewsByScreenId?.[screen.id];
-      const shownViews =
-        typeof override === 'number' && Number.isFinite(override)
-          ? Math.round(override)
-          : computePostCampaignShownViews(
-              plannedViews,
-              order.id,
-              screen.id,
-              order.from,
-              order.to
-            );
-      const difference = computePostCampaignDifference(plannedViews, shownViews);
+      const hasActual =
+        typeof override === 'number' && Number.isFinite(override);
+      const shownViews = hasActual ? Math.round(override) : null;
       writeCell(
         sheet,
         dataRow,
         COL.V,
-        styledCell(shownViews, item, {
-          t: 'n',
-          z: '### ##0',
-        })
+        hasActual
+          ? styledCell(shownViews as number, item, {
+              t: 'n',
+              z: '### ##0',
+            })
+          : blankCell(item)
       );
       writeCell(
         sheet,
         dataRow,
         COL.W,
-        styledCell(difference, item, {
-          t: 'n',
-          z: '### ##0',
-        })
+        hasActual
+          ? styledCell(
+              computePostCampaignDifference(plannedViews, shownViews as number),
+              item,
+              {
+                t: 'n',
+                z: '### ##0',
+              }
+            )
+          : blankCell(item)
       );
     } else {
       const savedPrice = order.details_screen_prices?.[screen.id];
