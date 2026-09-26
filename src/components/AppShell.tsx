@@ -14,6 +14,7 @@ import {
   MoonIcon,
 } from '@heroicons/react/24/outline';
 import { useState } from 'react';
+import { Header } from '@/components/Header';
 
 import type { AppTab } from '@/lib/app-navigation';
 import { PAGE_META } from '@/lib/app-navigation';
@@ -30,13 +31,14 @@ const NAV: { id: AppTab; label: string; icon: typeof ClipboardDocumentListIcon }
 ];
 
 interface AppShellProps {
-  activeTab: AppTab;
-  onTabChange: (tab: AppTab) => void;
-  onAddOrder: () => void;
-  searchQuery: string;
-  onSearchChange: (query: string) => void;
-  pageTitle: string;
-  pageDescription: string;
+  activeTab?: AppTab;
+  onTabChange?: (tab: AppTab) => void;
+  onAddOrder?: () => void;
+  searchQuery?: string;
+  onSearchChange?: (query: string) => void;
+  pageTitle?: string;
+  pageDescription?: string;
+  userEmail?: string;
   children: React.ReactNode;
 }
 
@@ -44,13 +46,23 @@ export function AppShell({
   activeTab,
   onTabChange,
   onAddOrder,
-  searchQuery,
+  searchQuery = '',
   onSearchChange,
   pageTitle,
   pageDescription,
+  userEmail,
   children,
 }: AppShellProps) {
   const [isDarkMode, setIsDarkMode] = useState(false);
+
+  if (!activeTab || !onTabChange) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+        <Header onAddOrder={onAddOrder ?? (() => {})} userEmail={userEmail} />
+        {children}
+      </div>
+    );
+  }
 
   const toggleDarkMode = () => {
     setIsDarkMode(!isDarkMode);
@@ -125,7 +137,7 @@ export function AppShell({
             <input
               type="search"
               value={searchQuery}
-              onChange={(e) => onSearchChange(e.target.value)}
+              onChange={(e) => onSearchChange?.(e.target.value)}
               placeholder="Ieškoti kliento, agentūros, Nr..."
               className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-gray-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-gray-900/5 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
             />

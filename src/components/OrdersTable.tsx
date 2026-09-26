@@ -10,7 +10,7 @@ import { format } from 'date-fns';
 import { downloadExcel } from '@/lib/export-excel';
 import type { TableTheme } from '@/lib/order-design-variants';
 import { getTableTheme } from '@/lib/table-theme';
-import { buildOrdersListFilter, resolveListMonthYear, isSplitAwareOrdersPeriodTab, type OrdersListFilters, type OrdersPeriodTab } from '@/lib/orders-filters';
+import { buildOrdersListFilter, resolveListMonthYear, isSplitAwareOrdersPeriodTab, orderBroadcastCoversDay, resolveLiveFilterDay, type OrdersListFilters, type OrdersPeriodTab } from '@/lib/orders-filters';
 import { fetchHubOrdersForPeriodTab } from '@/lib/hub-orders';
 import { isMultiMonthOrder } from '@/lib/invoice-utils';
 import { orderMatchesBillingPeriodFilter, orderHasNonContinuousBilling } from '@/lib/order-billing-periods';
@@ -44,6 +44,14 @@ interface OrdersTableProps {
   variant?: TableTheme;
   portalStyle?: boolean;
   periodTab?: OrdersPeriodTab;
+  /** Test orderių sandbox. Kai perduota — lentelė neskaito PocketBase ir nerašo į grotuvą. */
+  localOrders?: Order[];
+  localActivityMap?: Record<string, boolean>;
+  onLocalInvoiceToggle?: (
+    order: Order,
+    field: 'invoice_issued' | 'invoice_sent',
+    value: boolean
+  ) => void;
 }
 
 export function OrdersTable({
@@ -56,7 +64,11 @@ export function OrdersTable({
   variant = 'default',
   portalStyle = false,
   periodTab = 'all',
+  localOrders,
+  localActivityMap,
+  onLocalInvoiceToggle,
 }: OrdersTableProps) {
+  const isLocalList = localOrders != null;
   const t = getTableTheme(variant);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -129,6 +141,11 @@ export function OrdersTable({
     field: 'invoice_issued' | 'invoice_sent',
     value: boolean
   ) => {
+    if (isLocalList) {
+      onLocalInvoiceToggle?.(order, field, value);
+      return;
+    }
+
     const previousStatus = invoiceStatuses[order.id];
     const currentIssued = readInvoiceStatusField(order, previousStatus, 'invoice_issued');
     const currentSent = readInvoiceStatusField(order, previousStatus, 'invoice_sent');
@@ -291,12 +308,15 @@ export function OrdersTable({
       );
     }
     
-    // Status filter
+    // Status filter. Live = diena patenka į data nuo–data iki, ne senas grotuvo žymeklis.
     if (filters.status) {
       if (filters.status === 'taip') {
         filtered = filtered.filter(order => order.approved === true);
       } else if (filters.status === 'ne') {
         filtered = filtered.filter(order => order.approved === false);
+      } else if (filters.status === 'live') {
+        const day = resolveLiveFilterDay(filters);
+        filtered = filtered.filter((order) => orderBroadcastCoversDay(order, day));
       }
     }
     
@@ -506,6 +526,30 @@ export function OrdersTable({
   const handleExportExcel = useCallback(async () => {
     setExporting(true);
     try {
+      if (isLocalList) {
+        const items = sortOrders(filterMockOrders(localOrders));
+        const { month: exportMonth, year: exportYear } = resolveListMonthYear(filters.month, filters.year);
+        const monthName = exportMonth && exportYear
+          ? `${['Sausis','Vasaris','Kovas','Balandis','Gegužė','Birželis','Liepa','Rugpjūtis','Rugsėjis','Spalis','Lapkritis','Gruodis'][parseInt(exportMonth, 10) - 1]}_${exportYear}`
+          : 'visi';
+        const data: unknown[][] = [
+          ['Klientas', 'Agentūra', 'Užsakymo Nr.', 'Statusas', 'Data nuo', 'Data iki', 'Media', 'Kaina', 'Sąskaita', 'Išsiųsta'],
+          ...items.map((order) => [
+            order.client,
+            order.agency,
+            String(order.invoice_id),
+            order.approved ? 'Patvirtinta' : 'Nepatvirtinta',
+            format(new Date(order.from), 'yyyy-MM-dd'),
+            format(new Date(order.to), 'yyyy-MM-dd'),
+            order.media_received ? 'Taip' : 'Ne',
+            order.final_price ?? 0,
+            order.invoice_issued ? 'Taip' : 'Ne',
+            order.invoice_sent ? 'Taip' : 'Ne',
+          ]),
+        ];
+        downloadExcel(data, `Uzsakymai_${monthName}`);
+        return;
+      }
       const filterString = buildFilterString();
       const serverSortField = sortField === 'invoice_issued' || sortField === 'invoice_sent' ? 'updated' : sortField;
       const result = await PocketBaseService.getOrders({
@@ -562,7 +606,7 @@ export function OrdersTable({
     } finally {
       setExporting(false);
     }
-  }, [filters, sortField, sortDirection, buildFilterString]);
+  }, [filters, sortField, sortDirection, buildFilterString, isLocalList, localOrders, filterMockOrders, sortOrders]);
 
   // Reset pagination when search/filters/sort changes to avoid invalid states like "Page 2 of 1"
   useEffect(() => {
@@ -572,6 +616,8 @@ export function OrdersTable({
     filters.status,
     filters.month,
     filters.year,
+    filters.dateFrom,
+    filters.dateTo,
     filters.client,
     filters.agency,
     filters.media_received,
@@ -582,6 +628,33 @@ export function OrdersTable({
   ]);
 
   useEffect(() => {
+    if (isLocalList) {
+      const filtered = sortOrders(filterMockOrders(localOrders));
+      const perPage = 20;
+      const computedTotalItems = filtered.length;
+      const computedTotalPages = Math.max(1, Math.ceil(computedTotalItems / perPage));
+      const page = Math.min(currentPage, computedTotalPages);
+      const offset = (page - 1) * perPage;
+      const statusMap: Record<string, OrderInvoiceStatus> = {};
+      for (const order of localOrders) {
+        statusMap[order.id] = {
+          order_id: order.id,
+          invoice_issued: Boolean(order.invoice_issued),
+          invoice_sent: Boolean(order.invoice_sent),
+          updated_at: order.updated,
+        };
+      }
+      setOrders(filtered.slice(offset, offset + perPage));
+      setTotalItems(computedTotalItems);
+      setTotalPages(computedTotalPages);
+      if (currentPage > computedTotalPages) setCurrentPage(1);
+      setInvoiceStatuses(statusMap);
+      setOrderActivityMap(localActivityMap ?? {});
+      setBillingPeriodsMap({});
+      setLoading(false);
+      return;
+    }
+
     const fetchOrders = async () => {
       try {
         setLoading(true);
@@ -593,12 +666,14 @@ export function OrdersTable({
           filters.year
         );
         const billingPeriodFilterActive = Boolean(resolvedYear);
+        const liveDayFilter = filters.status === 'live';
         const splitPeriodTabActive = portalStyle && isSplitAwareOrdersPeriodTab(periodTab);
         const needsExpandedFetch =
           invoiceFilterActive ||
           invoiceSort ||
           Boolean(resolvedMonth && resolvedYear) ||
-          splitPeriodTabActive;
+          splitPeriodTabActive ||
+          liveDayFilter;
         const serverSortField = invoiceSort ? 'updated' : sortField;
         const sortString = `${sortDirection === 'desc' ? '-' : ''}${serverSortField}`;
         const getOrders = (opts: Parameters<typeof PocketBaseService.getOrders>[0]) =>
@@ -668,6 +743,10 @@ export function OrdersTable({
             return filters.invoice_sent === 'true' ? isIssued : !isIssued;
           });
         }
+        if (liveDayFilter) {
+          const day = resolveLiveFilterDay(filters);
+          processedOrders = processedOrders.filter((order) => orderBroadcastCoversDay(order, day));
+        }
 
         if (invoiceSort) {
           const invoiceSortField = sortField as 'invoice_issued' | 'invoice_sent';
@@ -716,7 +795,7 @@ export function OrdersTable({
     // Only depend on primitives to avoid infinite loops from object/function reference changes.
     // buildFilterString, filterMockOrders, sortOrders, calculateSumAsync are derived from these.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, searchQuery, filters.status, filters.month, filters.year, filters.client, filters.agency, filters.media_received, filters.invoice_sent, sortField, sortDirection, portalStyle, periodTab, billingContext?.month, billingContext?.year]);
+  }, [currentPage, searchQuery, filters.status, filters.month, filters.year, filters.dateFrom, filters.dateTo, filters.client, filters.agency, filters.media_received, filters.invoice_sent, sortField, sortDirection, portalStyle, periodTab, billingContext?.month, billingContext?.year, isLocalList, localOrders, localActivityMap]);
 
 
 

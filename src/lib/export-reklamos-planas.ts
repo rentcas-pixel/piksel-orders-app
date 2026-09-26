@@ -641,7 +641,8 @@ function writeScreenPair(
   calc: CampaignCalculator,
   screen: CampaignScreen,
   pairIndex: number,
-  mode: ReklamosPlanasExportMode
+  mode: ReklamosPlanasExportMode,
+  shownViewsByScreenId?: Record<string, number>
 ) {
   const dataRow = DATA_START_ROW + pairIndex * 2;
   const spacerRow = dataRow + 1;
@@ -693,13 +694,17 @@ function writeScreenPair(
     );
 
     if (mode === 'post-campaign') {
-      const shownViews = computePostCampaignShownViews(
-        plannedViews,
-        order.id,
-        screen.id,
-        order.from,
-        order.to
-      );
+      const override = shownViewsByScreenId?.[screen.id];
+      const shownViews =
+        typeof override === 'number' && Number.isFinite(override)
+          ? Math.round(override)
+          : computePostCampaignShownViews(
+              plannedViews,
+              order.id,
+              screen.id,
+              order.from,
+              order.to
+            );
       const difference = computePostCampaignDifference(plannedViews, shownViews);
       writeCell(
         sheet,
@@ -1174,7 +1179,8 @@ function applyPostCampaignPaddingColumnWidths(
 function buildWorksheet(
   calc: CampaignCalculator,
   order: CampaignOrderInput,
-  mode: ReklamosPlanasExportMode = 'standard'
+  mode: ReklamosPlanasExportMode = 'standard',
+  shownViewsByScreenId?: Record<string, number>
 ): XLSX.WorkSheet {
   const sheet: XLSX.WorkSheet = {};
 
@@ -1191,7 +1197,7 @@ function buildWorksheet(
   );
 
   exportScreens.forEach((screen, index) => {
-    writeScreenPair(sheet, order, calc, screen, index, mode);
+    writeScreenPair(sheet, order, calc, screen, index, mode, shownViewsByScreenId);
   });
 
   addScreenMerges(sheet, exportScreens.length, mode);
@@ -1283,6 +1289,8 @@ export interface ExportReklamosPlanasParams {
   screens: CampaignScreen[];
   bundles: CampaignBundle[];
   mode?: ReklamosPlanasExportMode;
+  /** Realūs parodymai (screenId → count) ataskaitos XLS override. */
+  shownViewsByScreenId?: Record<string, number>;
 }
 
 export function buildReklamosPlanasXlsxFilename(
@@ -1301,15 +1309,22 @@ export function buildReklamosPlanasXlsxFilename(
 export async function buildReklamosPlanasXlsxBuffer(
   params: ExportReklamosPlanasParams
 ): Promise<{ buffer: ArrayBuffer; filename: string }> {
-  const { order, partnerId, partnerName, screens, bundles, mode = 'standard' } =
-    params;
+  const {
+    order,
+    partnerId,
+    partnerName,
+    screens,
+    bundles,
+    mode = 'standard',
+    shownViewsByScreenId,
+  } = params;
   const calc = createCampaignCalculator(order, screens, bundles, partnerId);
 
   if (calc.hasViaductScreens) {
     throw new Error('Viadukų užsakymų eksportas dar neįdiegtas — naudokite skaičiuoklę.');
   }
 
-  const sheet = buildWorksheet(calc, order, mode);
+  const sheet = buildWorksheet(calc, order, mode, shownViewsByScreenId);
   const workbook = XLSX.utils.book_new();
   const sheetName =
     mode === 'post-campaign' ? buildPostCampaignSheetName(order) : SHEET_NAME;

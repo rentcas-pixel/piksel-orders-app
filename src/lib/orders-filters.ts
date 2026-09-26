@@ -1,4 +1,5 @@
 import { format, startOfDay, subDays, subMonths } from 'date-fns';
+import { extractDateOnly, parseDateOnlyLocal } from '@/lib/date-utils';
 import {
   getPeriodTabPocketBaseFilter,
   isSplitAwarePeriodTab,
@@ -24,6 +25,41 @@ export interface OrdersListFilters {
   agency: string;
   media_received: string;
   invoice_sent: string;
+}
+
+/** Vietinė kalendorinė diena, YYYY-MM-DD. */
+export function calendarDayIso(now = new Date()): string {
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Live diena: jei filtrai nurodo vieną dieną (nuo = iki), ji.
+ * Kitaip šiandien — Live reiškia „kas eteryje dabar“.
+ */
+export function resolveLiveFilterDay(
+  filters: { dateFrom?: string; dateTo?: string },
+  now = new Date()
+): string {
+  const from = extractDateOnly(String(filters.dateFrom || ''));
+  const to = extractDateOnly(String(filters.dateTo || ''));
+  if (from && from === to && parseDateOnlyLocal(from)) return from;
+  return calendarDayIso(now);
+}
+
+/** Kampanija eteryje tą dieną, kai diena patenka į data nuo–data iki (imtinai). */
+export function orderBroadcastCoversDay(
+  order: { from?: string | null; to?: string | null },
+  dayIso: string
+): boolean {
+  const day = extractDateOnly(dayIso);
+  if (!parseDateOnlyLocal(day)) return false;
+  const from = extractDateOnly(String(order.from || ''));
+  const to = extractDateOnly(String(order.to || ''));
+  if (!parseDateOnlyLocal(from) || !parseDateOnlyLocal(to)) return false;
+  return from <= day && day <= to;
 }
 
 /** Data (YYYY-MM-DD): nepatvirtintos nuo šios datos dar „aktualios“. */

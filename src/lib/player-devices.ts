@@ -9,10 +9,18 @@ export type PlayerDevice = {
   account?: string;
   lastSeenAt?: string;
   computerName?: string | null;
+  /** Windows player shell, from heartbeat. Missing on old players. */
+  shellVersion?: string | null;
   kioskUser?: string | null;
   kioskPassword?: string | null;
   kioskPasswordAt?: string | null;
 };
+
+/** Heartbeat version, or a dash when the player did not send one. */
+export function formatDeviceShellVersion(value: string | null | undefined): string {
+  const version = String(value ?? '').trim();
+  return version || '—';
+}
 
 export type PlayerCampaignMedia = {
   id: string;
