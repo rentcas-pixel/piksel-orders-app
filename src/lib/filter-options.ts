@@ -47,6 +47,7 @@ export const statusTabs: FilterOption[] = [
   { value: '', label: 'Visi' },
   { value: 'taip', label: 'Patvirtinta' },
   { value: 'ne', label: 'Nepatvirtinta' },
+  { value: 'live', label: 'Live' },
 ];
 
 export function getYearTabOptions(referenceDate = new Date()): FilterOption[] {

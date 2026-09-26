@@ -27,6 +27,27 @@ export function getCanonicalAgencyLabel(value: string): string {
   return AGENCY_CANONICAL[normalizeAgencyKey(raw)] || raw;
 }
 
+export const CANONICAL_AGENCY_OPTIONS = [...new Set(Object.values(AGENCY_CANONICAL))].sort((a, b) =>
+  a.localeCompare(b, 'lt')
+);
+
+/** Dažniau naudotas agentūras kelia į sąrašo viršų. */
+export function sortAgenciesByOrderFrequency(
+  options: string[] = CANONICAL_AGENCY_OPTIONS,
+  agencies: string[] = []
+): string[] {
+  const counts = new Map<string, number>();
+  for (const raw of agencies) {
+    const label = getCanonicalAgencyLabel(raw);
+    if (label === 'Nepriskirta') continue;
+    counts.set(label, (counts.get(label) || 0) + 1);
+  }
+  return [...options].sort((a, b) => {
+    const diff = (counts.get(b) || 0) - (counts.get(a) || 0);
+    return diff !== 0 ? diff : a.localeCompare(b, 'lt');
+  });
+}
+
 export function agencyMatchesFilter(orderAgency: string, selectedAgency: string): boolean {
   const orderKey = normalizeAgencyKey(orderAgency);
   const selectedKey = normalizeAgencyKey(selectedAgency);
