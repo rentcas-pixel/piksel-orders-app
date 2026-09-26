@@ -19,6 +19,7 @@ import {
 } from '@/lib/order-period-tabs';
 import { toCampaignOrderInput, toCampaignScreen } from '@/lib/reklamos-planas-data';
 import { agencyMatchesFilter, getCanonicalAgencyLabel } from '@/lib/agency-names';
+import { mergeOrderWithPlayCampaign, type PlayPublicCampaignRecord } from '@/lib/play-public-campaigns';
 import { SupabaseService } from '@/lib/supabase-service';
 import type { Order } from '@/types';
 
@@ -325,7 +326,107 @@ export function computeCityOts(
   return result;
 }
 
-export async function loadCampaignExportData(orderId: string) {
+async function readSupabasePlayCampaign(
+  orderId: string,
+  token?: string
+): Promise<PlayPublicCampaignRecord | null> {
+  const params = new URLSearchParams();
+  if (orderId) params.set('orderId', orderId);
+  if (token) params.set('token', token);
+  if (!params.toString()) return null;
+  try {
+    const response = await fetch(`/api/play-campaigns?${params.toString()}`, {
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+    });
+    if (!response.ok) return null;
+    const record = (await response.json().catch(() => null)) as PlayPublicCampaignRecord | null;
+    if (!record?.token || !Array.isArray(record.screens)) return null;
+    return record;
+  } catch {
+    return null;
+  }
+}
+
+function screensFromPlayOrder(order: Order): CampaignScreen[] {
+  const planRows = order.details?.plan?.screenRows || [];
+  const source =
+    planRows.length > 0
+      ? planRows.map((row) => ({
+          name: row.name,
+          catalogId: row.catalogId,
+          city: row.city,
+          ots: row.ots,
+        }))
+      : (order.details?.plan?.screenNames || []).map((name) => ({
+          name,
+          catalogId: undefined as string | undefined,
+          city: undefined as string | undefined,
+          ots: undefined as number | undefined,
+        }));
+  const screens: CampaignScreen[] = [];
+  const seen = new Set<string>();
+  source.forEach((row, index) => {
+    const name = String(row.name || '').trim();
+    const catalogId = String(row.catalogId || '').trim();
+    const id = catalogId || `plan:${name.toLocaleLowerCase('lt-LT') || index}`;
+    if (!name && !catalogId) return;
+    if (seen.has(id)) return;
+    seen.add(id);
+    screens.push({
+      id,
+      name: name || id,
+      city: row.city,
+      ots: Number(row.ots) || 0,
+      viaduct: !!order.viaduct,
+      price: {},
+    });
+  });
+  return screens;
+}
+
+function campaignExportFromPlayOrder(order: Order) {
+  const screens = screensFromPlayOrder(order);
+  const ids = screens.map((screen) => screen.id);
+  const raw = {
+    ...order,
+    screens: ids.length > 0 ? ids : order.screens || [],
+    grid: order.details?.plan?.grid || order.grid || [],
+    clip_duration: order.details?.plan?.clip_duration ?? order.clip_duration ?? 10,
+  } as Record<string, unknown>;
+  return {
+    campaignOrder: toCampaignOrderInput(raw),
+    screens,
+    bundles: [] as CampaignBundle[],
+    fullOrder: order,
+  };
+}
+
+export async function loadCampaignExportData(
+  orderId: string,
+  fallbackOrder?: Order | null
+) {
+  const { getTestOrder, isTestOrder } = await import('@/lib/test-orders');
+  const local =
+    getTestOrder(orderId) ||
+    (fallbackOrder && isTestOrder(fallbackOrder) ? fallbackOrder : null);
+
+  if ((local && isTestOrder(local)) || String(orderId).startsWith('test-')) {
+    if (!local || !isTestOrder(local)) {
+      throw new Error('Testinis užsakymas nerastas.');
+    }
+    const record = await readSupabasePlayCampaign(
+      String(local.id || orderId),
+      local.details?.publicToken
+    );
+    const fromSupabase = Boolean(record && record.screens.length > 0);
+    const fullOrder = fromSupabase ? mergeOrderWithPlayCampaign(local, record!) : local;
+    return {
+      ...campaignExportFromPlayOrder(fullOrder),
+      reportSource: fromSupabase ? ('supabase' as const) : ('test-order' as const),
+    };
+  }
+
   const fullOrder = await PocketBaseService.getOrder(orderId);
   const [screenRecords, bundles] = await Promise.all([
     PocketBaseService.getCampaignScreens(!!fullOrder.viaduct),
@@ -337,7 +438,7 @@ export async function loadCampaignExportData(orderId: string) {
   const screens = screenRecords.map((r) =>
     toCampaignScreen(r as Record<string, unknown>)
   );
-  return { campaignOrder, screens, bundles, fullOrder };
+  return { campaignOrder, screens, bundles, fullOrder, reportSource: 'pocketbase' as const };
 }
 
 export async function fetchAgencyOptions(): Promise<string[]> {

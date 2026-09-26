@@ -8,7 +8,6 @@ import {
   type RequiredResolution,
 } from '@/lib/media-resolution-check';
 import { PocketBaseService } from '@/lib/pocketbase';
-import { supabase } from '@/lib/supabase';
 import { isTestOrder } from '@/lib/test-orders';
 import type { Order } from '@/types';
 
@@ -316,39 +315,10 @@ export function applyCatalogToScreens(
   });
 }
 
-const CATALOG_TTL_MS = 5 * 60 * 1000;
-const CATALOG_TIMEOUT_MS = 4000;
-let catalogCache: { at: number; rows: ClipCatalogRow[] } | null = null;
-let catalogInflight: Promise<ClipCatalogRow[]> | null = null;
-
 async function loadClipCatalog(): Promise<ClipCatalogRow[]> {
-  if (catalogCache && Date.now() - catalogCache.at < CATALOG_TTL_MS) {
-    return catalogCache.rows;
-  }
-  if (catalogInflight) return catalogInflight;
-
-  catalogInflight = (async () => {
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), CATALOG_TIMEOUT_MS);
-      const { data, error } = await supabase
-        .from('screens')
-        .select('id,name,city,resolution,owner,type')
-        .eq('is_active', true)
-        .abortSignal(controller.signal);
-      clearTimeout(timer);
-      if (error || !Array.isArray(data)) return catalogCache?.rows || [];
-      const rows = data as ClipCatalogRow[];
-      catalogCache = { at: Date.now(), rows };
-      return rows;
-    } catch {
-      return catalogCache?.rows || [];
-    } finally {
-      catalogInflight = null;
-    }
-  })();
-
-  return catalogInflight;
+  // This Supabase project has no `screens` table (PostgREST PGRST205).
+  // Play campaign screens live on the campaign snapshot, not a catalog query.
+  return [];
 }
 
 /** Papildo ekranus owner/resolution/type iš Supabase katalogo. */
