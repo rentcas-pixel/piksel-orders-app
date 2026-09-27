@@ -193,7 +193,6 @@ export function EditOrderModal({
   >({});
   const [exportError, setExportError] = useState<string | null>(null);
   const [ataskaitaOpen, setAtaskaitaOpen] = useState(false);
-  const [barterOn, setBarterOn] = useState(false);
   const [barterScreenIds, setBarterScreenIds] = useState<string[]>([]);
   const [barterCatalog, setBarterCatalog] = useState<PikselCatalogScreen[]>([]);
   const [barterReportOpen, setBarterReportOpen] = useState(false);
@@ -391,7 +390,6 @@ export function EditOrderModal({
         media_received: latest.media_received,
         viaduct: latest.viaduct,
       });
-      setBarterOn(latest.details?.barter === true);
       setBarterScreenIds((latest.details?.barterScreens || []).map((screen) => screen.id));
       setBarterReportOpen(false);
       setModalSection('details');
@@ -449,7 +447,10 @@ export function EditOrderModal({
     if (openedOrderIdRef.current !== order.id) return;
 
     setFormData((prev) => {
-      const nextPrice = isSpecOrder || barterOn ? prev.final_price : resolveOrderPrice(order) || 0;
+      const nextPrice =
+        isSpecOrder || order.details?.barter === true
+          ? prev.final_price
+          : resolveOrderPrice(order) || 0;
       if (
         prev.client === order.client &&
         prev.agency === order.agency &&
@@ -476,7 +477,7 @@ export function EditOrderModal({
         final_price: nextPrice,
       };
     });
-  }, [isOpen, order, isSpecOrder, barterOn]);
+  }, [isOpen, order, isSpecOrder]);
 
   useEffect(() => {
     if (!order || !isOpen || isAgency || isSpecOrder || isTestOrder(order)) return;
@@ -496,7 +497,7 @@ export function EditOrderModal({
   }, [order, isOpen, isAgency, isSpecOrder, onOrderUpdated]);
 
   useEffect(() => {
-    if (!isOpen || !barterOn) return;
+    if (!isOpen || order?.details?.barter !== true) return;
     let cancelled = false;
     void loadPikselScreenCatalog()
       .then((rows) => {
@@ -508,7 +509,7 @@ export function EditOrderModal({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, barterOn]);
+  }, [isOpen, order?.details?.barter]);
 
   useEffect(() => {
     if (!isOpen || !order || isAgency) {
@@ -945,7 +946,7 @@ export function EditOrderModal({
     
     setLoading(true);
     try {
-      if (isLocalTest && barterOn) {
+      if (isLocalTest && (getTestOrder(order.id) || order).details?.barter === true) {
         const fresh = getTestOrder(order.id) || (order as TestOrder);
         const nextFrom = String(formData.from ?? fresh.from);
         const nextTo = String(formData.to ?? fresh.to);
@@ -1718,7 +1719,7 @@ export function EditOrderModal({
           </div>
           
           <div className="flex items-center gap-4">
-            {!barterOn && (
+            {order?.details?.barter !== true && (
             <button
               type="button"
               onClick={() => {
@@ -2098,24 +2099,7 @@ export function EditOrderModal({
                   className={`flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white ${readOnlyFieldClass}`}
                     />
                   </div>
-                  {isLocalTest && !isAgency && (
-                    <label className="mt-3 flex items-center gap-2 text-sm font-medium text-gray-800 dark:text-gray-200">
-                      <input
-                        type="checkbox"
-                        checked={barterOn}
-                        onChange={(event) => {
-                          const next = event.target.checked;
-                          setBarterOn(next);
-                          if (next && order.details?.barter !== true) {
-                            setFormData((prev) => ({ ...prev, final_price: 0 }));
-                          }
-                        }}
-                        className="h-4 w-4 rounded border-gray-300"
-                      />
-                      Barteris
-                    </label>
-                  )}
-                  {barterOn && isLocalTest && !isAgency && (
+                  {order.details?.barter === true && isLocalTest && !isAgency && (
                     <div className="mt-3 space-y-3 rounded-lg border border-amber-200 bg-amber-50/70 p-4 dark:border-amber-800 dark:bg-amber-950/20">
                       <label className="block text-sm text-gray-800 dark:text-gray-200">
                         Sutarta suma, €
@@ -2224,7 +2208,7 @@ export function EditOrderModal({
                         <div className="text-sm text-gray-900 dark:text-white flex items-center">
                           <span className="font-normal">Viso:</span>{' '}
                           <span className="font-semibold">{formData.final_price?.toFixed(2)}€</span>
-                          {quote && !barterOn && (
+                          {quote && order?.details?.barter !== true && (
                             <button
                               onClick={() => {
                                 const url = order?.viaduct ? quote.viaduct_link : quote.link;
@@ -2267,7 +2251,7 @@ export function EditOrderModal({
                     <div className="text-sm text-gray-900 dark:text-white flex items-center">
                       <span className="font-normal">Viso:</span>{' '}
                       <span className="font-semibold">{formData.final_price?.toFixed(2)}€</span>
-                      {quote && !barterOn && (
+                      {quote && order?.details?.barter !== true && (
                         <button
                           type="button"
                           onClick={() => {
@@ -2327,7 +2311,7 @@ export function EditOrderModal({
                   </div>
                 )}
 
-                {!barterOn && (
+                {order?.details?.barter !== true && (
                 <div className="rounded-lg border border-dashed border-emerald-300/70 bg-gray-50 p-4 dark:border-emerald-700/60 dark:bg-gray-700/80">
                   <div className="mb-3">
                     <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
@@ -2829,12 +2813,12 @@ export function EditOrderModal({
       </div>
     </div>
     <OrderAtaskaitaModal
-      isOpen={ataskaitaOpen && !barterOn}
+      isOpen={ataskaitaOpen && order?.details?.barter !== true}
       order={order}
       onClose={() => setAtaskaitaOpen(false)}
     />
     <BarterReportModal
-      isOpen={barterReportOpen && barterOn}
+      isOpen={barterReportOpen && order?.details?.barter === true}
       order={order}
       onClose={() => setBarterReportOpen(false)}
     />

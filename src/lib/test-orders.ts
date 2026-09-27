@@ -359,6 +359,67 @@ export function deleteTestOrder(id: string): void {
   notifyTestOrdersChanged(id);
 }
 
+export function createBarterTestOrder(input: {
+  client: string;
+  agency: string;
+  from: string;
+  to: string;
+  price: number;
+  screens: Array<{ id: string; name: string; city?: string }>;
+}): TestOrder {
+  const id = `test-${Date.now()}`;
+  const price = Number.isFinite(input.price) && input.price > 0 ? input.price : 0;
+  const screens = input.screens.filter((screen) => screen.id && screen.name);
+  return upsertTestOrder({
+    id,
+    client: input.client.trim(),
+    agency: input.agency.trim(),
+    invoice_id: id.replace(/^test-/, ''),
+    approved: false,
+    viaduct: false,
+    from: input.from,
+    to: input.to,
+    media_received: false,
+    invoice_issued: false,
+    final_price: price,
+    invoice_sent: false,
+    updated: new Date().toISOString(),
+    intensity: 'Medi',
+    screens: screens.map((screen) => screen.id),
+    clip_duration: 10,
+    viaduct_frequency: 1,
+    on_sale_screens: [],
+    on_sale_discount: 0,
+    hidden_screens: [],
+    details: {
+      isTest: true,
+      barter: true,
+      barterPrice: price,
+      barterScreens: screens,
+      planChangedAt: new Date().toISOString(),
+      discount: 80,
+      total: price,
+      finalPrice: price,
+      live: { status: 'idle' },
+      plan: {
+        screenNames: screens.map((screen) => screen.name),
+        screenRows: screens.map((screen) => ({
+          name: screen.name,
+          city: screen.city,
+          catalogId: screen.id,
+          owner: 'Piksel',
+          from: input.from,
+          to: input.to,
+          net: 0,
+          gross: 0,
+          impressions: 0,
+        })),
+        total: price,
+      },
+    },
+  });
+}
+
 export function createTestOrderDraft(input: {
   client: string;
   agency: string;
