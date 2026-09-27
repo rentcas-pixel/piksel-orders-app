@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { campaignsOnHour } from '@/lib/device-schedule';
+import { campaignsOnHour, creativeClipCount } from '@/lib/device-schedule';
 import type { PlayerCampaign } from '@/lib/player-devices';
 
 function campaign(id: string, clips: number): PlayerCampaign {
@@ -20,5 +20,20 @@ describe('hour occupancy counts orders', () => {
     expect(campaignsOnHour(campaigns, '2026-09-27', 22, {})).toBe(2);
     expect(campaignsOnHour([campaign('paid', 2)], '2026-09-27', 12, {})).toBe(1);
     expect(campaignsOnHour([campaign('paid', 2)], '2026-09-27', 23, {})).toBe(0);
+  });
+
+  it('counts static and video copies of one file as one clip', () => {
+    expect(
+      creativeClipCount([
+        { id: 'static', path: 'clips/Zalgiris.mp4' },
+        { id: 'video', path: 'clips/Zalgiris.mp4' },
+      ])
+    ).toBe(1);
+    expect(
+      creativeClipCount([
+        { id: 'a', path: 'clips/Polestar.mp4' },
+        { id: 'b', path: 'clips/Litexpo.mp4' },
+      ])
+    ).toBe(2);
   });
 });

@@ -53,6 +53,20 @@ export function mediaFileName(media: PlayerCampaignMedia): string {
   return parts[parts.length - 1] || raw || 'media';
 }
 
+/** Statinis ir video to paties failo yra vienas klipas. */
+export function creativeClipCount(
+  media: Array<Pick<PlayerCampaignMedia, 'path' | 'id'>> | undefined
+): number {
+  const names = new Set<string>();
+  for (const item of media || []) {
+    const name = mediaFileName(item).trim().toLocaleLowerCase('lt-LT');
+    if (!name || name === 'media') continue;
+    names.add(name);
+  }
+  if (names.size > 0) return names.size;
+  return (media || []).length;
+}
+
 export function campaignOnScreen(campaign: PlayerCampaign, screenName: string): boolean {
   const screen = normalizeScreen(screenName);
   return (campaign.screens || []).some((name) => normalizeScreen(name) === screen);

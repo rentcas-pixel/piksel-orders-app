@@ -23,6 +23,7 @@ import {
   campaignsForScreenInMonth,
   campaignsForScreenOnDay,
   campaignsOnHour,
+  creativeClipCount,
   dateIsoLocal,
   effectiveCampaignDay,
   effectiveCampaignHour,
@@ -51,7 +52,7 @@ import {
   barterDayFits,
   barterFitsHour,
   barterOrdersOnScreen,
-  barterRowsBesideCampaigns,
+  campaignsBesidesBarter,
   earlierBartersOnHour,
   type BarterPlacementOrder,
 } from '@/lib/barter-placement';
@@ -63,6 +64,11 @@ import { ensureTestOrderFromPlayer } from '@/lib/import-player-test-orders';
 import type { Order } from '@/types';
 
 const WEEKDAYS = ['Pr', 'An', 'Tr', 'Kt', 'Pn', 'Št', 'Sk'];
+
+function clipCountLabel(media: PlayerCampaign['media']): string {
+  const count = creativeClipCount(media);
+  return `${count} ${count === 1 ? 'klipas' : 'klipai'}`;
+}
 
 function campaignTitle(campaign: PlayerCampaign): string {
   const local = getTestOrder(campaign.id);
@@ -222,8 +228,20 @@ export function DeviceSchedulingView({
     return subscribeTestOrders(load);
   }, []);
 
+  const barterOnThisScreen = useMemo(
+    () => barterOrdersOnScreen(barterSlots, device.screenName),
+    [barterSlots, device.screenName]
+  );
+  const barterIdsOnScreen = useMemo(
+    () => new Set(barterOnThisScreen.map((order) => order.id)),
+    [barterOnThisScreen]
+  );
+
   const monthCampaigns = useMemo(() => {
-    const list = campaignsForScreenInMonth(campaigns, device.screenName, year, month);
+    const list = campaignsBesidesBarter(
+      campaignsForScreenInMonth(campaigns, device.screenName, year, month),
+      barterIdsOnScreen
+    );
     const q = search.trim().toLocaleLowerCase('lt-LT');
     const filtered = !q
       ? list
@@ -231,10 +249,13 @@ export function DeviceSchedulingView({
           campaignTitle(c).toLocaleLowerCase('lt-LT').includes(q)
         );
     return orderCampaigns(filtered, playOrder);
-  }, [campaigns, device.screenName, year, month, search, playOrder, orderNamesTick]);
+  }, [campaigns, device.screenName, year, month, search, playOrder, orderNamesTick, barterIdsOnScreen]);
 
   const dayCampaigns = useMemo(() => {
-    const list = campaignsForScreenOnDay(campaigns, device.screenName, dayIso);
+    const list = campaignsBesidesBarter(
+      campaignsForScreenOnDay(campaigns, device.screenName, dayIso),
+      barterIdsOnScreen
+    );
     const q = search.trim().toLocaleLowerCase('lt-LT');
     const filtered = !q
       ? list
@@ -242,17 +263,13 @@ export function DeviceSchedulingView({
           campaignTitle(c).toLocaleLowerCase('lt-LT').includes(q)
         );
     return orderCampaigns(filtered, playOrder);
-  }, [campaigns, device.screenName, dayIso, search, playOrder, orderNamesTick]);
+  }, [campaigns, device.screenName, dayIso, search, playOrder, orderNamesTick, barterIdsOnScreen]);
 
   const openDay = (iso: string) => {
     setDayIso(iso);
     setView('day');
   };
 
-  const barterOnThisScreen = useMemo(
-    () => barterOrdersOnScreen(barterSlots, device.screenName),
-    [barterSlots, device.screenName]
-  );
   const barterTitle = useCallback(
     (orderId: string) => barterSlots.find((slot) => slot.id === orderId)?.title || orderId,
     [barterSlots]
@@ -261,13 +278,16 @@ export function DeviceSchedulingView({
     (dateIso: string, hour: number) => {
       if (hour > 22) return 0;
       return campaignsOnHour(
-        campaignsForScreen(campaigns, device.screenName),
+        campaignsBesidesBarter(
+          campaignsForScreen(campaigns, device.screenName),
+          barterIdsOnScreen
+        ),
         dateIso,
         hour,
         overrides
       );
     },
-    [campaigns, device.screenName, overrides]
+    [campaigns, device.screenName, overrides, barterIdsOnScreen]
   );
   const barterHourOn = useCallback(
     (orderId: string, dateIso: string, hour: number) => {
@@ -283,22 +303,20 @@ export function DeviceSchedulingView({
   );
   const visibleBarterMonth = useMemo(() => {
     const q = search.trim().toLocaleLowerCase('lt-LT');
-    const campaignIds = new Set(monthCampaigns.map((campaign) => campaign.id));
-    return barterRowsBesideCampaigns(barterOnThisScreen, campaignIds).filter((order) => {
+    return barterOnThisScreen.filter((order) => {
       const title = barterTitle(order.id);
       if (q && !title.toLocaleLowerCase('lt-LT').includes(q)) return false;
       return campaignOverlapsMonth({ id: order.id, from: order.from, to: order.to }, year, month);
     });
-  }, [barterOnThisScreen, barterTitle, search, year, month, monthCampaigns]);
+  }, [barterOnThisScreen, barterTitle, search, year, month]);
   const visibleBarterDay = useMemo(() => {
     const q = search.trim().toLocaleLowerCase('lt-LT');
-    const campaignIds = new Set(dayCampaigns.map((campaign) => campaign.id));
-    return barterRowsBesideCampaigns(barterOnThisScreen, campaignIds).filter((order) => {
+    return barterOnThisScreen.filter((order) => {
       const title = barterTitle(order.id);
       if (q && !title.toLocaleLowerCase('lt-LT').includes(q)) return false;
       return campaignInDateRange({ id: order.id, from: order.from, to: order.to }, dayIso);
     });
-  }, [barterOnThisScreen, barterTitle, search, dayIso, dayCampaigns]);
+  }, [barterOnThisScreen, barterTitle, search, dayIso]);
   const dayHours = SCHEDULE_HOURS;
 
   const toggleDayCell = (campaign: PlayerCampaign, dateIso: string) => {
@@ -601,10 +619,7 @@ export function DeviceSchedulingView({
                           </button>
                           <div className="flex items-center gap-2 truncate text-xs text-gray-500">
                             <span>
-                              {(campaign.media || []).length}{' '}
-                              {(campaign.media || []).length === 1
-                                ? 'klipas'
-                                : 'klipai'}
+                              {clipCountLabel(campaign.media)}
                             </span>
                             <button
                               type="button"
@@ -825,10 +840,7 @@ export function DeviceSchedulingView({
                           </button>
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-gray-500">
                             <span className="truncate">
-                              {(campaign.media || []).length}{' '}
-                              {(campaign.media || []).length === 1
-                                ? 'klipas'
-                                : 'klipai'}
+                              {clipCountLabel(campaign.media)}
                               {' · '}
                               {campaign.published === false
                                 ? 'Nepublikuota'
