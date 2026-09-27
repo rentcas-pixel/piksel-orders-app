@@ -241,6 +241,41 @@ export function playCampaignSnapshotFromTestOrder(
   };
 }
 
+/** Barter snapshot: dates, agreed price, screens. No hour grid. */
+export function playCampaignBarterSnapshot(
+  order: Pick<Order, 'client' | 'agency' | 'from' | 'to' | 'final_price' | 'details'>
+): { campaign: Record<string, unknown>; screens: Array<Record<string, unknown>> } {
+  const agreedRaw = Number(order.details?.barterPrice ?? order.final_price);
+  const agreed = Number.isFinite(agreedRaw) && agreedRaw > 0 ? agreedRaw : 0;
+  const screens = order.details?.barterScreens || [];
+  return {
+    campaign: {
+      barter: true,
+      name: order.client,
+      client_name: order.client,
+      agency_name: order.agency,
+      date_from: order.from,
+      date_to: order.to,
+      final_price: agreed,
+      planChangedAt: order.details?.planChangedAt,
+    },
+    screens: screens.map((screen) => ({
+      screen_id: screen.id,
+      name: screen.name,
+      city: screen.city || '',
+      from: order.from,
+      to: order.to,
+      net_price: 0,
+      gross_price: 0,
+      impressions: 0,
+      calculation_snapshot: {
+        name: screen.name,
+        city: screen.city || '',
+      },
+    })),
+  };
+}
+
 export function mergeOrderWithPlayCampaign(
   order: Order,
   record: PlayPublicCampaignRecord
@@ -256,6 +291,48 @@ export function mergeOrderWithPlayCampaign(
         clockOverlay: order.details?.clockOverlay,
         mediaCoverage: order.details?.mediaCoverage,
       },
+    };
+  }
+  const campaign = asRecord(record.campaign);
+  if (campaign.barter === true) {
+    const agreedRaw = Number(campaign.final_price);
+    const price = Number.isFinite(agreedRaw) && agreedRaw > 0 ? agreedRaw : 0;
+    const withoutGrid: Order = { ...order, final_price: price };
+    delete withoutGrid.grid;
+    return {
+      ...withoutGrid,
+      from: String(campaign.date_from || order.from || '').slice(0, 10),
+      to: String(campaign.date_to || order.to || '').slice(0, 10),
+      final_price: price,
+      approved: record.locked ? true : order.approved,
+      details: {
+        ...(order.details || {}),
+        barter: true,
+        barterPrice: price,
+        total: price,
+        finalPrice: price,
+        isTest: order.details?.isTest === true || record.kind === 'test',
+        publicToken: record.token,
+        live: order.details?.live,
+        clockOverlay: order.details?.clockOverlay,
+        mediaCoverage: order.details?.mediaCoverage,
+        plan: {
+          clip_duration: order.details?.plan?.clip_duration,
+          intensity: order.details?.plan?.intensity,
+          screenNames: (order.details?.barterScreens || []).map((screen) => screen.name),
+          screenRows: (order.details?.barterScreens || []).map((screen) => ({
+            name: screen.name,
+            city: screen.city,
+            catalogId: screen.id,
+            owner: 'Piksel',
+            from: String(campaign.date_from || order.from || '').slice(0, 10),
+            to: String(campaign.date_to || order.to || '').slice(0, 10),
+            net: 0,
+          })),
+          total: price,
+        },
+      },
+      updated: record.updatedAt || new Date().toISOString(),
     };
   }
   const patch = orderPatchFromPlayCampaign(record);

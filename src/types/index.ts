@@ -30,6 +30,14 @@ export interface Order {
     periodDiscount?: number;
     /** Test orderiai — niekada nerodyti live sąraše / nerašyti kaip live */
     isTest?: boolean;
+    /**
+     * Barteris: datos ir Piksel ekranai, be valandų tinklo.
+     * Vieta skaičiuojama rodant grafiką, ne išsaugant.
+     */
+    barter?: boolean;
+    /** Sutarta suma. 0 leidžiama. Neskaičiuojama iš 30 rodymų tinklelio. */
+    barterPrice?: number;
+    barterScreens?: Array<{ id: string; name: string; city?: string }>;
     /** Play viešos kliento nuorodos tokenas */
     publicToken?: string;
     /** Viešo plano kampanijos bangos. */

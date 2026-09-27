@@ -41,13 +41,23 @@ import {
   savePlayOrder,
   setOverrideAllMedia,
   campaignsForScreen,
+  campaignOverlapsMonth,
   type CellKind,
   type DeviceScheduleOverrides,
 } from '@/lib/device-schedule';
+import {
+  BARTER_HOURS,
+  barterCoversDate,
+  barterDayFits,
+  barterFitsHour,
+  barterOrdersOnScreen,
+  earlierBartersOnHour,
+  type BarterPlacementOrder,
+} from '@/lib/barter-placement';
 import { EditOrderModal } from '@/components/EditOrderModal';
 import { DeviceOrderTimelineModal } from '@/components/DeviceOrderTimelineModal';
 import { PocketBaseService } from '@/lib/pocketbase';
-import { getTestOrder, subscribeTestOrders } from '@/lib/test-orders';
+import { getTestOrder, listTestOrders, subscribeTestOrders } from '@/lib/test-orders';
 import { ensureTestOrderFromPlayer } from '@/lib/import-player-test-orders';
 import type { Order } from '@/types';
 
@@ -88,6 +98,9 @@ export function DeviceSchedulingView({
   const [scheduleReady, setScheduleReady] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [orderNamesTick, setOrderNamesTick] = useState(0);
+  const [barterSlots, setBarterSlots] = useState<
+    Array<BarterPlacementOrder & { title: string }>
+  >([]);
   const [openingOrderId, setOpeningOrderId] = useState<string | null>(null);
   const [timelineCampaign, setTimelineCampaign] =
     useState<PlayerCampaign | null>(null);
@@ -187,7 +200,26 @@ export function DeviceSchedulingView({
     [daysInMonth, year, month]
   );
 
-  useEffect(() => subscribeTestOrders(() => setOrderNamesTick((n) => n + 1)), []);
+  useEffect(() => {
+    const load = () => {
+      setOrderNamesTick((n) => n + 1);
+      setBarterSlots(
+        listTestOrders()
+          .filter((order) => order.details?.barter === true)
+          .map((order) => ({
+            id: order.id,
+            title: String(order.client || order.id),
+            from: order.from,
+            to: order.to,
+            screenNames: (order.details?.barterScreens || [])
+              .map((screen) => screen.name)
+              .filter(Boolean),
+          }))
+      );
+    };
+    load();
+    return subscribeTestOrders(load);
+  }, []);
 
   const monthCampaigns = useMemo(() => {
     const list = campaignsForScreenInMonth(campaigns, device.screenName, year, month);
@@ -216,6 +248,56 @@ export function DeviceSchedulingView({
     setView('day');
   };
 
+  const barterOnThisScreen = useMemo(
+    () => barterOrdersOnScreen(barterSlots, device.screenName),
+    [barterSlots, device.screenName]
+  );
+  const barterTitle = useCallback(
+    (orderId: string) => barterSlots.find((slot) => slot.id === orderId)?.title || orderId,
+    [barterSlots]
+  );
+  const paidClipsOnHour = useCallback(
+    (dateIso: string, hour: number) => {
+      if (hour > 22) return 0;
+      let count = 0;
+      for (const campaign of campaignsForScreen(campaigns, device.screenName)) {
+        if (!effectiveCampaignHour(campaign, dateIso, hour, overrides).on) continue;
+        const clips = (campaign.media || []).length;
+        count += clips > 0 ? clips : 1;
+      }
+      return count;
+    },
+    [campaigns, device.screenName, overrides]
+  );
+  const barterHourOn = useCallback(
+    (orderId: string, dateIso: string, hour: number) => {
+      const order = barterOnThisScreen.find((item) => item.id === orderId);
+      if (!order || !barterCoversDate(order, dateIso)) return false;
+      return barterFitsHour({
+        paidClips: paidClipsOnHour(dateIso, hour),
+        earlierBartersOnHour: earlierBartersOnHour(barterOnThisScreen, orderId, dateIso),
+      });
+    },
+    [barterOnThisScreen, paidClipsOnHour]
+  );
+  const visibleBarterMonth = useMemo(() => {
+    const q = search.trim().toLocaleLowerCase('lt-LT');
+    return barterOnThisScreen.filter((order) => {
+      const title = barterTitle(order.id);
+      if (q && !title.toLocaleLowerCase('lt-LT').includes(q)) return false;
+      return campaignOverlapsMonth({ id: order.id, from: order.from, to: order.to }, year, month);
+    });
+  }, [barterOnThisScreen, barterTitle, search, year, month]);
+  const visibleBarterDay = useMemo(() => {
+    const q = search.trim().toLocaleLowerCase('lt-LT');
+    return barterOnThisScreen.filter((order) => {
+      const title = barterTitle(order.id);
+      if (q && !title.toLocaleLowerCase('lt-LT').includes(q)) return false;
+      return campaignInDateRange({ id: order.id, from: order.from, to: order.to }, dayIso);
+    });
+  }, [barterOnThisScreen, barterTitle, search, dayIso]);
+  const dayHours = visibleBarterDay.length > 0 ? BARTER_HOURS : SCHEDULE_HOURS;
+
   const toggleDayCell = (campaign: PlayerCampaign, dateIso: string) => {
     const inRange = campaignInDateRange(campaign, dateIso);
     persistOv((prev) => {
@@ -238,6 +320,7 @@ export function DeviceSchedulingView({
   };
 
   const toggleHourCell = (campaign: PlayerCampaign, hour: number) => {
+    if (hour > 22) return;
     persistOv((prev) => {
       const { value, message } = nextCampaignHourOverride(
         campaign,
@@ -341,7 +424,7 @@ export function DeviceSchedulingView({
   };
 
   const monthCols = `14rem repeat(${daysInMonth}, minmax(1.75rem, 1fr))`;
-  const dayCols = `14rem repeat(${SCHEDULE_HOURS.length}, max(1.75rem, calc((100% - 14rem) / ${daysInMonth})))`;
+  const dayCols = `14rem repeat(${dayHours.length}, max(1.75rem, calc((100% - 14rem) / ${daysInMonth})))`;
 
   return (
     <div className="space-y-3">
@@ -469,7 +552,7 @@ export function DeviceSchedulingView({
                 })}
               </div>
 
-              {monthCampaigns.length === 0 ? (
+              {monthCampaigns.length === 0 && visibleBarterMonth.length === 0 ? (
                 <div className="p-12 text-center text-sm text-gray-500">
                   Šį mėnesį šiame device nėra kampanijų.
                 </div>
@@ -557,7 +640,42 @@ export function DeviceSchedulingView({
                 ))
               )}
 
-              {monthCampaigns.length > 0 && (
+              {visibleBarterMonth.map((order) => (
+                <div
+                  key={order.id}
+                  className="grid border-b border-gray-100 dark:border-gray-700/80"
+                  style={{ gridTemplateColumns: monthCols }}
+                >
+                  <div className="sticky left-0 z-[6] border-r border-gray-200 bg-white px-3 py-2 dark:border-gray-700 dark:bg-gray-800">
+                    <button
+                      type="button"
+                      title="Atidaryti orderį"
+                      onClick={() => void openCampaignOrder(order.id)}
+                      className="block w-full truncate text-left text-sm font-medium text-gray-900 hover:text-blue-600 dark:text-white dark:hover:text-blue-400"
+                    >
+                      {barterTitle(order.id)}
+                    </button>
+                    <div className="text-xs text-amber-700 dark:text-amber-300">Barteris</div>
+                  </div>
+                  {days.map((d) => {
+                    const iso = dateIsoLocal(d);
+                    const on = barterDayFits((hour) => barterHourOn(order.id, iso, hour));
+                    return (
+                      <div
+                        key={iso}
+                        className="min-h-[2.75rem] border-r border-gray-50 dark:border-gray-700/50"
+                      >
+                        <div
+                          className={`block h-full min-h-[2.75rem] w-full ${on ? 'bg-amber-300/55' : ''}`}
+                          title={on ? `${iso} · barteris telpa` : iso}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+
+              {(monthCampaigns.length > 0 || visibleBarterMonth.length > 0) && (
                 <div
                   className="grid border-t border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/50"
                   style={{ gridTemplateColumns: monthCols }}
@@ -570,6 +688,9 @@ export function DeviceSchedulingView({
                     let total = 0;
                     for (const campaign of monthCampaigns) {
                       if (effectiveCampaignDay(campaign, iso, overrides).on) total += 1;
+                    }
+                    for (const order of visibleBarterMonth) {
+                      if (barterDayFits((hour) => barterHourOn(order.id, iso, hour))) total += 1;
                     }
                     return (
                       <div
@@ -645,7 +766,7 @@ export function DeviceSchedulingView({
                 <div className="sticky left-0 z-[6] border-r border-gray-200 bg-gray-50 px-3 py-2 text-xs font-medium uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:bg-gray-900/50">
                   Kampanija
                 </div>
-                {SCHEDULE_HOURS.map((h) => (
+                {dayHours.map((h) => (
                   <div
                     key={h}
                     className="border-r border-gray-100 py-2 text-center text-xs font-semibold text-gray-900 dark:border-gray-700 dark:text-white"
@@ -655,7 +776,7 @@ export function DeviceSchedulingView({
                 ))}
               </div>
 
-              {dayCampaigns.length === 0 ? (
+              {dayCampaigns.length === 0 && visibleBarterDay.length === 0 ? (
                 <div className="p-12 text-center text-sm text-gray-500">
                   Šią dieną nėra kampanijų.
                 </div>
@@ -722,7 +843,15 @@ export function DeviceSchedulingView({
                         </div>
                       </div>
                     </div>
-                    {SCHEDULE_HOURS.map((hour) => {
+                    {dayHours.map((hour) => {
+                      if (hour > 22) {
+                        return (
+                          <div
+                            key={hour}
+                            className="min-h-[2.75rem] border-r border-gray-50 dark:border-gray-700/50"
+                          />
+                        );
+                      }
                       const eff = effectiveCampaignHour(
                         campaign,
                         dayIso,
@@ -747,7 +876,41 @@ export function DeviceSchedulingView({
                 ))
               )}
 
-              {dayCampaigns.length > 0 && (
+              {visibleBarterDay.map((order) => (
+                <div
+                  key={order.id}
+                  className="grid w-full border-b border-gray-100 dark:border-gray-700/80"
+                  style={{ gridTemplateColumns: dayCols }}
+                >
+                  <div className="sticky left-0 z-[6] border-r border-gray-200 bg-white px-3 py-2 dark:border-gray-700 dark:bg-gray-800">
+                    <button
+                      type="button"
+                      title="Atidaryti orderį"
+                      onClick={() => void openCampaignOrder(order.id)}
+                      className="block w-full truncate text-left text-sm font-medium text-gray-900 hover:text-blue-600 dark:text-white dark:hover:text-blue-400"
+                    >
+                      {barterTitle(order.id)}
+                    </button>
+                    <div className="text-xs text-amber-700 dark:text-amber-300">Barteris</div>
+                  </div>
+                  {dayHours.map((hour) => {
+                    const on = barterHourOn(order.id, dayIso, hour);
+                    return (
+                      <div
+                        key={hour}
+                        className="min-h-[2.75rem] border-r border-gray-50 dark:border-gray-700/50"
+                      >
+                        <div
+                          className={`block h-full min-h-[2.75rem] w-full ${on ? 'bg-amber-300/55' : ''}`}
+                          title={on ? `${hour}:00 · barteris telpa` : `${hour}:00`}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+
+              {(dayCampaigns.length > 0 || visibleBarterDay.length > 0) && (
                 <div
                   className="grid w-full border-t border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/50"
                   style={{ gridTemplateColumns: dayCols }}
@@ -755,8 +918,10 @@ export function DeviceSchedulingView({
                   <div className="sticky left-0 z-[6] border-r border-gray-200 bg-gray-50 px-3 py-2 text-xs font-medium text-gray-500 dark:border-gray-700 dark:bg-gray-900/50">
                     Užimtumas · kampanijos
                   </div>
-                  {SCHEDULE_HOURS.map((hour) => {
-                    const n = campaignsOnHour(dayCampaigns, dayIso, hour, overrides);
+                  {dayHours.map((hour) => {
+                    const n =
+                      (hour > 22 ? 0 : campaignsOnHour(dayCampaigns, dayIso, hour, overrides)) +
+                      visibleBarterDay.filter((order) => barterHourOn(order.id, dayIso, hour)).length;
                     return (
                       <div
                         key={hour}

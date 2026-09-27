@@ -1,0 +1,70 @@
+import { describe, expect, it } from 'vitest';
+import {
+  barterFitsHour,
+  barterHourDecision,
+  barterOrdersOnScreen,
+  earlierBartersOnHour,
+  isPikselOwnedRegularScreen,
+} from '@/lib/barter-placement';
+
+describe('barter under-6 rule', () => {
+  it('places when 5 clips are already in the hour and skips at 6', () => {
+    expect(barterHourDecision(5)).toBe('place');
+    expect(barterHourDecision(6)).toBe('skip');
+    expect(barterFitsHour({ paidClips: 5, earlierBartersOnHour: 0 })).toBe(true);
+    expect(barterFitsHour({ paidClips: 6, earlierBartersOnHour: 0 })).toBe(false);
+  });
+
+  it('counts an earlier barter toward the 6', () => {
+    const orders = [
+      {
+        id: 'test-1',
+        from: '2026-09-01',
+        to: '2026-09-30',
+        screenNames: ['Panorama'],
+      },
+      {
+        id: 'test-2',
+        from: '2026-09-01',
+        to: '2026-09-30',
+        screenNames: ['Panorama'],
+      },
+    ];
+    const onScreen = barterOrdersOnScreen(orders, 'Panorama');
+    const firstEarlier = earlierBartersOnHour(onScreen, 'test-1', '2026-09-27');
+    const secondEarlier = earlierBartersOnHour(onScreen, 'test-2', '2026-09-27');
+
+    expect(firstEarlier).toBe(0);
+    expect(barterFitsHour({ paidClips: 5, earlierBartersOnHour: firstEarlier })).toBe(true);
+    expect(secondEarlier).toBe(1);
+    expect(barterFitsHour({ paidClips: 5, earlierBartersOnHour: secondEarlier })).toBe(false);
+    expect(barterFitsHour({ paidClips: 4, earlierBartersOnHour: secondEarlier })).toBe(true);
+  });
+
+  it('does not let a barter on another screen take a slot', () => {
+    const orders = [
+      {
+        id: 'test-a',
+        from: '2026-09-01',
+        to: '2026-09-30',
+        screenNames: ['Kitas ekranas'],
+      },
+      {
+        id: 'test-b',
+        from: '2026-09-01',
+        to: '2026-09-30',
+        screenNames: ['Panorama'],
+      },
+    ];
+    const onScreen = barterOrdersOnScreen(orders, 'Panorama');
+    expect(onScreen.map((order) => order.id)).toEqual(['test-b']);
+    expect(earlierBartersOnHour(onScreen, 'test-b', '2026-09-27')).toBe(0);
+  });
+
+  it('keeps partner screens and viaducts out of the picker', () => {
+    expect(isPikselOwnedRegularScreen({ owner: 'Piksel', viaduct: false })).toBe(true);
+    expect(isPikselOwnedRegularScreen({ owner: ' piksel ', viaduct: false })).toBe(true);
+    expect(isPikselOwnedRegularScreen({ owner: 'Owexx', viaduct: false })).toBe(false);
+    expect(isPikselOwnedRegularScreen({ owner: 'Piksel', viaduct: true })).toBe(false);
+  });
+});

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   localTestPlanIsNewer,
   mergeOrderWithPlayCampaign,
+  playCampaignBarterSnapshot,
   playCampaignSnapshotFromTestOrder,
   type PlayPublicCampaignRecord,
 } from '@/lib/play-public-campaigns';
@@ -114,5 +115,46 @@ describe('test order plan hydrate', () => {
     expect(snapshot.campaign.final_price).toBe(1035.09);
     expect(snapshot.screens[0]?.to).toBe('2026-10-24');
     expect(snapshot.screens[0]?.net_price).toBe(1035.09);
+  });
+
+  it('writes a barter snapshot without an hour grid', () => {
+    const snapshot = playCampaignBarterSnapshot({
+      ...testOrder(),
+      final_price: 0,
+      details: {
+        barter: true,
+        barterPrice: 0,
+        barterScreens: [{ id: 'panorama', name: 'Panorama' }],
+      },
+    });
+    expect(snapshot.campaign.barter).toBe(true);
+    expect(snapshot.campaign.grid).toBeUndefined();
+    expect(snapshot.campaign.final_price).toBe(0);
+    expect(snapshot.screens[0]?.net_price).toBe(0);
+  });
+
+  it('does not copy a paid grid when the server snapshot is barter', () => {
+    const order = testOrder({
+      grid: [[true]],
+      details: {
+        barter: true,
+        barterPrice: 0,
+        barterScreens: [{ id: 'panorama', name: 'Panorama' }],
+        planChangedAt: '2026-09-27T12:00:00.000Z',
+      },
+    });
+    const record = serverRecord('2026-09-27T16:00:00.000Z');
+    record.campaign = {
+      ...record.campaign,
+      barter: true,
+      final_price: 0,
+      grid: [[true], [true], [true], [true], [true], [true], [true]],
+    };
+    const merged = mergeOrderWithPlayCampaign(order, record);
+    expect(merged.grid).toBeUndefined();
+    expect(merged.details?.barter).toBe(true);
+    expect(merged.details?.plan?.grid).toBeUndefined();
+    expect(merged.final_price).toBe(0);
+    expect(merged.to).toBe('2026-10-10');
   });
 });

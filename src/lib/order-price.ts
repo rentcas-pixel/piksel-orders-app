@@ -9,6 +9,11 @@ export function roundOrderPrice(value: number): number {
 
 /** Kainos šaltinis: skaičiuoklės details.total → final_price → details.finalPrice */
 export function resolveOrderPrice(order: Pick<Order, 'final_price' | 'details'>): number {
+  if (order.details?.barter === true) {
+    const agreed = Number(order.details.barterPrice ?? order.final_price);
+    return Number.isFinite(agreed) && agreed > 0 ? roundOrderPrice(agreed) : 0;
+  }
+
   const detailsTotal = order.details?.total;
   if (typeof detailsTotal === 'number' && detailsTotal > 0) {
     return roundOrderPrice(detailsTotal);

@@ -2,6 +2,7 @@ import type { Order } from '@/types';
 import {
   mergeOrderWithPlayCampaign,
   localTestPlanIsNewer,
+  playCampaignBarterSnapshot,
   playCampaignSnapshotFromTestOrder,
   type PlayPublicCampaignRecord,
 } from '@/lib/play-public-campaigns';
@@ -130,6 +131,50 @@ export function isTestOrder(order: Pick<Order, 'id' | 'details'> | null | undefi
  * details.plan lieka hub enrichment (screenRows, tipai).
  */
 export function normalizeTestOrder(order: TestOrder): TestOrder {
+  if (order.details?.barter === true) {
+    const agreedRaw = Number(order.details.barterPrice ?? order.final_price);
+    const price = Number.isFinite(agreedRaw) && agreedRaw > 0 ? agreedRaw : 0;
+    const barterScreens = Array.isArray(order.details.barterScreens)
+      ? order.details.barterScreens
+      : [];
+    const screenIds = barterScreens.map((screen) => screen.id).filter(Boolean);
+    const withoutGrid: TestOrder = { ...order, final_price: price };
+    delete withoutGrid.grid;
+    return {
+      ...withoutGrid,
+      final_price: price,
+      screens: screenIds.length ? screenIds : order.screens || [],
+      viaduct: false,
+      details: {
+        ...(order.details || {}),
+        isTest: true,
+        barter: true,
+        barterPrice: price,
+        barterScreens,
+        total: price,
+        finalPrice: price,
+        live: order.approved ? order.details?.live : { status: 'idle' as const },
+        plan: {
+          clip_duration: order.clip_duration ?? order.details?.plan?.clip_duration ?? 10,
+          intensity: order.intensity || order.details?.plan?.intensity,
+          screenNames: barterScreens.map((screen) => screen.name).filter(Boolean),
+          screenRows: barterScreens.map((screen) => ({
+            name: screen.name,
+            city: screen.city,
+            catalogId: screen.id,
+            owner: 'Piksel',
+            from: order.from,
+            to: order.to,
+            net: 0,
+            gross: 0,
+            impressions: 0,
+          })),
+          total: price,
+        },
+      },
+    };
+  }
+
   const plan = order.details?.plan;
   const grid = order.grid?.length ? order.grid : plan?.grid;
   const clip_duration =
@@ -625,6 +670,44 @@ export async function hydrateTestOrderFromPlayCampaign(
   } catch {
     return current;
   }
+}
+
+/** Barter snapshot without an hour grid. Does not publish to the player. */
+export async function syncBarterTestOrder(order: TestOrder): Promise<void> {
+  if (!isTestOrder(order) || order.details?.barter !== true) return;
+  const orderId = String(order.id || '').trim();
+  if (!orderId) return;
+  const existing = await fetchPlayCampaignByOrderId(orderId);
+  const snapshot = playCampaignBarterSnapshot(order);
+  const response = await fetch('/api/play-campaigns', {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      token: existing?.token || order.details?.publicToken || undefined,
+      orderId,
+      kind: 'test',
+      campaign: snapshot.campaign,
+      screens: snapshot.screens,
+      status: existing?.status && existing.status !== 'approved' ? existing.status : 'awaiting_approval',
+    }),
+  });
+  if (!response.ok) return;
+  const saved = (await response.json().catch(() => null)) as { token?: string } | null;
+  const token = String(saved?.token || '').trim();
+  if (!token || token === order.details?.publicToken) return;
+  const current = getTestOrder(orderId) || order;
+  upsertTestOrder(
+    {
+      ...current,
+      details: {
+        ...(current.details || { isTest: true }),
+        isTest: true,
+        barter: true,
+        publicToken: token,
+      },
+    },
+    { keepUpdated: true }
+  );
 }
 
 /** Writes the test-order dates, screen rows, and price into the Supabase campaign snapshot. */

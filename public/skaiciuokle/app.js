@@ -617,7 +617,38 @@ function showShareLinkForOrder(order) {
   return token;
 }
 
+let barterLayoutBlocked = false;
+
+function orderIsBarter(order) {
+  return Boolean(order && (order.barter === true || (order.details && order.details.barter === true)));
+}
+
+function showBarterNoLayout(order) {
+  barterLayoutBlocked = true;
+  const table = $("#scheduleGrid");
+  if (table) {
+    table.hidden = true;
+    table.innerHTML = "";
+  }
+  const presets = $("#screenPresetField");
+  if (presets) presets.hidden = true;
+  const card = document.querySelector(".order-plan-grid-card");
+  if (card) card.hidden = true;
+  const from = order && (order.from || order.date_from);
+  const to = order && (order.to || order.date_to);
+  if (from && $("#dateFrom")) $("#dateFrom").value = String(from).slice(0, 10);
+  if (to && $("#dateTo")) $("#dateTo").value = String(to).slice(0, 10);
+  const host = table && table.parentElement;
+  if (host && !document.getElementById("barterNoLayoutNote")) {
+    const note = document.createElement("p");
+    note.id = "barterNoLayoutNote";
+    note.textContent = "Barteris neturi valandų išdėstymo. Klientui šis tinklelis nesiunčiamas.";
+    host.appendChild(note);
+  }
+}
+
 function ensureShareLinkForCurrentPlan() {
+  if (barterLayoutBlocked) return "";
   if (isClientShareView()) return "";
   let token = getGoMockTokenForMode() || publicCampaignState.token || "";
   if (!token) token = generateGoMockToken();
@@ -795,6 +826,7 @@ function applyPublicCampaignPayload(token, campaign, screenRows) {
 }
 
 async function createGoMockFromCalculator({ openPreview = false, copy = true } = {}) {
+  if (barterLayoutBlocked) return null;
   const plan = buildExcelPlan();
   const selected = plan.screens.filter((screen) => screen.active);
   if (!selected.length) {
@@ -1900,6 +1932,16 @@ function toggleHourRow(hourIndex) {
 }
 
 function renderGrid() {
+  if (barterLayoutBlocked) {
+    const blocked = $("#scheduleGrid");
+    if (blocked) {
+      blocked.hidden = true;
+      blocked.innerHTML = "";
+    }
+    const card = document.querySelector(".order-plan-grid-card");
+    if (card) card.hidden = true;
+    return;
+  }
   const locked = publicCampaignState.locked;
   const viewsPerHour = getViewsPerHour();
   const table = $("#scheduleGrid");
@@ -2578,6 +2620,10 @@ function calculateOrderPlanScreen(order, screen, stats) {
 }
 
 function renderOrderPlan(order) {
+  if (orderIsBarter(order)) {
+    showBarterNoLayout(order);
+    return;
+  }
   const selectedScreens = orderScreens(order);
   const stats = getOrderCampaignStats(order);
   const discounts = getDiscounts(selectedScreens.length, stats.days);
@@ -3688,6 +3734,11 @@ function beginTestOrderDraft({ client, agency, id }) {
 /** Hub Planas → atidaro esamą test orderį be reset į Ekranai tabą. */
 async function resumeHubTestOrder(order) {
   if (!order) return;
+  if (orderIsBarter(order)) {
+    showBarterNoLayout(order);
+    showView("calculator");
+    return;
+  }
   testOrderDraft.active = true;
   testOrderDraft.client = order.client || "Test";
   testOrderDraft.agency = order.agency || "—";
@@ -4202,6 +4253,10 @@ async function loadPublicCampaignFromUrl(forcedToken = "") {
   try {
     const record = await playCampaignRequest(`/api/play-campaigns/${encodeURIComponent(token)}`);
     if (record?.campaign) {
+      if (record.campaign.barter === true) {
+        showBarterNoLayout(record.campaign);
+        return true;
+      }
       const incoming = Array.isArray(record.screens) ? record.screens : [];
       if (!incoming.length) {
         const mock = loadGoMockCampaign(token);
@@ -6171,7 +6226,9 @@ async function initializeApplication() {
       : null;
   applyHeadingActionsChrome();
   setDefaultDates();
-  if (earlyTestOrder) {
+  if (orderIsBarter(earlyTestOrder)) {
+    barterLayoutBlocked = true;
+  } else if (earlyTestOrder) {
     applyOrderSnapshotToCalculator(earlyTestOrder);
   }
   initializeClipDurationSelect();
@@ -6179,7 +6236,9 @@ async function initializeApplication() {
   syncCalculatorModeUI();
   renderCityFilters();
   bindEvents();
-  if (earlyTestOrder) {
+  if (orderIsBarter(earlyTestOrder)) {
+    showBarterNoLayout(earlyTestOrder);
+  } else if (earlyTestOrder) {
     if (!showShareLinkForOrder(earlyTestOrder)) ensureShareLinkForCurrentPlan();
   } else if (!publicTokenAtBoot && !getLiveOrderIdFromUrl()) {
     applyPreset("medi");
