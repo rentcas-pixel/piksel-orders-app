@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  BARTER_HOURS,
+  barterDayFits,
   barterFitsHour,
   barterHourDecision,
   barterOrdersOnScreen,
@@ -11,8 +13,8 @@ describe('barter under-6 rule', () => {
   it('places when 5 clips are already in the hour and skips at 6', () => {
     expect(barterHourDecision(5)).toBe('place');
     expect(barterHourDecision(6)).toBe('skip');
-    expect(barterFitsHour({ paidClips: 5, earlierBartersOnHour: 0 })).toBe(true);
-    expect(barterFitsHour({ paidClips: 6, earlierBartersOnHour: 0 })).toBe(false);
+    expect(barterFitsHour({ paidOrders: 5, earlierBartersOnHour: 0 })).toBe(true);
+    expect(barterFitsHour({ paidOrders: 6, earlierBartersOnHour: 0 })).toBe(false);
   });
 
   it('counts an earlier barter toward the 6', () => {
@@ -35,10 +37,10 @@ describe('barter under-6 rule', () => {
     const secondEarlier = earlierBartersOnHour(onScreen, 'test-2', '2026-09-27');
 
     expect(firstEarlier).toBe(0);
-    expect(barterFitsHour({ paidClips: 5, earlierBartersOnHour: firstEarlier })).toBe(true);
+    expect(barterFitsHour({ paidOrders: 5, earlierBartersOnHour: firstEarlier })).toBe(true);
     expect(secondEarlier).toBe(1);
-    expect(barterFitsHour({ paidClips: 5, earlierBartersOnHour: secondEarlier })).toBe(false);
-    expect(barterFitsHour({ paidClips: 4, earlierBartersOnHour: secondEarlier })).toBe(true);
+    expect(barterFitsHour({ paidOrders: 5, earlierBartersOnHour: secondEarlier })).toBe(false);
+    expect(barterFitsHour({ paidOrders: 4, earlierBartersOnHour: secondEarlier })).toBe(true);
   });
 
   it('does not let a barter on another screen take a slot', () => {
@@ -59,6 +61,14 @@ describe('barter under-6 rule', () => {
     const onScreen = barterOrdersOnScreen(orders, 'Panorama');
     expect(onScreen.map((order) => order.id)).toEqual(['test-b']);
     expect(earlierBartersOnHour(onScreen, 'test-b', '2026-09-27')).toBe(0);
+  });
+
+  it('stops before the 23:00 blackout', () => {
+    expect(BARTER_HOURS[0]).toBe(6);
+    expect(BARTER_HOURS[BARTER_HOURS.length - 1]).toBe(22);
+    expect(BARTER_HOURS).not.toContain(23);
+    expect(barterDayFits((hour) => hour === 23)).toBe(false);
+    expect(barterDayFits((hour) => hour === 22)).toBe(true);
   });
 
   it('keeps partner screens and viaducts out of the picker', () => {

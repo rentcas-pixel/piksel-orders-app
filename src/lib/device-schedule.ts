@@ -446,7 +446,7 @@ export function clipsOnHour(
   return n;
 }
 
-/** Kiek kampanijų užimta tą valandą (ne klipų — rotacija viduje neskaičiuojama). */
+/** Kiek orderių užimta tą valandą. Du besisukantys klipai yra vienas orderis. */
 export function campaignsOnHour(
   campaigns: PlayerCampaign[],
   dateIso: string,

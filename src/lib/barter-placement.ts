@@ -2,8 +2,8 @@
 
 export const BARTER_CLIP_CAP = 6;
 
-/** 6–23 imtinai. Mokamas grafikas lieka 6–22. */
-export const BARTER_HOURS = Array.from({ length: 18 }, (_, index) => 6 + index);
+/** 6–22 imtinai. 23:00–24:00 yra užtemimas, ne transliacija. */
+export const BARTER_HOURS = Array.from({ length: 17 }, (_, index) => 6 + index);
 
 export type BarterScreenRef = {
   id: string;
@@ -28,17 +28,17 @@ export function isPikselOwnedRegularScreen(screen: {
   return owner === 'piksel' && screen.viaduct !== true;
 }
 
-/** 5 ir mažiau — dedam, 6 ir daugiau — praleidžiam. */
-export function barterHourDecision(clipsAlreadyPlaced: number): 'place' | 'skip' {
-  return clipsAlreadyPlaced < BARTER_CLIP_CAP ? 'place' : 'skip';
+/** 5 ar mažiau orderių — dedam, 6 orderiai — praleidžiam. Du klipai viename orderyje = 1. */
+export function barterHourDecision(ordersAlreadyPlaced: number): 'place' | 'skip' {
+  return ordersAlreadyPlaced < BARTER_CLIP_CAP ? 'place' : 'skip';
 }
 
 /**
- * Mokami klipai pirmi. Kiekvienas ankstesnis barteris užima vieną vietą
- * tik kol valandoje dar mažiau nei 6.
+ * Mokami orderiai pirmi. Besisukantys klipai yra vienas orderis, ne dvi vietos.
+ * Kiekvienas ankstesnis barteris užima vieną vietą, kol orderių mažiau nei 6.
  */
-export function clipsBeforeBarter(paidClips: number, earlierBarterCount: number): number {
-  let used = Number.isFinite(paidClips) && paidClips > 0 ? paidClips : 0;
+export function clipsBeforeBarter(paidOrders: number, earlierBarterCount: number): number {
+  let used = Number.isFinite(paidOrders) && paidOrders > 0 ? paidOrders : 0;
   const earlier =
     Number.isFinite(earlierBarterCount) && earlierBarterCount > 0 ? earlierBarterCount : 0;
   for (let index = 0; index < earlier; index += 1) {
@@ -48,11 +48,12 @@ export function clipsBeforeBarter(paidClips: number, earlierBarterCount: number)
 }
 
 export function barterFitsHour(input: {
-  paidClips: number;
+  /** Orderių skaičius tą valandą, ne klipų failų. */
+  paidOrders: number;
   earlierBartersOnHour: number;
 }): boolean {
   return (
-    barterHourDecision(clipsBeforeBarter(input.paidClips, input.earlierBartersOnHour)) === 'place'
+    barterHourDecision(clipsBeforeBarter(input.paidOrders, input.earlierBartersOnHour)) === 'place'
   );
 }
 

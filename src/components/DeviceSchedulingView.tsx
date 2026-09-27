@@ -256,16 +256,15 @@ export function DeviceSchedulingView({
     (orderId: string) => barterSlots.find((slot) => slot.id === orderId)?.title || orderId,
     [barterSlots]
   );
-  const paidClipsOnHour = useCallback(
+  const paidOrdersOnHour = useCallback(
     (dateIso: string, hour: number) => {
       if (hour > 22) return 0;
-      let count = 0;
-      for (const campaign of campaignsForScreen(campaigns, device.screenName)) {
-        if (!effectiveCampaignHour(campaign, dateIso, hour, overrides).on) continue;
-        const clips = (campaign.media || []).length;
-        count += clips > 0 ? clips : 1;
-      }
-      return count;
+      return campaignsOnHour(
+        campaignsForScreen(campaigns, device.screenName),
+        dateIso,
+        hour,
+        overrides
+      );
     },
     [campaigns, device.screenName, overrides]
   );
@@ -273,12 +272,13 @@ export function DeviceSchedulingView({
     (orderId: string, dateIso: string, hour: number) => {
       const order = barterOnThisScreen.find((item) => item.id === orderId);
       if (!order || !barterCoversDate(order, dateIso)) return false;
+      if (!BARTER_HOURS.includes(hour)) return false;
       return barterFitsHour({
-        paidClips: paidClipsOnHour(dateIso, hour),
+        paidOrders: paidOrdersOnHour(dateIso, hour),
         earlierBartersOnHour: earlierBartersOnHour(barterOnThisScreen, orderId, dateIso),
       });
     },
-    [barterOnThisScreen, paidClipsOnHour]
+    [barterOnThisScreen, paidOrdersOnHour]
   );
   const visibleBarterMonth = useMemo(() => {
     const q = search.trim().toLocaleLowerCase('lt-LT');
@@ -296,7 +296,7 @@ export function DeviceSchedulingView({
       return campaignInDateRange({ id: order.id, from: order.from, to: order.to }, dayIso);
     });
   }, [barterOnThisScreen, barterTitle, search, dayIso]);
-  const dayHours = visibleBarterDay.length > 0 ? BARTER_HOURS : SCHEDULE_HOURS;
+  const dayHours = SCHEDULE_HOURS;
 
   const toggleDayCell = (campaign: PlayerCampaign, dateIso: string) => {
     const inRange = campaignInDateRange(campaign, dateIso);
@@ -844,14 +844,6 @@ export function DeviceSchedulingView({
                       </div>
                     </div>
                     {dayHours.map((hour) => {
-                      if (hour > 22) {
-                        return (
-                          <div
-                            key={hour}
-                            className="min-h-[2.75rem] border-r border-gray-50 dark:border-gray-700/50"
-                          />
-                        );
-                      }
                       const eff = effectiveCampaignHour(
                         campaign,
                         dayIso,
@@ -920,7 +912,7 @@ export function DeviceSchedulingView({
                   </div>
                   {dayHours.map((hour) => {
                     const n =
-                      (hour > 22 ? 0 : campaignsOnHour(dayCampaigns, dayIso, hour, overrides)) +
+                      campaignsOnHour(dayCampaigns, dayIso, hour, overrides) +
                       visibleBarterDay.filter((order) => barterHourOn(order.id, dayIso, hour)).length;
                     return (
                       <div
