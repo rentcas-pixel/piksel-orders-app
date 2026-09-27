@@ -75,7 +75,7 @@ export default function DeviceSchedulingPage() {
       <AppShell onAddOrder={() => {}} userEmail={session.email}>
       <main className="container mx-auto px-4 py-6">
         <h1 className="mb-4 text-lg font-bold text-gray-900 dark:text-white">
-          {device ? `${device.screenName} · ${device.deviceCode}` : deviceCode}
+          {device?.screenName || ''}
         </h1>
 
         {error && (

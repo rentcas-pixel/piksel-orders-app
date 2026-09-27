@@ -556,6 +556,34 @@ export function DeviceSchedulingView({
                   </div>
                 ))
               )}
+
+              {monthCampaigns.length > 0 && (
+                <div
+                  className="grid border-t border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/50"
+                  style={{ gridTemplateColumns: monthCols }}
+                >
+                  <div className="sticky left-0 z-[6] border-r border-gray-200 bg-gray-50 px-3 py-2 text-xs font-medium text-gray-500 dark:border-gray-700 dark:bg-gray-900/50">
+                    Viso
+                  </div>
+                  {days.map((d) => {
+                    const iso = dateIsoLocal(d);
+                    let total = 0;
+                    for (const campaign of monthCampaigns) {
+                      if (effectiveCampaignDay(campaign, iso, overrides).on) total += 1;
+                    }
+                    return (
+                      <div
+                        key={iso}
+                        className={`border-r border-gray-100 py-2 text-center text-xs font-semibold ${
+                          total <= 0 ? 'font-medium text-gray-300' : 'text-gray-700'
+                        }`}
+                      >
+                        {total || '—'}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>
