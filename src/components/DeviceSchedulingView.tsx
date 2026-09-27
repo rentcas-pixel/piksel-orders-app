@@ -184,15 +184,10 @@ export function DeviceSchedulingView({
   const daysInMonth = new Date(year, month, 0).getDate();
   const todayIso = dateIsoLocal(new Date());
 
-  const days = useMemo(() => {
-    const all = Array.from({ length: daysInMonth }, (_, i) => new Date(year, month - 1, i + 1));
-    const today = dateIsoLocal(new Date());
-    const inThisMonth = today.startsWith(
-      `${year}-${String(month).padStart(2, '0')}`
-    );
-    if (!inThisMonth) return all;
-    return all.filter((day) => dateIsoLocal(day) >= today);
-  }, [daysInMonth, year, month]);
+  const days = useMemo(
+    () => Array.from({ length: daysInMonth }, (_, i) => new Date(year, month - 1, i + 1)),
+    [daysInMonth, year, month]
+  );
 
   useEffect(() => subscribeTestOrders(() => setOrderNamesTick((n) => n + 1)), []);
 
@@ -347,7 +342,7 @@ export function DeviceSchedulingView({
     }
   };
 
-  const monthCols = `14rem repeat(${Math.max(days.length, 1)}, minmax(1.75rem, 1fr))`;
+  const monthCols = `14rem repeat(${daysInMonth}, minmax(1.75rem, 1fr))`;
   const dayCols = `14rem repeat(${SCHEDULE_HOURS.length}, minmax(1.75rem, 1fr))`;
 
   return (
