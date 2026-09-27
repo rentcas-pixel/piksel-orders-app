@@ -19,3 +19,22 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+.play-vertical-grid table {
+  border-collapse: collapse;
+}
+
+.play-vertical-grid table th,
+.play-vertical-grid table td {
+  border-right: 1px solid #e5e7eb;
+}
+
+.play-vertical-grid table th:last-child,
+.play-vertical-grid table td:last-child {
+  border-right: 0;
+}
+
+.dark .play-vertical-grid table th,
+.dark .play-vertical-grid table td {
+  border-right-color: #374151;
+}

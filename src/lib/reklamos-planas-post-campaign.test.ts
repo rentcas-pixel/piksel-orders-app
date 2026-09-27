@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   computePostCampaignDifference,
   computePostCampaignShownViews,
+  excelPostCampaignFigures,
   getMonthBoostRange,
   postCampaignShownMultiplier,
 } from '@/lib/reklamos-planas-post-campaign';
@@ -30,6 +31,26 @@ describe('postCampaignShownMultiplier', () => {
   it('is always at least 1', () => {
     const multiplier = postCampaignShownMultiplier('order-9', 'screen-2', '2026-06-01', '2026-06-30');
     expect(multiplier).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('excelPostCampaignFigures', () => {
+  it('matches the report row instead of subtracting the actual from zero', () => {
+    expect(excelPostCampaignFigures(3570, 479)).toEqual({
+      planned: 3570,
+      shown: 479,
+      difference: -3091,
+    });
+    expect(excelPostCampaignFigures(0, 479)).toEqual({
+      planned: null,
+      shown: 479,
+      difference: null,
+    });
+    expect(excelPostCampaignFigures(3570, null)).toEqual({
+      planned: 3570,
+      shown: null,
+      difference: null,
+    });
   });
 });
 

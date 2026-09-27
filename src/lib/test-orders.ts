@@ -143,8 +143,13 @@ export function normalizeTestOrder(order: TestOrder): TestOrder {
   for (const row of plan?.screenRows || []) {
     const id = row.catalogId;
     if (!id) continue;
-    if (screenPrices[id] == null && typeof row.clipPrice === 'number') {
-      screenPrices[id] = row.clipPrice;
+    const net = typeof row.net === 'number' && row.net > 0 ? row.net : null;
+    const clip = typeof row.clipPrice === 'number' ? row.clipPrice : null;
+    const current = screenPrices[id];
+    const currentIsClip =
+      current != null && clip != null && Math.abs(current - clip) < 0.000001;
+    if (net != null && (current == null || currentIsClip)) {
+      screenPrices[id] = net;
     }
   }
 
@@ -154,6 +159,11 @@ export function normalizeTestOrder(order: TestOrder): TestOrder {
       : typeof plan?.total === 'number' && plan.total > 0
         ? plan.total
         : Number(order.final_price) || 0;
+  const rowNet = (plan?.screenRows || []).reduce(
+    (sum, row) => sum + (typeof row.net === 'number' && row.net > 0 ? row.net : 0),
+    0
+  );
+  const finalPrice = rowNet > 0 ? rowNet : total;
 
   const amountDiscount =
     typeof order.details?.amountDiscount === 'number'
@@ -208,7 +218,7 @@ export function normalizeTestOrder(order: TestOrder): TestOrder {
       discount:
         typeof order.details?.discount === 'number' ? order.details.discount : 80,
       total,
-      finalPrice: total,
+      finalPrice,
       // Nepatvirtintas negali būti Live / Rodoma
       live: order.approved
         ? order.details?.live

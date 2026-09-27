@@ -177,11 +177,16 @@ export function OrderAtaskaitaModal({
         bundles,
         livePlays,
       });
+      const plannedViewsByScreenId: Record<string, number> = {};
+      for (const row of exportRows) {
+        if (row.plannedViews > 0) plannedViewsByScreenId[row.screenId] = row.plannedViews;
+      }
       await downloadReklamosPlanasPostCampaign({
         order: campaignOrder,
         screens,
         bundles,
         shownViewsByScreenId: liveShownViewsByScreenId(exportRows),
+        plannedViewsByScreenId,
       });
     } catch (err) {
       setError(

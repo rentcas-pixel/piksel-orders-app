@@ -58,6 +58,8 @@ import { StatusIconButton } from '@/components/StatusIconButton';
 import { OrderClipsPanel } from '@/components/OrderClipsPanel';
 import { useOrderScreenAlerts } from '@/hooks/useOrderScreenAlerts';
 import { inheritSharedScreenPeriod } from '@/lib/campaign-shared-period';
+import { quotePlayCampaign } from '@/lib/play-campaign-quote';
+import { loadPikselScreenCatalog } from '@/lib/screen-catalog';
 import {
   deleteTestOrder,
   getTestOrder,
@@ -937,6 +939,22 @@ export function EditOrderModal({
             )
           : previousPlan?.screenRows;
         const nextIntensity = formData.intensity ?? fresh.intensity;
+        const catalog = await loadPikselScreenCatalog();
+        const quoted = quotePlayCampaign(
+          {
+            ...fresh,
+            from: nextFrom,
+            to: nextTo,
+            details: {
+              ...(fresh.details || {}),
+              plan: previousPlan
+                ? { ...previousPlan, screenRows: nextScreenRows }
+                : fresh.details?.plan,
+            },
+          },
+          catalog
+        );
+        const nextPrice = quoted.total;
         const planChangedAt = resolvePlanChangedAt(
           fresh,
           { ...fresh, from: nextFrom, to: nextTo, intensity: nextIntensity },
@@ -951,7 +969,7 @@ export function EditOrderModal({
           from: nextFrom,
           to: nextTo,
           media_received: !!formData.media_received,
-          final_price: Number(formData.final_price ?? fresh.final_price) || 0,
+          final_price: nextPrice,
           invoice_sent: invoiceStatus.invoice_sent,
           invoice_issued: invoiceStatus.invoice_issued,
           intensity: nextIntensity,
@@ -969,14 +987,22 @@ export function EditOrderModal({
             ...(planChangedAt ? { planChangedAt } : {}),
             isTest: true,
             discount: fresh.details?.discount ?? 80,
-            total: Number(formData.final_price ?? fresh.final_price) || 0,
-            finalPrice: Number(formData.final_price ?? fresh.final_price) || 0,
+            total: nextPrice,
+            finalPrice: quoted.finalPrice,
+            amountDiscount: quoted.amountDiscount,
+            periodDiscount: quoted.periodDiscount,
+            screenPrices: quoted.screenPrices,
             live: nextLive,
             clockOverlay:
               formData.details?.clockOverlay ?? fresh.details?.clockOverlay,
-            ...(previousPlan
-              ? { plan: { ...previousPlan, screenRows: nextScreenRows } }
-              : {}),
+            plan: {
+              ...(previousPlan || {}),
+              screenRows: quoted.rows,
+              days: quoted.rows.reduce((max, row) => Math.max(max, row.days || 0), 0),
+              total: nextPrice,
+              volumeDiscount: quoted.amountDiscount / 100,
+              periodDiscount: quoted.periodDiscount / 100,
+            },
           },
         });
         onOrderUpdated?.(saved);
@@ -1055,8 +1081,13 @@ export function EditOrderModal({
         void setPlayPublicPlanLock(order.id, nextApproved);
       }
       onClose();
-    } catch {
-      console.error('Error updating order');
+    } catch (error) {
+      console.error('Error updating order', error);
+      if (isLocalTest) {
+        window.alert(
+          error instanceof Error ? error.message : 'Nepavyko išsaugoti užsakymo'
+        );
+      }
     } finally {
       setLoading(false);
     }

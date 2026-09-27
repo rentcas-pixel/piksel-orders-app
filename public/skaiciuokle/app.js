@@ -1301,9 +1301,10 @@ function upsertHubTestOrderFromPlan(plan, meta) {
   const screenPrices = {};
   for (const s of screens) {
     const sid = s.catalogId || s.id;
-    if (sid && typeof s.clipPrice === "number") screenPrices[sid] = s.clipPrice;
+    if (sid && typeof s.net === "number") screenPrices[sid] = s.net;
   }
   const total = Number(plan.total) || 0;
+  const finalPrice = Number(plan.finalPrice) || total;
   const clipDuration = Number(plan.clipDuration) || 10;
   const viaductFrequency = Number(plan.viaductFrequency) || 1;
   const existing = readHubTestOrders().find((item) => String(item.id) === String(orderId)) || {};
@@ -1343,7 +1344,7 @@ function upsertHubTestOrderFromPlan(plan, meta) {
       isTest: true,
       discount: typeof existingDetails.discount === "number" ? existingDetails.discount : 80,
       total,
-      finalPrice: total,
+      finalPrice,
       amountDiscount: Math.round((plan.volumeDiscount || 0) * 100),
       periodDiscount: Math.round((plan.periodDiscount || 0) * 100),
       screenPrices,

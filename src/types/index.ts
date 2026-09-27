@@ -18,6 +18,7 @@ export interface Order {
   screens?: string[];
   /** Ekrano kainos pagal ID (jei yra) */
   details?: {
+    /** Pilna ekrano kaina po ekrano nuolaidos. Klipo vieneto kaina yra plan.screenRows[].clipPrice. */
     screenPrices?: Record<string, number>;
     views?: number;
     cpt?: number;

@@ -80,9 +80,10 @@ export function orderPatchFromPlayCampaign(
   const screenRows = asScreenRows(screens);
   const screenPrices: Record<string, number> = {};
   for (const row of screenRows) {
-    if (row.catalogId) screenPrices[row.catalogId] = row.clipPrice;
+    if (row.catalogId && row.net > 0) screenPrices[row.catalogId] = row.net;
   }
   const total = Number(campaign.final_price) || 0;
+  const netSum = screenRows.reduce((sum, row) => sum + (row.net > 0 ? row.net : 0), 0);
   const clipDuration = Number(campaign.clip_duration_seconds) || 10;
   const viaduct =
     campaign.viaduct === true ||
@@ -109,7 +110,7 @@ export function orderPatchFromPlayCampaign(
         return { id: String(period.id || ''), from: String(period.from || ''), to: String(period.to || '') };
       }) : [],
       total,
-      finalPrice: total,
+      finalPrice: netSum > 0 ? netSum : total,
       amountDiscount: Number(campaign.volume_discount) || 0,
       periodDiscount: Number(campaign.period_discount) || 0,
       screenPrices,

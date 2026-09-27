@@ -17,7 +17,9 @@ import {
   PERIOD_TAB_ORDER_FIELDS,
   type OrderListPeriodTab,
 } from '@/lib/order-period-tabs';
+import { quotePlayCampaign } from '@/lib/play-campaign-quote';
 import { toCampaignOrderInput, toCampaignScreen } from '@/lib/reklamos-planas-data';
+import { loadPikselScreenCatalog } from '@/lib/screen-catalog';
 import { agencyMatchesFilter, getCanonicalAgencyLabel } from '@/lib/agency-names';
 import { mergeOrderWithPlayCampaign, type PlayPublicCampaignRecord } from '@/lib/play-public-campaigns';
 import { SupabaseService } from '@/lib/supabase-service';
@@ -348,55 +350,12 @@ async function readSupabasePlayCampaign(
   }
 }
 
-function screensFromPlayOrder(order: Order): CampaignScreen[] {
-  const planRows = order.details?.plan?.screenRows || [];
-  const source =
-    planRows.length > 0
-      ? planRows.map((row) => ({
-          name: row.name,
-          catalogId: row.catalogId,
-          city: row.city,
-          ots: row.ots,
-        }))
-      : (order.details?.plan?.screenNames || []).map((name) => ({
-          name,
-          catalogId: undefined as string | undefined,
-          city: undefined as string | undefined,
-          ots: undefined as number | undefined,
-        }));
-  const screens: CampaignScreen[] = [];
-  const seen = new Set<string>();
-  source.forEach((row, index) => {
-    const name = String(row.name || '').trim();
-    const catalogId = String(row.catalogId || '').trim();
-    const id = catalogId || `plan:${name.toLocaleLowerCase('lt-LT') || index}`;
-    if (!name && !catalogId) return;
-    if (seen.has(id)) return;
-    seen.add(id);
-    screens.push({
-      id,
-      name: name || id,
-      city: row.city,
-      ots: Number(row.ots) || 0,
-      viaduct: !!order.viaduct,
-      price: {},
-    });
-  });
-  return screens;
-}
-
-function campaignExportFromPlayOrder(order: Order) {
-  const screens = screensFromPlayOrder(order);
-  const ids = screens.map((screen) => screen.id);
-  const raw = {
-    ...order,
-    screens: ids.length > 0 ? ids : order.screens || [],
-    grid: order.details?.plan?.grid || order.grid || [],
-    clip_duration: order.details?.plan?.clip_duration ?? order.clip_duration ?? 10,
-  } as Record<string, unknown>;
+async function campaignExportFromPlayOrder(order: Order) {
+  const catalog = await loadPikselScreenCatalog();
+  const quoted = quotePlayCampaign(order, catalog);
   return {
-    campaignOrder: toCampaignOrderInput(raw),
-    screens,
+    campaignOrder: quoted.campaignOrder,
+    screens: quoted.screens,
     bundles: [] as CampaignBundle[],
     fullOrder: order,
   };
@@ -420,9 +379,13 @@ export async function loadCampaignExportData(
       local.details?.publicToken
     );
     const fromSupabase = Boolean(record && record.screens.length > 0);
-    const fullOrder = fromSupabase ? mergeOrderWithPlayCampaign(local, record!) : local;
+    const localHasPlan = (local.details?.plan?.screenRows?.length || 0) > 0;
+    const fullOrder =
+      localHasPlan || !fromSupabase
+        ? local
+        : mergeOrderWithPlayCampaign(local, record!);
     return {
-      ...campaignExportFromPlayOrder(fullOrder),
+      ...(await campaignExportFromPlayOrder(fullOrder)),
       reportSource: fromSupabase ? ('supabase' as const) : ('test-order' as const),
     };
   }
