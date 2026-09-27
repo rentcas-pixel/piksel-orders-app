@@ -37,7 +37,13 @@ export interface Order {
     barter?: boolean;
     /** Sutarta suma. 0 leidžiama. Neskaičiuojama iš 30 rodymų tinklelio. */
     barterPrice?: number;
-    barterScreens?: Array<{ id: string; name: string; city?: string }>;
+    barterScreens?: Array<{
+      id: string;
+      name: string;
+      city?: string;
+      type?: string;
+      resolution?: string;
+    }>;
     /** Play viešos kliento nuorodos tokenas */
     publicToken?: string;
     /** Viešo plano kampanijos bangos. */

@@ -1197,7 +1197,9 @@ export function OrderClipsPanel({
                   Ekranai be tipo
                 </h4>
                 <p className="mb-2 text-xs text-gray-500">
-                  Plane nenurodyta, ar tai statinis, ar video — patikrink skaičiuoklę.
+                  {order.details?.barter
+                    ? 'Tipas imamas iš klipo failo, kai sutampa ekrano rezoliucija.'
+                    : 'Plane nenurodyta, ar tai statinis, ar video — patikrink skaičiuoklę.'}
                 </p>
                 <ul className="space-y-1.5 text-sm">
                   {unknownScreens.map((screen) => {

@@ -138,6 +138,12 @@ export function normalizeTestOrder(order: TestOrder): TestOrder {
       ? order.details.barterScreens
       : [];
     const screenIds = barterScreens.map((screen) => screen.id).filter(Boolean);
+    const savedRows = order.details?.plan?.screenRows || [];
+    const savedByCatalog = new Map(
+      savedRows
+        .filter((row) => row.catalogId)
+        .map((row) => [String(row.catalogId), row])
+    );
     const withoutGrid: TestOrder = { ...order, final_price: price };
     delete withoutGrid.grid;
     return {
@@ -158,17 +164,24 @@ export function normalizeTestOrder(order: TestOrder): TestOrder {
           clip_duration: order.clip_duration ?? order.details?.plan?.clip_duration ?? 10,
           intensity: order.intensity || order.details?.plan?.intensity,
           screenNames: barterScreens.map((screen) => screen.name).filter(Boolean),
-          screenRows: barterScreens.map((screen) => ({
-            name: screen.name,
-            city: screen.city,
-            catalogId: screen.id,
-            owner: 'Piksel',
-            from: order.from,
-            to: order.to,
-            net: 0,
-            gross: 0,
-            impressions: 0,
-          })),
+          screenRows: barterScreens.map((screen) => {
+            const saved = savedByCatalog.get(String(screen.id));
+            const type = screen.type || saved?.type || undefined;
+            const resolution = screen.resolution || saved?.resolution || undefined;
+            return {
+              name: screen.name,
+              city: screen.city,
+              catalogId: screen.id,
+              owner: 'Piksel',
+              ...(type ? { type } : {}),
+              ...(resolution ? { resolution } : {}),
+              from: order.from,
+              to: order.to,
+              net: 0,
+              gross: 0,
+              impressions: 0,
+            };
+          }),
           total: price,
         },
       },

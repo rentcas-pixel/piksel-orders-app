@@ -1426,6 +1426,8 @@ function upsertHubTestOrderFromPlan(plan, meta) {
         id: String(screen.catalogId || screen.id || ""),
         name: screen.name,
         city: screen.city,
+        type: screen.type || "",
+        resolution: screen.resolution || "",
       }))
       .filter((screen) => screen.id && screen.name);
     const agreedRaw = Number(existingDetails.barterPrice);
@@ -1452,6 +1454,8 @@ function upsertHubTestOrderFromPlan(plan, meta) {
         city: screen.city,
         catalogId: screen.id,
         owner: "Piksel",
+        ...(screen.type ? { type: screen.type } : {}),
+        ...(screen.resolution ? { resolution: screen.resolution } : {}),
         net: 0,
         gross: 0,
         impressions: 0,

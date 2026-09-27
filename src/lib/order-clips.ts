@@ -8,6 +8,7 @@ import {
   type RequiredResolution,
 } from '@/lib/media-resolution-check';
 import { PocketBaseService } from '@/lib/pocketbase';
+import { loadPikselScreenCatalog } from '@/lib/screen-catalog';
 import { isTestOrder } from '@/lib/test-orders';
 import type { Order } from '@/types';
 
@@ -321,11 +322,24 @@ async function loadClipCatalog(): Promise<ClipCatalogRow[]> {
   return [];
 }
 
-/** Papildo ekranus owner/resolution/type iš Supabase katalogo. */
+/**
+ * Papildo ekranus owner/resolution/type.
+ * Mokamas orderis lieka prie tuščio Supabase katalogo.
+ * Barterio plane tipo ir rezoliucijos nebūna — jas ima iš ekranų kainyno.
+ */
 export async function enrichScreensFromCatalog(
-  screens: OrderClipScreen[]
+  screens: OrderClipScreen[],
+  options?: { barter?: boolean }
 ): Promise<OrderClipScreen[]> {
   if (screens.length === 0) return screens;
+  if (options?.barter) {
+    try {
+      const catalog = await loadPikselScreenCatalog();
+      return applyCatalogToScreens(screens, catalog);
+    } catch {
+      return screens;
+    }
+  }
   const catalog = await loadClipCatalog();
   if (catalog.length === 0) return screens;
   return applyCatalogToScreens(screens, catalog);
@@ -964,7 +978,9 @@ export async function resolveOrderClipScreens(order: Order): Promise<OrderClipSc
     }
   }
 
-  return enrichScreensFromCatalog(nextScreens);
+  return enrichScreensFromCatalog(nextScreens, {
+    barter: order.details?.barter === true,
+  });
 }
 
 /**
@@ -1002,6 +1018,7 @@ export function resolveMediaColumnDisplay(
 export async function computeOrderPlanMediaCoverage(order: {
   id: string;
   details?: {
+    barter?: boolean;
     plan?: {
       screenRows?: Array<{
         name: string;
@@ -1018,7 +1035,9 @@ export async function computeOrderPlanMediaCoverage(order: {
 }): Promise<PlanMediaCoverageSummary | null> {
   const rawScreens = screensFromOrderPlan(order);
   if (rawScreens.length === 0) return null;
-  const screens = await enrichScreensFromCatalog(rawScreens);
+  const screens = await enrichScreensFromCatalog(rawScreens, {
+    barter: order.details?.barter === true,
+  });
   const clips = await listOrderClips(order.id);
   const evaluation = evaluateOrderClips(screens, clips);
   return summarizePlanMediaCoverage(evaluation.plan);
