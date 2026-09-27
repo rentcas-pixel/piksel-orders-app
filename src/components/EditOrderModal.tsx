@@ -194,7 +194,6 @@ export function EditOrderModal({
   const [exportError, setExportError] = useState<string | null>(null);
   const [ataskaitaOpen, setAtaskaitaOpen] = useState(false);
   const [barterScreenIds, setBarterScreenIds] = useState<string[]>([]);
-  const [barterCatalog, setBarterCatalog] = useState<PikselCatalogScreen[]>([]);
   const [barterReportOpen, setBarterReportOpen] = useState(false);
   const [cityOtsRows, setCityOtsRows] = useState<CityOtsRow[]>([]);
   const [otsLoading, setOtsLoading] = useState(false);
@@ -495,21 +494,6 @@ export function EditOrderModal({
       cancelled = true;
     };
   }, [order, isOpen, isAgency, isSpecOrder, onOrderUpdated]);
-
-  useEffect(() => {
-    if (!isOpen || order?.details?.barter !== true) return;
-    let cancelled = false;
-    void loadPikselScreenCatalog()
-      .then((rows) => {
-        if (!cancelled) setBarterCatalog(rows.filter(isPikselOwnedRegularScreen));
-      })
-      .catch(() => {
-        if (!cancelled) setBarterCatalog([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isOpen, order?.details?.barter]);
 
   useEffect(() => {
     if (!isOpen || !order || isAgency) {
@@ -2117,33 +2101,6 @@ export function EditOrderModal({
                           className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                         />
                       </label>
-                      <p className="text-xs text-gray-600 dark:text-gray-300">
-                        Tik Piksel ekranai. Partnerių ekranai ir viadukai nepasirenkami. Valandų išdėstymas klientui nesiunčiamas.
-                      </p>
-                      <div className="max-h-48 space-y-1 overflow-y-auto">
-                        {barterCatalog.map((screen) => (
-                          <label
-                            key={screen.id}
-                            className="flex items-center gap-2 text-sm text-gray-800 dark:text-gray-200"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={barterScreenIds.includes(screen.id)}
-                              onChange={() =>
-                                setBarterScreenIds((prev) =>
-                                  prev.includes(screen.id)
-                                    ? prev.filter((id) => id !== screen.id)
-                                    : [...prev, screen.id]
-                                )
-                              }
-                            />
-                            <span>
-                              {screen.name}
-                              {screen.city ? ` · ${screen.city}` : ''}
-                            </span>
-                          </label>
-                        ))}
-                      </div>
                       <button
                         type="button"
                         onClick={() => setBarterReportOpen(true)}
