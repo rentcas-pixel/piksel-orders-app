@@ -15,7 +15,6 @@ import {
 import type { PlayerCampaign, PlayerDevice } from '@/lib/player-devices';
 import {
   fetchDeviceSchedule,
-  isDeviceOnline,
   saveDeviceSchedule,
 } from '@/lib/player-devices';
 import {
@@ -185,10 +184,15 @@ export function DeviceSchedulingView({
   const daysInMonth = new Date(year, month, 0).getDate();
   const todayIso = dateIsoLocal(new Date());
 
-  const days = useMemo(
-    () => Array.from({ length: daysInMonth }, (_, i) => new Date(year, month - 1, i + 1)),
-    [daysInMonth, year, month]
-  );
+  const days = useMemo(() => {
+    const all = Array.from({ length: daysInMonth }, (_, i) => new Date(year, month - 1, i + 1));
+    const today = dateIsoLocal(new Date());
+    const inThisMonth = today.startsWith(
+      `${year}-${String(month).padStart(2, '0')}`
+    );
+    if (!inThisMonth) return all;
+    return all.filter((day) => dateIsoLocal(day) >= today);
+  }, [daysInMonth, year, month]);
 
   useEffect(() => subscribeTestOrders(() => setOrderNamesTick((n) => n + 1)), []);
 
@@ -343,8 +347,7 @@ export function DeviceSchedulingView({
     }
   };
 
-  const online = isDeviceOnline(device);
-  const monthCols = `14rem repeat(${daysInMonth}, minmax(1.75rem, 1fr))`;
+  const monthCols = `14rem repeat(${Math.max(days.length, 1)}, minmax(1.75rem, 1fr))`;
   const dayCols = `14rem repeat(${SCHEDULE_HOURS.length}, minmax(1.75rem, 1fr))`;
 
   return (
@@ -380,12 +383,6 @@ export function DeviceSchedulingView({
           >
             Diena
           </button>
-        </div>
-        <div className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[13px] text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
-          <span
-            className={`h-2 w-2 rounded-full ${online ? 'bg-emerald-500' : 'bg-gray-400'}`}
-          />
-          {device.screenName} · {device.deviceCode}
         </div>
       </div>
 
@@ -593,11 +590,6 @@ export function DeviceSchedulingView({
                 </div>
               )}
             </div>
-          </div>
-          <div className="border-t border-gray-200 px-4 py-2 text-xs text-gray-500 dark:border-gray-700">
-            Apačioje — dienos vidutinis kampanijų skaičius vienoje valandoje (6–22).
-            Override’ai rašomi į player API.
-            {!scheduleReady ? ' · Kraunama…' : ''}
           </div>
         </div>
       ) : (

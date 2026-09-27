@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { AppShell } from '@/components/AppShell';
 import { DeviceSchedulingView } from '@/components/DeviceSchedulingView';
@@ -75,17 +74,9 @@ export default function DeviceSchedulingPage() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <AppShell onAddOrder={() => {}} userEmail={session.email}>
       <main className="container mx-auto px-4 py-6">
-        <div className="mb-3 text-xs uppercase tracking-wide text-gray-400">
-          <Link href="/devices" className="hover:text-blue-600">
-            Devices
-          </Link>
-          <span className="mx-1.5 text-gray-300">/</span>
-          <span className="text-gray-500">{device?.screenName || deviceCode}</span>
-        </div>
-
-        <p className="mb-4 text-sm text-gray-500">
+        <h1 className="mb-4 text-lg font-bold text-gray-900 dark:text-white">
           {device ? `${device.screenName} · ${device.deviceCode}` : deviceCode}
-        </p>
+        </h1>
 
         {error && (
           <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
