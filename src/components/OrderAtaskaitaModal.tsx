@@ -12,7 +12,6 @@ import {
   buildMediaLabelsFromClips,
   buildPikselPostCampaignReportRows,
   formatReportViews,
-  liveShownViewsByScreenId,
   type PostCampaignScreenReportRow,
 } from '@/lib/post-campaign-report';
 import { POST_CAMPAIGN_EXPORT_LABEL } from '@/lib/reklamos-planas-post-campaign';
@@ -162,30 +161,21 @@ export function OrderAtaskaitaModal({
     setExporting(true);
     setError(null);
     try {
-      const [{ campaignOrder, screens, bundles, fullOrder }, playsResult] =
-        await Promise.all([
-          loadCampaignExportData(order.id, order),
-          fetchCampaignPlays(order.id),
-        ]);
-      const livePlays = playsResult.ok ? playsResult.data || null : null;
-      const exportRows = buildPikselPostCampaignReportRows({
-        order: {
-          ...campaignOrder,
-          details: (fullOrder as { details?: Order['details'] }).details,
-        },
-        screens,
-        bundles,
-        livePlays,
-      });
+      const { campaignOrder, screens, bundles } = await loadCampaignExportData(
+        order.id,
+        order
+      );
       const plannedViewsByScreenId: Record<string, number> = {};
-      for (const row of exportRows) {
+      const shownViewsByScreenId: Record<string, number> = {};
+      for (const row of rows) {
         if (row.plannedViews > 0) plannedViewsByScreenId[row.screenId] = row.plannedViews;
+        if (row.shownViews != null) shownViewsByScreenId[row.screenId] = row.shownViews;
       }
       await downloadReklamosPlanasPostCampaign({
         order: campaignOrder,
         screens,
         bundles,
-        shownViewsByScreenId: liveShownViewsByScreenId(exportRows),
+        shownViewsByScreenId,
         plannedViewsByScreenId,
       });
     } catch (err) {
