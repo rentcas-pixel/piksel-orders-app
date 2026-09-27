@@ -103,6 +103,25 @@ export function computePostCampaignDifference(
   return shownViews - plannedViews;
 }
 
+/** Excel eilutė turi sutapti su ataskaitos modalu. Trūkstamo plano nerašome kaip 0. */
+export function excelPostCampaignFigures(
+  planned: number | null | undefined,
+  shown: number | null | undefined
+): { planned: number | null; shown: number | null; difference: number | null } {
+  const hasPlan = typeof planned === 'number' && Number.isFinite(planned) && planned > 0;
+  const hasShown = typeof shown === 'number' && Number.isFinite(shown);
+  const plannedViews = hasPlan ? Math.round(planned) : null;
+  const shownViews = hasShown ? Math.round(shown as number) : null;
+  return {
+    planned: plannedViews,
+    shown: shownViews,
+    difference:
+      plannedViews != null && shownViews != null
+        ? computePostCampaignDifference(plannedViews, shownViews)
+        : null,
+  };
+}
+
 export function isCampaignEnded(order: { to?: string | null }): boolean {
   if (!order.to) return false;
   const end = parseDateOnlyLocal(order.to);

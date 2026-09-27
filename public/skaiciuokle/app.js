@@ -604,6 +604,10 @@ function shareTokenFromOrder(order) {
 }
 
 function showShareLinkForOrder(order) {
+  if (barterLayoutBlocked || orderIsBarter(order)) {
+    syncGoShareLinkVisibility({ hide: true });
+    return "";
+  }
   const token = shareTokenFromOrder(order);
   if (!token) {
     syncGoShareLinkVisibility({ hide: isClientShareView() });
@@ -617,7 +621,39 @@ function showShareLinkForOrder(order) {
   return token;
 }
 
+let barterLayoutBlocked = false;
+let barterGridLocked = false;
+
+function orderIsBarter(order) {
+  return Boolean(order && (order.barter === true || (order.details && order.details.barter === true)));
+}
+
+function showBarterNoLayout(order) {
+  barterLayoutBlocked = true;
+  const table = $("#scheduleGrid");
+  if (table) {
+    table.hidden = true;
+    table.innerHTML = "";
+  }
+  const presets = $("#screenPresetField");
+  if (presets) presets.hidden = true;
+  const card = document.querySelector(".order-plan-grid-card");
+  if (card) card.hidden = true;
+  const from = order && (order.from || order.date_from);
+  const to = order && (order.to || order.date_to);
+  if (from && $("#dateFrom")) $("#dateFrom").value = String(from).slice(0, 10);
+  if (to && $("#dateTo")) $("#dateTo").value = String(to).slice(0, 10);
+  const host = table && table.parentElement;
+  if (host && !document.getElementById("barterNoLayoutNote")) {
+    const note = document.createElement("p");
+    note.id = "barterNoLayoutNote";
+    note.textContent = "Barteris neturi valandų išdėstymo. Klientui šis tinklelis nesiunčiamas.";
+    host.appendChild(note);
+  }
+}
+
 function ensureShareLinkForCurrentPlan() {
+  if (barterLayoutBlocked) return "";
   if (isClientShareView()) return "";
   let token = getGoMockTokenForMode() || publicCampaignState.token || "";
   if (!token) token = generateGoMockToken();
@@ -795,6 +831,7 @@ function applyPublicCampaignPayload(token, campaign, screenRows) {
 }
 
 async function createGoMockFromCalculator({ openPreview = false, copy = true } = {}) {
+  if (barterLayoutBlocked) return null;
   const plan = buildExcelPlan();
   const selected = plan.screens.filter((screen) => screen.active);
   if (!selected.length) {
@@ -821,15 +858,6 @@ async function createGoMockFromCalculator({ openPreview = false, copy = true } =
   setGoMockTokenForMode(modeKey, token);
   persistShareTokenOnCurrentOrder(token);
 
-  const goUrl = buildPublicCampaignUrl(token);
-  setGoShareLinkField(goUrl, { flash: copy });
-  if (copy) {
-    const copied = await copyTextNow(goUrl);
-    if (copied) {
-      showToast(isViaductMode() ? "Viadukų plano nuoroda nukopijuota" : "Ekranų plano nuoroda nukopijuota");
-    }
-  }
-
   const orderId = currentShareOrderId() || `share-${token}`;
   try {
     const saved = await playCampaignRequest("/api/play-campaigns", {
@@ -842,21 +870,28 @@ async function createGoMockFromCalculator({ openPreview = false, copy = true } =
         status: payload.campaign?.status || "awaiting_approval",
       }),
     });
-    if (saved?.token) {
-      token = saved.token;
-      setGoMockTokenForMode(modeKey, token);
-      saveGoMockCampaign(token, payload);
-      persistShareTokenOnCurrentOrder(token);
-      publicCampaignState.token = token;
-      publicCampaignState.orderId = saved.orderId || orderId;
-      setGoShareLinkField(buildPublicCampaignUrl(token));
-    }
+    if (!saved?.token) throw new Error("Nepavyko įrašyti nuorodos");
+    token = saved.token;
+    setGoMockTokenForMode(modeKey, token);
+    saveGoMockCampaign(token, payload);
+    persistShareTokenOnCurrentOrder(token);
+    publicCampaignState.token = token;
+    publicCampaignState.orderId = saved.orderId || orderId;
   } catch (error) {
     showToast(error instanceof Error ? error.message : "Nepavyko įrašyti nuorodos");
-    return { token, goUrl, mode: modeKey };
+    return null;
+  }
+
+  const goUrl = buildPublicCampaignUrl(token);
+  setGoShareLinkField(goUrl, { flash: copy });
+  if (copy) {
+    const copied = await copyTextNow(goUrl);
+    if (copied) {
+      showToast(isViaductMode() ? "Viadukų plano nuoroda nukopijuota" : "Ekranų plano nuoroda nukopijuota");
+    }
   }
   if (openPreview) window.open(localPreviewUrlForToken(token), "_blank", "noopener");
-  return { token, goUrl: buildPublicCampaignUrl(token), mode: modeKey };
+  return { token, goUrl, mode: modeKey };
 }
 const ordersFilterState = {
   status: "Visi",
@@ -984,6 +1019,13 @@ function isEmbedPreview() {
 function applyScreenCustomPeriodsFromPlan(plan) {
   const rows = Array.isArray(plan?.screenRows) ? plan.screenRows : [];
   clearAllScreenCustomDates();
+  const dated = rows.filter((row) => String(row?.from || "").trim() && String(row?.to || "").trim());
+  const signatures = new Set(dated.map((row) => `${String(row.from).trim()}|${String(row.to).trim()}`));
+  const sharedCopy = signatures.size <= 1 && dated.every((row) => row.customPeriod !== true);
+  if (sharedCopy) {
+    state.perScreenDatesMode = false;
+    return;
+  }
   let hasCustom = false;
   rows.forEach((row) => {
     const from = String(row?.from || "").trim();
@@ -1052,7 +1094,7 @@ function applyOrderSnapshotToCalculator(order) {
     }
   } else if (!isViaduct && (plan.intensity || order.intensity)) {
     state.preset = presetFromIntensity(plan.intensity || order.intensity);
-    if (state.preset !== "custom") applyPreset(state.preset);
+    if (state.preset !== "custom") applyPreset(state.preset, { force: barterLayoutBlocked });
   } else if (isViaduct) {
     state.viaductGrid = fullGrid();
     state.grid = cloneGrid(state.viaductGrid);
@@ -1277,8 +1319,9 @@ function hubPlanChangedAt(existing, plan, nowIso) {
         screenRows: screens.map((screen) => ({
           name: screen.name,
           catalogId: screen.catalogId || "",
-          from: screen.from || undefined,
-          to: screen.to || undefined,
+          ...(screen.customPeriod
+            ? { from: screen.from || undefined, to: screen.to || undefined, customPeriod: true }
+            : {}),
         })),
       },
     },
@@ -1295,9 +1338,10 @@ function upsertHubTestOrderFromPlan(plan, meta) {
   const screenPrices = {};
   for (const s of screens) {
     const sid = s.catalogId || s.id;
-    if (sid && typeof s.clipPrice === "number") screenPrices[sid] = s.clipPrice;
+    if (sid && typeof s.net === "number") screenPrices[sid] = s.net;
   }
   const total = Number(plan.total) || 0;
+  const finalPrice = Number(plan.finalPrice) || total;
   const clipDuration = Number(plan.clipDuration) || 10;
   const viaductFrequency = Number(plan.viaductFrequency) || 1;
   const existing = readHubTestOrders().find((item) => String(item.id) === String(orderId)) || {};
@@ -1337,7 +1381,7 @@ function upsertHubTestOrderFromPlan(plan, meta) {
       isTest: true,
       discount: typeof existingDetails.discount === "number" ? existingDetails.discount : 80,
       total,
-      finalPrice: total,
+      finalPrice,
       amountDiscount: Math.round((plan.volumeDiscount || 0) * 100),
       periodDiscount: Math.round((plan.periodDiscount || 0) * 100),
       screenPrices,
@@ -1364,8 +1408,9 @@ function upsertHubTestOrderFromPlan(plan, meta) {
           gross: s.gross,
           screenDiscount: s.screenDiscount,
           net: s.net,
-          from: s.from || undefined,
-          to: s.to || undefined,
+          ...(s.customPeriod
+            ? { from: s.from || undefined, to: s.to || undefined, customPeriod: true }
+            : {}),
           days: typeof s.days === "number" ? s.days : undefined,
         })),
         volumeDiscount: plan.volumeDiscount,
@@ -1374,6 +1419,50 @@ function upsertHubTestOrderFromPlan(plan, meta) {
       },
     },
   };
+  if (existingDetails.barter === true || barterLayoutBlocked) {
+    const barterScreens = screens
+      .filter((screen) => isPikselRegularCalculatorScreen(screen))
+      .map((screen) => ({
+        id: String(screen.catalogId || screen.id || ""),
+        name: screen.name,
+        city: screen.city,
+        type: screen.type || "",
+        resolution: screen.resolution || "",
+      }))
+      .filter((screen) => screen.id && screen.name);
+    const agreedRaw = Number(existingDetails.barterPrice);
+    const agreed = Number.isFinite(agreedRaw) && agreedRaw > 0 ? agreedRaw : 0;
+    delete order.grid;
+    order.viaduct = false;
+    order.final_price = agreed;
+    order.screens = barterScreens.map((screen) => screen.id);
+    order.details.barter = true;
+    order.details.barterPrice = agreed;
+    order.details.barterScreens = barterScreens;
+    order.details.total = agreed;
+    order.details.finalPrice = agreed;
+    order.details.screenPrices = {};
+    order.details.plan = {
+      clip_duration: clipDuration,
+      intensity: plan.intensity || existing.intensity || "Medi",
+      viaduct: false,
+      viaductFrequency: 1,
+      days: plan.days,
+      screenNames: barterScreens.map((screen) => screen.name),
+      screenRows: barterScreens.map((screen) => ({
+        name: screen.name,
+        city: screen.city,
+        catalogId: screen.id,
+        owner: "Piksel",
+        ...(screen.type ? { type: screen.type } : {}),
+        ...(screen.resolution ? { resolution: screen.resolution } : {}),
+        net: 0,
+        gross: 0,
+        impressions: 0,
+      })),
+      total: agreed,
+    };
+  }
   const others = readHubTestOrders().filter((item) => String(item.id) !== String(orderId));
   writeHubTestOrders([order, ...others]);
   notifyHubTestOrdersChanged(orderId);
@@ -1530,8 +1619,15 @@ function getClipDurationSeconds() {
   return Number($("#clipDuration")?.value) || 10;
 }
 
+function isPikselRegularCalculatorScreen(screen) {
+  const owner = String(screen?.owner || "").trim().toLocaleLowerCase("lt-LT");
+  return owner === "piksel" && screen?.viaduct !== true;
+}
+
 function modeScreens() {
-  return screens.filter((screen) => (isViaductMode() ? screen.viaduct : !screen.viaduct));
+  const pool = screens.filter((screen) => (isViaductMode() ? screen.viaduct : !screen.viaduct));
+  if (!barterLayoutBlocked) return pool;
+  return pool.filter(isPikselRegularCalculatorScreen);
 }
 
 function selectedModeScreens() {
@@ -1724,8 +1820,15 @@ function syncCalculatorModeUI() {
     const active = button.dataset.calcMode === state.mode;
     button.classList.toggle("active", active);
     button.setAttribute("aria-selected", active ? "true" : "false");
-    button.disabled = false;
-    button.removeAttribute("aria-disabled");
+    const hideViaduct = barterLayoutBlocked && button.dataset.calcMode === "viaducts";
+    button.hidden = hideViaduct;
+    button.disabled = hideViaduct;
+    if (hideViaduct) button.setAttribute("aria-disabled", "true");
+    else button.removeAttribute("aria-disabled");
+  });
+  document.querySelectorAll("[data-preset]").forEach((button) => {
+    button.disabled = barterLayoutBlocked;
+    if (barterLayoutBlocked) button.title = "Barterio tinklelis neredaguojamas";
   });
 
   const clipField = $("#clipDurationField");
@@ -1754,6 +1857,7 @@ function syncCalculatorModeUI() {
 
 function setCalculatorMode(mode) {
   if (mode !== "screens" && mode !== "viaducts") return;
+  if (barterLayoutBlocked) return;
   if (publicCampaignState.active) return;
   if (state.mode === mode) return;
 
@@ -1795,9 +1899,10 @@ function setViaductFrequency(frequency) {
   renderScreens();
 }
 
-function applyPreset(preset, { phase } = {}) {
+function applyPreset(preset, { phase, force } = {}) {
   if (publicCampaignState.locked) return;
   if (isViaductMode()) return;
+  if (barterLayoutBlocked && !force) return;
   const minGrid = [
     [0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1],
     [1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0],
@@ -1848,7 +1953,7 @@ function applyPreset(preset, { phase } = {}) {
 }
 
 function toggleIntensityPhase(preset) {
-  if (publicCampaignState.locked || isViaductMode()) return;
+  if (barterLayoutBlocked || publicCampaignState.locked || isViaductMode()) return;
   if (preset !== "medi" && preset !== "min") return;
   const key = preset === "medi" ? "mediPhase" : "minPhase";
   const next = Number(state[key]) === 1 ? 0 : 1;
@@ -1892,9 +1997,18 @@ function toggleHourRow(hourIndex) {
 }
 
 function renderGrid() {
-  const locked = publicCampaignState.locked;
-  const viewsPerHour = getViewsPerHour();
   const table = $("#scheduleGrid");
+  if (!table) return;
+  if (barterLayoutBlocked && !barterGridLocked) {
+    table.hidden = true;
+    table.innerHTML = "";
+    const card = document.querySelector(".order-plan-grid-card");
+    if (card) card.hidden = true;
+    return;
+  }
+  const locked = publicCampaignState.locked || barterGridLocked;
+  const viewsPerHour = getViewsPerHour();
+  table.hidden = false;
   table.classList.toggle("viaduct-grid", isViaductMode());
   table.innerHTML = `
     <thead><tr>
@@ -2570,6 +2684,10 @@ function calculateOrderPlanScreen(order, screen, stats) {
 }
 
 function renderOrderPlan(order) {
+  if (orderIsBarter(order)) {
+    showBarterNoLayout(order);
+    return;
+  }
   const selectedScreens = orderScreens(order);
   const stats = getOrderCampaignStats(order);
   const discounts = getDiscounts(selectedScreens.length, stats.days);
@@ -3680,6 +3798,10 @@ function beginTestOrderDraft({ client, agency, id }) {
 /** Hub Planas → atidaro esamą test orderį be reset į Ekranai tabą. */
 async function resumeHubTestOrder(order) {
   if (!order) return;
+  if (orderIsBarter(order)) {
+    barterLayoutBlocked = true;
+    barterGridLocked = true;
+  }
   testOrderDraft.active = true;
   testOrderDraft.client = order.client || "Test";
   testOrderDraft.agency = order.agency || "—";
@@ -3687,7 +3809,19 @@ async function resumeHubTestOrder(order) {
     .replace(/^[A-Z]-/, "")
     .replace(/^T-/, "");
   applyOrderSnapshotToCalculator(order);
-  if (!showShareLinkForOrder(order)) ensureShareLinkForCurrentPlan();
+  if (barterLayoutBlocked) {
+    screens.forEach((screen) => {
+      if (!isPikselRegularCalculatorScreen(screen)) screen.selected = false;
+    });
+    if (state.mode !== "screens") state.mode = "screens";
+    syncGoShareLinkVisibility({ hide: true });
+    syncCalculatorModeUI();
+    renderCityFilters();
+    renderGrid();
+    renderScreens();
+  } else if (!showShareLinkForOrder(order)) {
+    ensureShareLinkForCurrentPlan();
+  }
   showView("calculator");
   $("#resetButton").hidden = true;
   $("#createOrderButton").hidden = false;
@@ -4194,6 +4328,10 @@ async function loadPublicCampaignFromUrl(forcedToken = "") {
   try {
     const record = await playCampaignRequest(`/api/play-campaigns/${encodeURIComponent(token)}`);
     if (record?.campaign) {
+      if (record.campaign.barter === true) {
+        showBarterNoLayout(record.campaign);
+        return true;
+      }
       const incoming = Array.isArray(record.screens) ? record.screens : [];
       if (!incoming.length) {
         const mock = loadGoMockCampaign(token);
@@ -4812,6 +4950,7 @@ function renderScreens() {
   const rows = visibleScreens().map((screen) => {
     const stats = getStatsForScreen(screen);
     const calc = calculateScreen(screen, stats);
+    const showMoney = Boolean(calc) && !barterLayoutBlocked;
     const range = getScreenDateRange(screen);
     const periodHint = range.isCustom
       ? formatScreenPeriodHint(range.from, range.to)
@@ -4847,11 +4986,11 @@ function renderScreens() {
         </td>
         <td class="${calc ? "" : "muted-value"}">${calc ? formatNumber.format(calc.impressions) : "—"}</td>
         <td class="${calc ? "" : "muted-value"}">${calc ? formatNumber.format(calc.ots) : "—"}</td>
-        <td class="${calc ? "" : "muted-value"}">${calc ? calc.clipPrice.toFixed(3) : "—"}</td>
-        <td class="${calc ? "" : "muted-value"}">${calc ? calc.cpt.toFixed(2) : "—"}</td>
-        <td class="${calc ? "" : "muted-value"}">${calc ? formatMoney.format(calc.gross) : "—"}</td>
-        <td class="${calc ? "" : "muted-value"}">${calc ? `${Math.round(calc.screenDiscount * 100)}%` : "—"}</td>
-        <td class="${calc ? "" : "muted-value"}">${calc ? formatMoney.format(calc.net) : "—"}</td>
+        <td class="${showMoney ? "" : "muted-value"}">${showMoney ? calc.clipPrice.toFixed(3) : "—"}</td>
+        <td class="${showMoney ? "" : "muted-value"}">${showMoney ? calc.cpt.toFixed(2) : "—"}</td>
+        <td class="${showMoney ? "" : "muted-value"}">${showMoney ? formatMoney.format(calc.gross) : "—"}</td>
+        <td class="${showMoney ? "" : "muted-value"}">${showMoney ? `${Math.round(calc.screenDiscount * 100)}%` : "—"}</td>
+        <td class="${showMoney ? "" : "muted-value"}">${showMoney ? formatMoney.format(calc.net) : "—"}</td>
       </tr>`;
   }).join("");
 
@@ -4894,6 +5033,7 @@ function renderScreensTotals(campaignStats) {
   const avgDiscount =
     (calcs.reduce((sum, item) => sum + item.screenDiscount, 0) / n) * 100;
   const sumNet = calcs.reduce((sum, item) => sum + item.net, 0);
+  const moneyCell = (value) => (barterLayoutBlocked ? "—" : value);
 
   foot.hidden = false;
   foot.innerHTML = `
@@ -4901,11 +5041,11 @@ function renderScreensTotals(campaignStats) {
       <td><strong>Viso</strong></td>
       <td title="Suma">${formatNumber.format(sumImpressions)}</td>
       <td title="Suma">${formatNumber.format(sumOts)}</td>
-      <td title="Vidurkis">${avgClip.toFixed(3)}</td>
-      <td title="Vidurkis">${avgCpt.toFixed(2)}</td>
-      <td title="Suma">${formatMoney.format(sumGross)}</td>
-      <td title="Vidurkis">${Math.round(avgDiscount)}%</td>
-      <td title="Suma">${formatMoney.format(sumNet)}</td>
+      <td title="Vidurkis">${moneyCell(avgClip.toFixed(3))}</td>
+      <td title="Vidurkis">${moneyCell(avgCpt.toFixed(2))}</td>
+      <td title="Suma">${moneyCell(formatMoney.format(sumGross))}</td>
+      <td title="Vidurkis">${moneyCell(`${Math.round(avgDiscount)}%`)}</td>
+      <td title="Suma">${moneyCell(formatMoney.format(sumNet))}</td>
     </tr>`;
 }
 
@@ -4984,10 +5124,22 @@ function renderSummary(campaignStats) {
   const envelopeDays = campaignStats?.days ?? getCampaignStats().days;
   const priced = planNetTotal(selected, { days: envelopeDays });
   $("#footerScreens").textContent = formatScreenCount(selected.length);
-  $("#volumeDiscount").textContent = `${Math.round(priced.discounts.volume * 100)}%`;
-  $("#periodDiscount").textContent = `${Math.round(priced.discounts.period * 100)}%`;
-  $("#grandTotal").textContent = formatMoney.format(priced.total);
-  renderPackageUpsell(envelopeDays);
+  if (barterLayoutBlocked) {
+    $("#volumeDiscount").textContent = "—";
+    $("#periodDiscount").textContent = "—";
+    $("#grandTotal").textContent = "—";
+    const upsell = $("#packageUpsell");
+    if (upsell) {
+      upsell.hidden = true;
+      upsell.innerHTML = "";
+    }
+    document.body.classList.remove("has-package-upsell");
+  } else {
+    $("#volumeDiscount").textContent = `${Math.round(priced.discounts.volume * 100)}%`;
+    $("#periodDiscount").textContent = `${Math.round(priced.discounts.period * 100)}%`;
+    $("#grandTotal").textContent = formatMoney.format(priced.total);
+    renderPackageUpsell(envelopeDays);
+  }
   const activeHours = $("#activeHoursValue");
   if (activeHours) {
     activeHours.textContent = campaignStats?.activeSlots ?? getCampaignStats().activeSlots;
@@ -5978,7 +6130,7 @@ function bindEvents() {
   let presetClickTimer = null;
   $("#presetButtons").addEventListener("click", (event) => {
     const button = event.target.closest("[data-preset]");
-    if (!button || publicCampaignState.locked) return;
+    if (!button || publicCampaignState.locked || barterLayoutBlocked) return;
     const preset = button.dataset.preset;
     if (preset === "medi" || preset === "min") {
       if (presetClickTimer) window.clearTimeout(presetClickTimer);
@@ -5998,7 +6150,7 @@ function bindEvents() {
   });
   $("#presetButtons").addEventListener("dblclick", (event) => {
     const button = event.target.closest('[data-preset="medi"], [data-preset="min"]');
-    if (!button || publicCampaignState.locked) return;
+    if (!button || publicCampaignState.locked || barterLayoutBlocked) return;
     event.preventDefault();
     if (presetClickTimer) {
       window.clearTimeout(presetClickTimer);
@@ -6008,7 +6160,7 @@ function bindEvents() {
   });
 
   $("#scheduleGrid").addEventListener("click", (event) => {
-    if (publicCampaignState.locked) return;
+    if (publicCampaignState.locked || barterLayoutBlocked) return;
 
     const dayAxis = event.target.closest("[data-toggle-day]");
     if (dayAxis) {
@@ -6163,7 +6315,10 @@ async function initializeApplication() {
       : null;
   applyHeadingActionsChrome();
   setDefaultDates();
-  if (earlyTestOrder) {
+  if (orderIsBarter(earlyTestOrder)) {
+    barterLayoutBlocked = true;
+    barterGridLocked = true;
+  } else if (earlyTestOrder) {
     applyOrderSnapshotToCalculator(earlyTestOrder);
   }
   initializeClipDurationSelect();
@@ -6171,9 +6326,9 @@ async function initializeApplication() {
   syncCalculatorModeUI();
   renderCityFilters();
   bindEvents();
-  if (earlyTestOrder) {
+  if (earlyTestOrder && !orderIsBarter(earlyTestOrder)) {
     if (!showShareLinkForOrder(earlyTestOrder)) ensureShareLinkForCurrentPlan();
-  } else if (!publicTokenAtBoot && !getLiveOrderIdFromUrl()) {
+  } else if (!earlyTestOrder && !publicTokenAtBoot && !getLiveOrderIdFromUrl()) {
     applyPreset("medi");
     state.viaductGrid = fullGrid();
     ensureAllViaductsSelected();

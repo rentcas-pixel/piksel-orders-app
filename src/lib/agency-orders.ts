@@ -17,8 +17,11 @@ import {
   PERIOD_TAB_ORDER_FIELDS,
   type OrderListPeriodTab,
 } from '@/lib/order-period-tabs';
+import { quotePlayCampaign } from '@/lib/play-campaign-quote';
 import { toCampaignOrderInput, toCampaignScreen } from '@/lib/reklamos-planas-data';
+import { loadPikselScreenCatalog } from '@/lib/screen-catalog';
 import { agencyMatchesFilter, getCanonicalAgencyLabel } from '@/lib/agency-names';
+import { mergeOrderWithPlayCampaign, type PlayPublicCampaignRecord } from '@/lib/play-public-campaigns';
 import { SupabaseService } from '@/lib/supabase-service';
 import type { Order } from '@/types';
 
@@ -325,7 +328,68 @@ export function computeCityOts(
   return result;
 }
 
-export async function loadCampaignExportData(orderId: string) {
+async function readSupabasePlayCampaign(
+  orderId: string,
+  token?: string
+): Promise<PlayPublicCampaignRecord | null> {
+  const params = new URLSearchParams();
+  if (orderId) params.set('orderId', orderId);
+  if (token) params.set('token', token);
+  if (!params.toString()) return null;
+  try {
+    const response = await fetch(`/api/play-campaigns?${params.toString()}`, {
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+    });
+    if (!response.ok) return null;
+    const record = (await response.json().catch(() => null)) as PlayPublicCampaignRecord | null;
+    if (!record?.token || !Array.isArray(record.screens)) return null;
+    return record;
+  } catch {
+    return null;
+  }
+}
+
+async function campaignExportFromPlayOrder(order: Order) {
+  const catalog = await loadPikselScreenCatalog();
+  const quoted = quotePlayCampaign(order, catalog);
+  return {
+    campaignOrder: quoted.campaignOrder,
+    screens: quoted.screens,
+    bundles: [] as CampaignBundle[],
+    fullOrder: order,
+  };
+}
+
+export async function loadCampaignExportData(
+  orderId: string,
+  fallbackOrder?: Order | null
+) {
+  const { getTestOrder, isTestOrder } = await import('@/lib/test-orders');
+  const local =
+    getTestOrder(orderId) ||
+    (fallbackOrder && isTestOrder(fallbackOrder) ? fallbackOrder : null);
+
+  if ((local && isTestOrder(local)) || String(orderId).startsWith('test-')) {
+    if (!local || !isTestOrder(local)) {
+      throw new Error('Testinis užsakymas nerastas.');
+    }
+    const record = await readSupabasePlayCampaign(
+      String(local.id || orderId),
+      local.details?.publicToken
+    );
+    const fromSupabase = Boolean(record && record.screens.length > 0);
+    const localHasPlan = (local.details?.plan?.screenRows?.length || 0) > 0;
+    const fullOrder =
+      localHasPlan || !fromSupabase
+        ? local
+        : mergeOrderWithPlayCampaign(local, record!);
+    return {
+      ...(await campaignExportFromPlayOrder(fullOrder)),
+      reportSource: fromSupabase ? ('supabase' as const) : ('test-order' as const),
+    };
+  }
+
   const fullOrder = await PocketBaseService.getOrder(orderId);
   const [screenRecords, bundles] = await Promise.all([
     PocketBaseService.getCampaignScreens(!!fullOrder.viaduct),
@@ -337,7 +401,7 @@ export async function loadCampaignExportData(orderId: string) {
   const screens = screenRecords.map((r) =>
     toCampaignScreen(r as Record<string, unknown>)
   );
-  return { campaignOrder, screens, bundles, fullOrder };
+  return { campaignOrder, screens, bundles, fullOrder, reportSource: 'pocketbase' as const };
 }
 
 export async function fetchAgencyOptions(): Promise<string[]> {

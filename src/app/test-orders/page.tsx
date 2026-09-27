@@ -50,6 +50,7 @@ export default function TestOrdersPage() {
   const [editing, setEditing] = useState<Order | null>(null);
   const [creating, setCreating] = useState(false);
   const [draftName, setDraftName] = useState('');
+  const [draftBarter, setDraftBarter] = useState(false);
   const [buyerKind, setBuyerKind] = useState<'agency' | 'client'>('agency');
   const [buyerName, setBuyerName] = useState('');
   const [searchInput, setSearchInput] = useState('');
@@ -130,6 +131,7 @@ export default function TestOrdersPage() {
 
   const resetDraft = () => {
     setDraftName('');
+    setDraftBarter(false);
     setBuyerKind('agency');
     setBuyerName('');
   };
@@ -150,7 +152,7 @@ export default function TestOrdersPage() {
   return (
     <>
       <div className="play-vertical-grid min-h-screen bg-gray-50 dark:bg-gray-900">
-        <AppShell onAddOrder={() => {}} userEmail={session.email}>
+        <AppShell onAddOrder={() => setCreating(true)} userEmail={session.email}>
           <main className="container mx-auto px-4 py-6">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -203,13 +205,26 @@ export default function TestOrdersPage() {
                 window.alert(buyerKind === 'agency' ? 'Pasirinkite agentūrą' : 'Įrašykite klientą');
                 return;
               }
-              const created = createTestOrderDraft({ client: name, agency: buyer });
+              const created = createTestOrderDraft({
+                client: name,
+                agency: buyer,
+                barter: draftBarter,
+              });
               setCreating(false);
               resetDraft();
               router.push(`/skaiciuokle/index.html?testOrderId=${encodeURIComponent(created.id)}#calculator`);
             }}
           >
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Naujas test orderis</h2>
+            <label className="mt-4 flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+              <input
+                type="checkbox"
+                checked={draftBarter}
+                onChange={(event) => setDraftBarter(event.target.checked)}
+                className="h-4 w-4"
+              />
+              Barteris
+            </label>
             <p className="mt-1 text-sm text-gray-500">
               Įrašykite pavadinimą, pasirinkite agentūrą arba klientą, tada tęskite į skaičiuoklę.
             </p>

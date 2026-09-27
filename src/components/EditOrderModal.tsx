@@ -21,10 +21,7 @@ import {
   downloadReklamosPlanasCombined,
 } from '@/lib/export-reklamos-planas';
 import { OrderAtaskaitaModal } from '@/components/OrderAtaskaitaModal';
-import {
-  toCampaignOrderInput,
-  toCampaignScreen,
-} from '@/lib/reklamos-planas-data';
+import { BarterReportModal } from '@/components/BarterReportModal';
 import Image from 'next/image';
 import { Order, Comment, Reminder, FileAttachment } from '@/types';
 import { usePlaySandboxEnabled } from '@/hooks/usePlaySandboxEnabled';
@@ -61,11 +58,17 @@ import {
 import { StatusIconButton } from '@/components/StatusIconButton';
 import { OrderClipsPanel } from '@/components/OrderClipsPanel';
 import { useOrderScreenAlerts } from '@/hooks/useOrderScreenAlerts';
+import { inheritSharedScreenPeriod } from '@/lib/campaign-shared-period';
+import { quotePlayCampaign } from '@/lib/play-campaign-quote';
+import { loadPikselScreenCatalog, type PikselCatalogScreen } from '@/lib/screen-catalog';
+import { isPikselOwnedRegularScreen } from '@/lib/barter-placement';
 import {
   deleteTestOrder,
   getTestOrder,
   hydrateTestOrderFromPlayCampaign,
   isTestOrder,
+  syncBarterTestOrder,
+  syncTestOrderPlayCampaign,
   upsertTestOrder,
   type TestOrder,
 } from '@/lib/test-orders';
@@ -190,6 +193,8 @@ export function EditOrderModal({
   >({});
   const [exportError, setExportError] = useState<string | null>(null);
   const [ataskaitaOpen, setAtaskaitaOpen] = useState(false);
+  const [barterScreenIds, setBarterScreenIds] = useState<string[]>([]);
+  const [barterReportOpen, setBarterReportOpen] = useState(false);
   const [cityOtsRows, setCityOtsRows] = useState<CityOtsRow[]>([]);
   const [otsLoading, setOtsLoading] = useState(false);
   const [customBillingPeriodsEnabled, setCustomBillingPeriodsEnabled] = useState(false);
@@ -384,6 +389,8 @@ export function EditOrderModal({
         media_received: latest.media_received,
         viaduct: latest.viaduct,
       });
+      setBarterScreenIds((latest.details?.barterScreens || []).map((screen) => screen.id));
+      setBarterReportOpen(false);
       setModalSection('details');
       setLiveState({ status: 'idle' });
       setLiveOpenNotice('');
@@ -439,7 +446,10 @@ export function EditOrderModal({
     if (openedOrderIdRef.current !== order.id) return;
 
     setFormData((prev) => {
-      const nextPrice = isSpecOrder ? prev.final_price : resolveOrderPrice(order) || 0;
+      const nextPrice =
+        isSpecOrder || order.details?.barter === true
+          ? prev.final_price
+          : resolveOrderPrice(order) || 0;
       if (
         prev.client === order.client &&
         prev.agency === order.agency &&
@@ -558,7 +568,7 @@ export function EditOrderModal({
     const loadOts = async () => {
       setOtsLoading(true);
       try {
-        const { campaignOrder, screens, bundles } = await loadCampaignExportData(order.id);
+        const { campaignOrder, screens, bundles } = await loadCampaignExportData(order.id, order);
         if (!cancelled) setCityOtsRows(computeCityOtsBreakdown(campaignOrder, screens, bundles));
       } catch {
         if (!cancelled) setCityOtsRows([]);
@@ -760,11 +770,15 @@ export function EditOrderModal({
         setAtaskaitaOpen(false);
         return;
       }
+      if (barterReportOpen) {
+        setBarterReportOpen(false);
+        return;
+      }
       onClose();
     };
     window.addEventListener('keydown', handler, true);
     return () => window.removeEventListener('keydown', handler, true);
-  }, [isOpen, onClose, ataskaitaOpen, deleteConfirmOpen]);
+  }, [isOpen, onClose, ataskaitaOpen, barterReportOpen, deleteConfirmOpen]);
 
   const handleInputChange = (field: keyof Order, value: string | number | boolean) => {
     setFormData(prev => ({
@@ -916,6 +930,81 @@ export function EditOrderModal({
     
     setLoading(true);
     try {
+      if (isLocalTest && (getTestOrder(order.id) || order).details?.barter === true) {
+        const fresh = getTestOrder(order.id) || (order as TestOrder);
+        const nextFrom = String(formData.from ?? fresh.from);
+        const nextTo = String(formData.to ?? fresh.to);
+        if (!nextFrom || !nextTo) {
+          alert('Nurodykite barterio datas.');
+          return;
+        }
+        const agreedRaw = Number(formData.final_price);
+        const agreed = Number.isFinite(agreedRaw) && agreedRaw > 0 ? agreedRaw : 0;
+        const catalog = await loadPikselScreenCatalog();
+        const allowed = new Map(
+          catalog.filter(isPikselOwnedRegularScreen).map((screen) => [screen.id, screen])
+        );
+        const selected = barterScreenIds
+          .map((id) => allowed.get(id))
+          .filter((screen): screen is PikselCatalogScreen => Boolean(screen))
+          .map((screen) => ({ id: screen.id, name: screen.name, city: screen.city }));
+        if (!selected.length) {
+          alert('Pasirinkite bent vieną Piksel ekraną.');
+          return;
+        }
+        const nextApproved =
+          typeof formData.approved === 'boolean' ? formData.approved : fresh.approved;
+        const saved = upsertTestOrder({
+          ...fresh,
+          client: String(formData.client ?? fresh.client),
+          agency: fresh.agency,
+          invoice_id: fresh.invoice_id,
+          approved: nextApproved,
+          from: nextFrom,
+          to: nextTo,
+          media_received: !!formData.media_received,
+          final_price: agreed,
+          invoice_sent: invoiceStatus.invoice_sent,
+          invoice_issued: invoiceStatus.invoice_issued,
+          screens: selected.map((screen) => screen.id),
+          viaduct: false,
+          details: {
+            ...(fresh.details || {}),
+            isTest: true,
+            barter: true,
+            barterPrice: agreed,
+            barterScreens: selected,
+            planChangedAt: new Date().toISOString(),
+            total: agreed,
+            finalPrice: agreed,
+            live: { status: 'idle' },
+            plan: {
+              screenNames: selected.map((screen) => screen.name),
+              screenRows: selected.map((screen) => ({
+                name: screen.name,
+                city: screen.city,
+                catalogId: screen.id,
+                owner: 'Piksel',
+                from: nextFrom,
+                to: nextTo,
+                net: 0,
+                gross: 0,
+                impressions: 0,
+              })),
+              total: agreed,
+            },
+          },
+        });
+        try {
+          await syncBarterTestOrder(saved);
+        } catch {
+          /* Local barter stays. No player publish. */
+        }
+        onOrderUpdated?.(getTestOrder(saved.id) || saved);
+        onClose();
+        return;
+      }
+
       if (isLocalTest) {
         const fresh = getTestOrder(order.id) || (order as TestOrder);
         const nextApproved =
@@ -925,9 +1014,37 @@ export function EditOrderModal({
         if (!nextApproved && (fresh.details?.live?.status === 'live' || liveState.status === 'live')) {
           await unpublishOrderFromPlayer(order.id);
         }
+        const previousFrom = String(fresh.from || '');
+        const previousTo = String(fresh.to || '');
         const nextFrom = String(formData.from ?? fresh.from);
         const nextTo = String(formData.to ?? fresh.to);
+        const previousPlan = fresh.details?.plan;
+        const nextScreenRows = Array.isArray(previousPlan?.screenRows)
+          ? inheritSharedScreenPeriod(
+              previousPlan.screenRows,
+              previousFrom,
+              previousTo,
+              nextFrom,
+              nextTo
+            )
+          : previousPlan?.screenRows;
         const nextIntensity = formData.intensity ?? fresh.intensity;
+        const catalog = await loadPikselScreenCatalog();
+        const quoted = quotePlayCampaign(
+          {
+            ...fresh,
+            from: nextFrom,
+            to: nextTo,
+            details: {
+              ...(fresh.details || {}),
+              plan: previousPlan
+                ? { ...previousPlan, screenRows: nextScreenRows }
+                : fresh.details?.plan,
+            },
+          },
+          catalog
+        );
+        const nextPrice = quoted.total;
         const planChangedAt = resolvePlanChangedAt(
           fresh,
           { ...fresh, from: nextFrom, to: nextTo, intensity: nextIntensity },
@@ -942,7 +1059,7 @@ export function EditOrderModal({
           from: nextFrom,
           to: nextTo,
           media_received: !!formData.media_received,
-          final_price: Number(formData.final_price ?? fresh.final_price) || 0,
+          final_price: nextPrice,
           invoice_sent: invoiceStatus.invoice_sent,
           invoice_issued: invoiceStatus.invoice_issued,
           intensity: nextIntensity,
@@ -960,14 +1077,30 @@ export function EditOrderModal({
             ...(planChangedAt ? { planChangedAt } : {}),
             isTest: true,
             discount: fresh.details?.discount ?? 80,
-            total: Number(formData.final_price ?? fresh.final_price) || 0,
-            finalPrice: Number(formData.final_price ?? fresh.final_price) || 0,
+            total: nextPrice,
+            finalPrice: quoted.finalPrice,
+            amountDiscount: quoted.amountDiscount,
+            periodDiscount: quoted.periodDiscount,
+            screenPrices: quoted.screenPrices,
             live: nextLive,
             clockOverlay:
               formData.details?.clockOverlay ?? fresh.details?.clockOverlay,
+            plan: {
+              ...(previousPlan || {}),
+              screenRows: quoted.rows,
+              days: quoted.rows.reduce((max, row) => Math.max(max, row.days || 0), 0),
+              total: nextPrice,
+              volumeDiscount: quoted.amountDiscount / 100,
+              periodDiscount: quoted.periodDiscount / 100,
+            },
           },
         });
-        onOrderUpdated?.(saved);
+        try {
+          await syncTestOrderPlayCampaign(saved);
+        } catch {
+          /* Local plan stays newer than the old server snapshot. */
+        }
+        onOrderUpdated?.(getTestOrder(saved.id) || saved);
         onClose();
         return;
       }
@@ -1043,8 +1176,13 @@ export function EditOrderModal({
         void setPlayPublicPlanLock(order.id, nextApproved);
       }
       onClose();
-    } catch {
-      console.error('Error updating order');
+    } catch (error) {
+      console.error('Error updating order', error);
+      if (isLocalTest) {
+        window.alert(
+          error instanceof Error ? error.message : 'Nepavyko išsaugoti užsakymo'
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -1382,28 +1520,14 @@ export function EditOrderModal({
     }
   };
 
-  const loadCampaignExportData = async (orderId: string) => {
-    const fullOrder = await PocketBaseService.getOrder(orderId);
-    const [screenRecords, bundles] = await Promise.all([
-      PocketBaseService.getCampaignScreens(!!fullOrder.viaduct),
-      PocketBaseService.getBundles(),
-    ]);
-    const campaignOrder = toCampaignOrderInput(
-      fullOrder as unknown as Record<string, unknown>
-    );
-    const screens = screenRecords.map((r) =>
-      toCampaignScreen(r as Record<string, unknown>)
-    );
-    return { campaignOrder, screens, bundles };
-  };
-
   const handlePartnerPlanExcelExport = async (partner: OrderExportPartner) => {
     if (!order) return;
     setExportError(null);
     setExportingPartnerId(partner.id);
     try {
       const { campaignOrder, screens, bundles } = await loadCampaignExportData(
-        order.id
+        order.id,
+        order
       );
 
       await downloadReklamosPlanas({
@@ -1428,7 +1552,8 @@ export function EditOrderModal({
     setExportingCombined(true);
     try {
       const { campaignOrder, screens, bundles } = await loadCampaignExportData(
-        order.id
+        order.id,
+        order
       );
       await downloadReklamosPlanasCombined({
         order: campaignOrder,
@@ -1557,6 +1682,11 @@ export function EditOrderModal({
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
                 {formData.client || order.client}
               </h2>
+              {order.details?.barter === true && (
+                <span className="inline-flex shrink-0 rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+                  Remimas
+                </span>
+              )}
             </div>
             <p className="text-gray-600 dark:text-gray-400">{order.agency} | {order.invoice_id}</p>
             {formData.approved && !isAgency && (
@@ -1578,6 +1708,7 @@ export function EditOrderModal({
           </div>
           
           <div className="flex items-center gap-4">
+            {order?.details?.barter !== true && (
             <button
               type="button"
               onClick={() => {
@@ -1593,6 +1724,7 @@ export function EditOrderModal({
               <CalendarDaysIcon className="h-4 w-4" />
               Planas
             </button>
+            )}
             {isOrderApproved && (
               <button
                 type="button"
@@ -1956,6 +2088,34 @@ export function EditOrderModal({
                   className={`flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white ${readOnlyFieldClass}`}
                     />
                   </div>
+                  {order.details?.barter === true && isLocalTest && !isAgency && (
+                    <div className="mt-3 space-y-3 rounded-lg border border-amber-200 bg-amber-50/70 p-4 dark:border-amber-800 dark:bg-amber-950/20">
+                      <label className="block text-sm text-gray-800 dark:text-gray-200">
+                        Sutarta suma, €
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={formData.final_price ?? 0}
+                          onChange={(event) =>
+                            handleInputChange(
+                              'final_price',
+                              event.target.value === '' ? 0 : Number(event.target.value)
+                            )
+                          }
+                          className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setBarterReportOpen(true)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-white px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-50 dark:border-amber-800 dark:bg-gray-800 dark:text-amber-200"
+                      >
+                        <ChartBarIcon className="h-4 w-4" />
+                        Barterio ataskaita
+                      </button>
+                    </div>
+                  )}
                   </div>
 
                         <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
@@ -2010,7 +2170,7 @@ export function EditOrderModal({
                         <div className="text-sm text-gray-900 dark:text-white flex items-center">
                           <span className="font-normal">Viso:</span>{' '}
                           <span className="font-semibold">{formData.final_price?.toFixed(2)}€</span>
-                          {quote && (
+                          {quote && order?.details?.barter !== true && (
                             <button
                               onClick={() => {
                                 const url = order?.viaduct ? quote.viaduct_link : quote.link;
@@ -2053,7 +2213,7 @@ export function EditOrderModal({
                     <div className="text-sm text-gray-900 dark:text-white flex items-center">
                       <span className="font-normal">Viso:</span>{' '}
                       <span className="font-semibold">{formData.final_price?.toFixed(2)}€</span>
-                      {quote && (
+                      {quote && order?.details?.barter !== true && (
                         <button
                           type="button"
                           onClick={() => {
@@ -2113,6 +2273,7 @@ export function EditOrderModal({
                   </div>
                 )}
 
+                {order?.details?.barter !== true && (
                 <div className="rounded-lg border border-dashed border-emerald-300/70 bg-gray-50 p-4 dark:border-emerald-700/60 dark:bg-gray-700/80">
                   <div className="mb-3">
                     <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
@@ -2269,6 +2430,7 @@ export function EditOrderModal({
                     </div>
                   )}
                 </div>
+                )}
 
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -2613,9 +2775,14 @@ export function EditOrderModal({
       </div>
     </div>
     <OrderAtaskaitaModal
-      isOpen={ataskaitaOpen}
+      isOpen={ataskaitaOpen && order?.details?.barter !== true}
       order={order}
       onClose={() => setAtaskaitaOpen(false)}
+    />
+    <BarterReportModal
+      isOpen={barterReportOpen && order?.details?.barter === true}
+      order={order}
+      onClose={() => setBarterReportOpen(false)}
     />
     </>
   );

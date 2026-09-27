@@ -17,8 +17,7 @@ import {
 import { resolveCampaignIntensityLabel } from '@/lib/campaign-intensity';
 import { buildReklamosPlanasFilename, buildPostCampaignSheetName } from '@/lib/reklamos-planas-data';
 import {
-  computePostCampaignDifference,
-  computePostCampaignShownViews,
+  excelPostCampaignFigures,
   POST_CAMPAIGN_EXPORT_LABEL,
 } from '@/lib/reklamos-planas-post-campaign';
 import {
@@ -642,7 +641,8 @@ function writeScreenPair(
   screen: CampaignScreen,
   pairIndex: number,
   mode: ReklamosPlanasExportMode,
-  shownViewsByScreenId?: Record<string, number>
+  shownViewsByScreenId?: Record<string, number>,
+  plannedViewsByScreenId?: Record<string, number>
 ) {
   const dataRow = DATA_START_ROW + pairIndex * 2;
   const spacerRow = dataRow + 1;
@@ -682,47 +682,52 @@ function writeScreenPair(
       styledCell(calc.days, item, { t: 'n', z: '##0' })
     );
 
+    const reportedPlan = plannedViewsByScreenId?.[screen.id];
+    const plannedSource =
+      typeof reportedPlan === 'number' && reportedPlan > 0
+        ? reportedPlan
+        : calc.views(screen);
+    const postCampaign =
+      mode === 'post-campaign'
+        ? excelPostCampaignFigures(plannedSource, shownViewsByScreenId?.[screen.id])
+        : null;
     const plannedViews = Math.round(calc.views(screen));
     writeCell(
       sheet,
       dataRow,
       COL.U,
-      styledCell(plannedViews, item, {
-        t: 'n',
-        z: '### ##0',
-      })
+      postCampaign
+        ? postCampaign.planned == null
+          ? blankCell(item)
+          : styledCell(postCampaign.planned, item, { t: 'n', z: '### ##0' })
+        : styledCell(plannedViews, item, {
+            t: 'n',
+            z: '### ##0',
+          })
     );
 
-    if (mode === 'post-campaign') {
-      const override = shownViewsByScreenId?.[screen.id];
-      const shownViews =
-        typeof override === 'number' && Number.isFinite(override)
-          ? Math.round(override)
-          : computePostCampaignShownViews(
-              plannedViews,
-              order.id,
-              screen.id,
-              order.from,
-              order.to
-            );
-      const difference = computePostCampaignDifference(plannedViews, shownViews);
+    if (postCampaign) {
       writeCell(
         sheet,
         dataRow,
         COL.V,
-        styledCell(shownViews, item, {
-          t: 'n',
-          z: '### ##0',
-        })
+        postCampaign.shown == null
+          ? blankCell(item)
+          : styledCell(postCampaign.shown, item, {
+              t: 'n',
+              z: '### ##0',
+            })
       );
       writeCell(
         sheet,
         dataRow,
         COL.W,
-        styledCell(difference, item, {
-          t: 'n',
-          z: '### ##0',
-        })
+        postCampaign.difference == null
+          ? blankCell(item)
+          : styledCell(postCampaign.difference, item, {
+              t: 'n',
+              z: '### ##0',
+            })
       );
     } else {
       const savedPrice = order.details_screen_prices?.[screen.id];
@@ -1101,7 +1106,8 @@ function writeTotals(
 
 function writePostCampaignTotals(
   sheet: XLSX.WorkSheet,
-  screenPairCount: number
+  screenPairCount: number,
+  actualsComplete: boolean
 ) {
   const firstData = DATA_START_ROW;
   const lastData = firstData + screenPairCount * 2 - 1;
@@ -1123,18 +1129,23 @@ function writePostCampaignTotals(
     f: sum(COL.U),
     z: '### ##0',
   });
-  writeCell(sheet, totalsRow, COL.V, {
-    t: 'n',
-    s: clone(footerStyle),
-    f: sum(COL.V),
-    z: '### ##0',
-  });
-  writeCell(sheet, totalsRow, COL.W, {
-    t: 'n',
-    s: clone(footerStyle),
-    z: '### ##0',
-    f: `${vAddr}-${uAddr}`,
-  });
+  if (actualsComplete) {
+    writeCell(sheet, totalsRow, COL.V, {
+      t: 'n',
+      s: clone(footerStyle),
+      f: sum(COL.V),
+      z: '### ##0',
+    });
+    writeCell(sheet, totalsRow, COL.W, {
+      t: 'n',
+      s: clone(footerStyle),
+      z: '### ##0',
+      f: `${vAddr}-${uAddr}`,
+    });
+  } else {
+    writeCell(sheet, totalsRow, COL.V, blankCell(footerStyle));
+    writeCell(sheet, totalsRow, COL.W, blankCell(footerStyle));
+  }
 
   const mergeCols = [COL.J, COL.U, COL.V, COL.W];
   for (const col of mergeCols) {
@@ -1180,7 +1191,8 @@ function buildWorksheet(
   calc: CampaignCalculator,
   order: CampaignOrderInput,
   mode: ReklamosPlanasExportMode = 'standard',
-  shownViewsByScreenId?: Record<string, number>
+  shownViewsByScreenId?: Record<string, number>,
+  plannedViewsByScreenId?: Record<string, number>
 ): XLSX.WorkSheet {
   const sheet: XLSX.WorkSheet = {};
 
@@ -1197,7 +1209,16 @@ function buildWorksheet(
   );
 
   exportScreens.forEach((screen, index) => {
-    writeScreenPair(sheet, order, calc, screen, index, mode, shownViewsByScreenId);
+    writeScreenPair(
+      sheet,
+      order,
+      calc,
+      screen,
+      index,
+      mode,
+      shownViewsByScreenId,
+      plannedViewsByScreenId
+    );
   });
 
   addScreenMerges(sheet, exportScreens.length, mode);
@@ -1216,7 +1237,14 @@ function buildWorksheet(
   }
 
   if (mode === 'post-campaign') {
-    writePostCampaignTotals(sheet, exportScreens.length);
+    const activeScreens = exportScreens.filter((screen) => !calc.isInactive(screen));
+    const actualsComplete =
+      activeScreens.length > 0 &&
+      activeScreens.every((screen) => {
+        const shown = shownViewsByScreenId?.[screen.id];
+        return typeof shown === 'number' && Number.isFinite(shown);
+      });
+    writePostCampaignTotals(sheet, exportScreens.length, actualsComplete);
   } else {
     writeTotals(sheet, order, calc, exportScreens.length);
   }
@@ -1291,6 +1319,8 @@ export interface ExportReklamosPlanasParams {
   mode?: ReklamosPlanasExportMode;
   /** Realūs parodymai (screenId → count) ataskaitos XLS override. */
   shownViewsByScreenId?: Record<string, number>;
+  /** Tie patys planuota skaičiai kaip ataskaitos modale. */
+  plannedViewsByScreenId?: Record<string, number>;
 }
 
 export function buildReklamosPlanasXlsxFilename(
@@ -1317,6 +1347,7 @@ export async function buildReklamosPlanasXlsxBuffer(
     bundles,
     mode = 'standard',
     shownViewsByScreenId,
+    plannedViewsByScreenId,
   } = params;
   const calc = createCampaignCalculator(order, screens, bundles, partnerId);
 
@@ -1324,7 +1355,13 @@ export async function buildReklamosPlanasXlsxBuffer(
     throw new Error('Viadukų užsakymų eksportas dar neįdiegtas — naudokite skaičiuoklę.');
   }
 
-  const sheet = buildWorksheet(calc, order, mode, shownViewsByScreenId);
+  const sheet = buildWorksheet(
+    calc,
+    order,
+    mode,
+    shownViewsByScreenId,
+    plannedViewsByScreenId
+  );
   const workbook = XLSX.utils.book_new();
   const sheetName =
     mode === 'post-campaign' ? buildPostCampaignSheetName(order) : SHEET_NAME;

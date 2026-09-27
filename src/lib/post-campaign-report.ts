@@ -4,10 +4,7 @@ import {
   type CampaignOrderInput,
   type CampaignScreen,
 } from '@/lib/campaign-calculator';
-import {
-  computePostCampaignDifference,
-  computePostCampaignShownViews,
-} from '@/lib/reklamos-planas-post-campaign';
+import { computePostCampaignDifference } from '@/lib/reklamos-planas-post-campaign';
 import type { CampaignPlaysSnapshot } from '@/lib/player-devices';
 
 export type PostCampaignClipReportRow = {
@@ -21,10 +18,11 @@ export type PostCampaignScreenReportRow = {
   name: string;
   city: string;
   plannedViews: number;
-  shownViews: number;
-  difference: number;
-  /** realūs parodymai iš playerio (Panorama ir kt.) */
-  source: 'live' | 'estimated';
+  /** null = grotuvas negrąžino šio ekrano. Ne planas ir ne nulis. */
+  shownViews: number | null;
+  difference: number | null;
+  /** live = užfiksuotas parodymas. missing = nėra šaltinio. */
+  source: 'live' | 'missing';
   /** Live byMedia skaidymas — UI išskleidžia kai ≥2 */
   clips?: PostCampaignClipReportRow[];
 };
@@ -208,15 +206,13 @@ export function buildPikselPostCampaignReportRows(params: {
         plannedByKey
       );
       const screenKey = normalizeScreenKey(screen.name);
-      const isLive = liveKeys.has(screenKey);
-      const liveTotal = livePlays?.screens?.[screenKey]?.total;
+      const entry = livePlays?.screens?.[screenKey];
+      const recorded =
+        entry != null && Number.isFinite(Number(entry.total));
 
-      if (isLive) {
-        const shownViews = Number(liveTotal) || 0;
-        const clips = clipsFromByMedia(
-          livePlays?.screens?.[screenKey]?.byMedia,
-          mediaLabels
-        );
+      if (recorded) {
+        const shownViews = Math.round(Number(entry.total));
+        const clips = clipsFromByMedia(entry.byMedia, mediaLabels);
         return {
           screenId: screen.id,
           name: screen.name,
@@ -229,21 +225,14 @@ export function buildPikselPostCampaignReportRows(params: {
         };
       }
 
-      const shownViews = computePostCampaignShownViews(
-        plannedViews,
-        order.id,
-        screen.id,
-        order.from,
-        order.to
-      );
       return {
         screenId: screen.id,
         name: screen.name,
         city: screen.city_display || screen.city || '',
         plannedViews,
-        shownViews,
-        difference: computePostCampaignDifference(plannedViews, shownViews),
-        source: 'estimated' as const,
+        shownViews: null,
+        difference: null,
+        source: 'missing' as const,
       };
     });
 
@@ -256,18 +245,31 @@ export function buildPikselPostCampaignReportRows(params: {
     const plannedViews = catalog
       ? resolvePlannedViews(0, catalog, plannedByKey)
       : plannedByKey.get(key) || 0;
-    const shownViews = Number(entry?.total) || 0;
+    const recorded = Number.isFinite(Number(entry?.total));
     const clips = clipsFromByMedia(entry?.byMedia, mediaLabels);
-    rows.push({
+    const base = {
       screenId: catalog?.id || `live:${key}`,
       name: catalog?.name || screenKey,
       city: catalog?.city_display || catalog?.city || '',
       plannedViews,
-      shownViews,
-      difference: computePostCampaignDifference(plannedViews, shownViews),
-      source: 'live',
       ...(clips ? { clips } : {}),
-    });
+    };
+    if (recorded) {
+      const shownViews = Math.round(Number(entry.total));
+      rows.push({
+        ...base,
+        shownViews,
+        difference: computePostCampaignDifference(plannedViews, shownViews),
+        source: 'live',
+      });
+    } else {
+      rows.push({
+        ...base,
+        shownViews: null,
+        difference: null,
+        source: 'missing',
+      });
+    }
   }
 
   return rows;
@@ -283,7 +285,7 @@ export function liveShownViewsByScreenId(
 ): Record<string, number> {
   const out: Record<string, number> = {};
   for (const row of rows) {
-    if (row.source === 'live') out[row.screenId] = row.shownViews;
+    if (row.source === 'live' && row.shownViews != null) out[row.screenId] = row.shownViews;
   }
   return out;
 }

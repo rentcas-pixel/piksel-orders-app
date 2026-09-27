@@ -2,7 +2,35 @@ import { CampaignOrderInput } from '@/lib/campaign-calculator';
 
 export const CAMPAIGN_GRID_ROW_COUNT = 17;
 export const CAMPAIGN_GRID_COL_COUNT = 7;
+export const CAMPAIGN_GRID_SIZE =
+  CAMPAIGN_GRID_COL_COUNT * CAMPAIGN_GRID_ROW_COUNT;
 export const CAMPAIGN_GRID_DAY_LABELS = ['P', 'A', 'T', 'K', 'P', 'Š', 'S'] as const;
+
+/** Skaičiuoklės / test orderio grid → flat number[119] (col-major, 1/0). */
+export function flattenCampaignGrid(
+  grid: boolean[][] | number[] | unknown
+): number[] {
+  const flat = new Array(CAMPAIGN_GRID_SIZE).fill(0);
+  if (!grid || !Array.isArray(grid)) return flat;
+
+  if (typeof grid[0] === 'number' || typeof grid[0] === 'boolean') {
+    const source = grid as Array<number | boolean>;
+    for (let i = 0; i < Math.min(CAMPAIGN_GRID_SIZE, source.length); i += 1) {
+      flat[i] = source[i] ? 1 : 0;
+    }
+    return flat;
+  }
+
+  if (!Array.isArray(grid[0])) return flat;
+  const days = grid as boolean[][];
+  for (let day = 0; day < CAMPAIGN_GRID_COL_COUNT; day += 1) {
+    const dayRow = days[day] || [];
+    for (let hour = 0; hour < CAMPAIGN_GRID_ROW_COUNT; hour += 1) {
+      flat[day * CAMPAIGN_GRID_ROW_COUNT + hour] = dayRow[hour] ? 1 : 0;
+    }
+  }
+  return flat;
+}
 
 export function getCampaignGridHourLabel(row: number): string {
   const start = 6 + row;

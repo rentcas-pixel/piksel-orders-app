@@ -13,7 +13,6 @@ function order(partial: Partial<TestOrder> & Pick<TestOrder, 'id' | 'client'>): 
     final_price: 0,
     invoice_sent: false,
     updated: '2026-09-25T12:00:00.000Z',
-    details: { isTest: true },
     ...partial,
     details: { isTest: true, ...partial.details },
   };

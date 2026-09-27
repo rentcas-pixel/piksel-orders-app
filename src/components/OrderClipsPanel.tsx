@@ -940,9 +940,10 @@ export function OrderClipsPanel({
         <div className="flex h-12 w-16 shrink-0 items-center justify-center overflow-hidden rounded bg-gray-100 dark:bg-gray-900">
           {clip.previewUrl && clip.mimeType.startsWith('video/') ? (
             <video
-              src={clip.previewUrl}
+              src={`${clip.previewUrl}#t=0.1`}
               muted
-              preload="none"
+              playsInline
+              preload="metadata"
               className="h-full w-full object-cover"
             />
           ) : clip.previewUrl && clip.mimeType.startsWith('image/') ? (
@@ -1196,7 +1197,9 @@ export function OrderClipsPanel({
                   Ekranai be tipo
                 </h4>
                 <p className="mb-2 text-xs text-gray-500">
-                  Plane nenurodyta, ar tai statinis, ar video — patikrink skaičiuoklę.
+                  {order.details?.barter
+                    ? 'Tipas imamas iš klipo failo, kai sutampa ekrano rezoliucija.'
+                    : 'Plane nenurodyta, ar tai statinis, ar video — patikrink skaičiuoklę.'}
                 </p>
                 <ul className="space-y-1.5 text-sm">
                   {unknownScreens.map((screen) => {

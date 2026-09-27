@@ -12,7 +12,6 @@ import {
   buildMediaLabelsFromClips,
   buildPikselPostCampaignReportRows,
   formatReportViews,
-  liveShownViewsByScreenId,
   type PostCampaignScreenReportRow,
 } from '@/lib/post-campaign-report';
 import { POST_CAMPAIGN_EXPORT_LABEL } from '@/lib/reklamos-planas-post-campaign';
@@ -74,7 +73,7 @@ export function OrderAtaskaitaModal({
       try {
         const [{ campaignOrder, screens, bundles, fullOrder }, playsResult, clips] =
           await Promise.all([
-            loadCampaignExportData(order.id),
+            loadCampaignExportData(order.id, order),
             fetchCampaignPlays(order.id),
             listOrderClips(order.id).catch(() => []),
           ]);
@@ -101,16 +100,18 @@ export function OrderAtaskaitaModal({
         if (!playsResult.ok) {
           setPlaysHint(
             playsResult.error ||
-              'Nepavyko gauti realių parodymų — rodomi apskaičiuoti.'
+              'Nepavyko gauti parodymų iš grotuvo. Plano skaičiai parodyti nebus.'
           );
-        } else if (liveCount > 0) {
+        } else if (liveCount === 0) {
           setPlaysHint(
-            `${liveCount} ekr. su realiais parodymais iš playerio (pvz. Panorama).`
+            'Grotuvas negrąžino parodymų šiam užsakymui. Plano skaičiai parodyti nebus.'
+          );
+        } else if (liveCount < nextRows.length) {
+          setPlaysHint(
+            `${liveCount} ekr. su parodymais iš grotuvo. Kitiems ekranams duomenų nėra.`
           );
         } else {
-          setPlaysHint(
-            'Nėra prijungtų Piksel playerių šiam užsakymui — parodymai apskaičiuoti.'
-          );
+          setPlaysHint(`${liveCount} ekr. su parodymais iš grotuvo.`);
         }
       } catch (err) {
         if (!cancelled) {
@@ -131,18 +132,20 @@ export function OrderAtaskaitaModal({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, order.id, order.to]);
+  }, [isOpen, order]);
 
   const totals = useMemo(() => {
-    return rows.reduce(
-      (acc, row) => {
-        acc.planned += row.plannedViews;
-        acc.shown += row.shownViews;
-        acc.diff += row.difference;
-        return acc;
-      },
-      { planned: 0, shown: 0, diff: 0 }
-    );
+    const shownRows = rows.filter((row) => row.shownViews != null);
+    const complete = rows.length > 0 && shownRows.length === rows.length;
+    return {
+      planned: rows.reduce((sum, row) => sum + row.plannedViews, 0),
+      shown: complete
+        ? shownRows.reduce((sum, row) => sum + (row.shownViews || 0), 0)
+        : null,
+      diff: complete
+        ? shownRows.reduce((sum, row) => sum + (row.difference || 0), 0)
+        : null,
+    };
   }, [rows]);
 
   const toggleExpanded = (screenId: string) => {
@@ -158,26 +161,22 @@ export function OrderAtaskaitaModal({
     setExporting(true);
     setError(null);
     try {
-      const [{ campaignOrder, screens, bundles, fullOrder }, playsResult] =
-        await Promise.all([
-          loadCampaignExportData(order.id),
-          fetchCampaignPlays(order.id),
-        ]);
-      const livePlays = playsResult.ok ? playsResult.data || null : null;
-      const exportRows = buildPikselPostCampaignReportRows({
-        order: {
-          ...campaignOrder,
-          details: (fullOrder as { details?: Order['details'] }).details,
-        },
-        screens,
-        bundles,
-        livePlays,
-      });
+      const { campaignOrder, screens, bundles } = await loadCampaignExportData(
+        order.id,
+        order
+      );
+      const plannedViewsByScreenId: Record<string, number> = {};
+      const shownViewsByScreenId: Record<string, number> = {};
+      for (const row of rows) {
+        if (row.plannedViews > 0) plannedViewsByScreenId[row.screenId] = row.plannedViews;
+        if (row.shownViews != null) shownViewsByScreenId[row.screenId] = row.shownViews;
+      }
       await downloadReklamosPlanasPostCampaign({
         order: campaignOrder,
         screens,
         bundles,
-        shownViewsByScreenId: liveShownViewsByScreenId(exportRows),
+        shownViewsByScreenId,
+        plannedViewsByScreenId,
       });
     } catch (err) {
       setError(
@@ -290,8 +289,8 @@ export function OrderAtaskaitaModal({
                                   Live
                                 </span>
                               ) : (
-                                <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:bg-gray-900 dark:text-gray-400">
-                                  Skaič.
+                                <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
+                                  Nėra
                                 </span>
                               )}
                             </div>
@@ -305,17 +304,20 @@ export function OrderAtaskaitaModal({
                             {formatReportViews(row.plannedViews)}
                           </td>
                           <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums font-medium text-gray-900 dark:text-white">
-                            {formatReportViews(row.shownViews)}
+                            {row.shownViews == null ? '—' : formatReportViews(row.shownViews)}
                           </td>
                           <td
                             className={`whitespace-nowrap px-3 py-2 text-right tabular-nums ${
-                              row.difference >= 0
-                                ? 'text-emerald-700 dark:text-emerald-400'
-                                : 'text-amber-700 dark:text-amber-400'
+                              row.difference == null
+                                ? 'text-gray-400'
+                                : row.difference >= 0
+                                  ? 'text-emerald-700 dark:text-emerald-400'
+                                  : 'text-amber-700 dark:text-amber-400'
                             }`}
                           >
-                            {row.difference >= 0 ? '+' : ''}
-                            {formatReportViews(row.difference)}
+                            {row.difference == null
+                              ? '—'
+                              : `${row.difference >= 0 ? '+' : ''}${formatReportViews(row.difference)}`}
                           </td>
                           <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-gray-700 dark:text-gray-200">
                             {daysLeft === null ? '—' : formatReportViews(daysLeft)}
@@ -358,17 +360,20 @@ export function OrderAtaskaitaModal({
                       {formatReportViews(totals.planned)}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2 text-right text-sm font-semibold tabular-nums text-gray-900 dark:text-white">
-                      {formatReportViews(totals.shown)}
+                      {totals.shown == null ? '—' : formatReportViews(totals.shown)}
                     </td>
                     <td
                       className={`whitespace-nowrap px-3 py-2 text-right text-sm font-semibold tabular-nums ${
-                        totals.diff >= 0
-                          ? 'text-emerald-700 dark:text-emerald-400'
-                          : 'text-amber-700 dark:text-amber-400'
+                        totals.diff == null
+                          ? 'text-gray-400'
+                          : totals.diff >= 0
+                            ? 'text-emerald-700 dark:text-emerald-400'
+                            : 'text-amber-700 dark:text-amber-400'
                       }`}
                     >
-                      {totals.diff >= 0 ? '+' : ''}
-                      {formatReportViews(totals.diff)}
+                      {totals.diff == null
+                        ? '—'
+                        : `${totals.diff >= 0 ? '+' : ''}${formatReportViews(totals.diff)}`}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2 text-right text-sm font-semibold tabular-nums text-gray-700 dark:text-gray-200">
                       {daysLeft === null ? '—' : formatReportViews(daysLeft)}

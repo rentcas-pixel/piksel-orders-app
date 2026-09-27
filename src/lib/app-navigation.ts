@@ -91,6 +91,15 @@ export interface AppBreadcrumbSegment {
   label: string;
 }
 
+export function appTabHref(tab: AppTab): string {
+  return tab === 'orders' ? '/' : `/?tab=${tab}`;
+}
+
+export function parseAppTab(value: string | null | undefined): AppTab | null {
+  if (!value) return null;
+  return APP_TABS.includes(value as AppTab) ? (value as AppTab) : null;
+}
+
 export function getAppBreadcrumb(
   activeTab: AppTab,
   options?: {

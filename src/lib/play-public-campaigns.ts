@@ -80,9 +80,10 @@ export function orderPatchFromPlayCampaign(
   const screenRows = asScreenRows(screens);
   const screenPrices: Record<string, number> = {};
   for (const row of screenRows) {
-    if (row.catalogId) screenPrices[row.catalogId] = row.clipPrice;
+    if (row.catalogId && row.net > 0) screenPrices[row.catalogId] = row.net;
   }
   const total = Number(campaign.final_price) || 0;
+  const netSum = screenRows.reduce((sum, row) => sum + (row.net > 0 ? row.net : 0), 0);
   const clipDuration = Number(campaign.clip_duration_seconds) || 10;
   const viaduct =
     campaign.viaduct === true ||
@@ -109,7 +110,7 @@ export function orderPatchFromPlayCampaign(
         return { id: String(period.id || ''), from: String(period.from || ''), to: String(period.to || '') };
       }) : [],
       total,
-      finalPrice: total,
+      finalPrice: netSum > 0 ? netSum : total,
       amountDiscount: Number(campaign.volume_discount) || 0,
       periodDiscount: Number(campaign.period_discount) || 0,
       screenPrices,
@@ -129,10 +130,211 @@ export function orderPatchFromPlayCampaign(
   };
 }
 
+function timestampMs(value: unknown): number {
+  const parsed = Date.parse(String(value || ''));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * Test-order plan time. planChangedAt is the plan save; updated is the fallback.
+ * Non-test orders never win here, so the paid campaign path stays server-first.
+ */
+export function localTestPlanIsNewer(
+  order: Pick<Order, 'id' | 'updated' | 'details'>,
+  record: Pick<PlayPublicCampaignRecord, 'updatedAt'>
+): boolean {
+  const test =
+    order.details?.isTest === true || isPlayTestOrderId(String(order.id || ''));
+  if (!test) return false;
+  const planChanged = timestampMs(order.details?.planChangedAt);
+  const local = planChanged || timestampMs(order.updated);
+  const server = timestampMs(record.updatedAt);
+  return local > server;
+}
+
+type PlanScreenRow = NonNullable<
+  NonNullable<Order['details']>['plan']
+>['screenRows'] extends Array<infer Row> | undefined
+  ? Row
+  : never;
+
+/** Campaign snapshot fields a test-order date/price save must write to Supabase. */
+export function playCampaignSnapshotFromTestOrder(
+  order: Pick<
+    Order,
+    | 'client'
+    | 'agency'
+    | 'from'
+    | 'to'
+    | 'final_price'
+    | 'intensity'
+    | 'viaduct'
+    | 'grid'
+    | 'clip_duration'
+    | 'viaduct_frequency'
+    | 'details'
+  >,
+  existing?: Pick<PlayPublicCampaignRecord, 'campaign' | 'screens'> | null
+): { campaign: Record<string, unknown>; screens: Array<Record<string, unknown>> } {
+  const rows = (order.details?.plan?.screenRows || []) as PlanScreenRow[];
+  const previousScreens = Array.isArray(existing?.screens)
+    ? existing.screens.map(asRecord)
+    : [];
+  const screens = rows.length
+    ? rows.map((row) => {
+        const catalogId = String(row.catalogId || '').trim();
+        const previous = previousScreens.find((screen) => {
+          const id = String(screen.screen_id || screen.catalogId || '').trim();
+          return Boolean(catalogId) && id === catalogId;
+        });
+        const snapshot = asRecord(previous?.calculation_snapshot);
+        return {
+          ...(previous || {}),
+          screen_id: catalogId || previous?.screen_id,
+          from: row.from || order.from,
+          to: row.to || order.to,
+          name: row.name,
+          city: row.city,
+          impressions: row.impressions ?? previous?.impressions,
+          ots_total: row.ots ?? previous?.ots_total,
+          clip_price: row.clipPrice ?? previous?.clip_price,
+          cpt: row.cpt ?? previous?.cpt,
+          gross_price: row.gross ?? previous?.gross_price,
+          net_price: row.net ?? previous?.net_price,
+          calculation_snapshot: {
+            ...snapshot,
+            name: row.name || snapshot.name,
+            city: row.city || snapshot.city,
+            type: row.type || snapshot.type,
+            resolution: row.resolution || snapshot.resolution,
+          },
+        };
+      })
+    : previousScreens;
+
+  const previousCampaign = asRecord(existing?.campaign);
+  return {
+    campaign: {
+      ...previousCampaign,
+      name: order.client || previousCampaign.name,
+      client_name: order.client || previousCampaign.client_name,
+      agency_name: order.agency || previousCampaign.agency_name,
+      date_from: order.from,
+      date_to: order.to,
+      final_price: order.final_price,
+      intensity: order.intensity || order.details?.plan?.intensity || previousCampaign.intensity,
+      grid: order.details?.plan?.grid || order.grid || previousCampaign.grid,
+      clip_duration_seconds:
+        order.details?.plan?.clip_duration ??
+        order.clip_duration ??
+        previousCampaign.clip_duration_seconds,
+      volume_discount: order.details?.amountDiscount ?? previousCampaign.volume_discount,
+      period_discount: order.details?.periodDiscount ?? previousCampaign.period_discount,
+      viaduct: order.viaduct,
+      viaduct_frequency:
+        order.viaduct_frequency ??
+        order.details?.plan?.viaductFrequency ??
+        previousCampaign.viaduct_frequency,
+      planChangedAt: order.details?.planChangedAt || previousCampaign.planChangedAt,
+    },
+    screens,
+  };
+}
+
+/** Barter snapshot: dates, agreed price, screens. No hour grid. */
+export function playCampaignBarterSnapshot(
+  order: Pick<Order, 'client' | 'agency' | 'from' | 'to' | 'final_price' | 'details'>
+): { campaign: Record<string, unknown>; screens: Array<Record<string, unknown>> } {
+  const agreedRaw = Number(order.details?.barterPrice ?? order.final_price);
+  const agreed = Number.isFinite(agreedRaw) && agreedRaw > 0 ? agreedRaw : 0;
+  const screens = order.details?.barterScreens || [];
+  return {
+    campaign: {
+      barter: true,
+      name: order.client,
+      client_name: order.client,
+      agency_name: order.agency,
+      date_from: order.from,
+      date_to: order.to,
+      final_price: agreed,
+      planChangedAt: order.details?.planChangedAt,
+    },
+    screens: screens.map((screen) => ({
+      screen_id: screen.id,
+      name: screen.name,
+      city: screen.city || '',
+      from: order.from,
+      to: order.to,
+      net_price: 0,
+      gross_price: 0,
+      impressions: 0,
+      calculation_snapshot: {
+        name: screen.name,
+        city: screen.city || '',
+      },
+    })),
+  };
+}
+
 export function mergeOrderWithPlayCampaign(
   order: Order,
   record: PlayPublicCampaignRecord
 ): Order {
+  if (localTestPlanIsNewer(order, record)) {
+    return {
+      ...order,
+      details: {
+        ...(order.details || {}),
+        isTest: order.details?.isTest === true || record.kind === 'test',
+        publicToken: record.token || order.details?.publicToken,
+        live: order.details?.live,
+        clockOverlay: order.details?.clockOverlay,
+        mediaCoverage: order.details?.mediaCoverage,
+      },
+    };
+  }
+  const campaign = asRecord(record.campaign);
+  if (campaign.barter === true) {
+    const agreedRaw = Number(campaign.final_price);
+    const price = Number.isFinite(agreedRaw) && agreedRaw > 0 ? agreedRaw : 0;
+    const withoutGrid: Order = { ...order, final_price: price };
+    delete withoutGrid.grid;
+    return {
+      ...withoutGrid,
+      from: String(campaign.date_from || order.from || '').slice(0, 10),
+      to: String(campaign.date_to || order.to || '').slice(0, 10),
+      final_price: price,
+      approved: record.locked ? true : order.approved,
+      details: {
+        ...(order.details || {}),
+        barter: true,
+        barterPrice: price,
+        total: price,
+        finalPrice: price,
+        isTest: order.details?.isTest === true || record.kind === 'test',
+        publicToken: record.token,
+        live: order.details?.live,
+        clockOverlay: order.details?.clockOverlay,
+        mediaCoverage: order.details?.mediaCoverage,
+        plan: {
+          clip_duration: order.details?.plan?.clip_duration,
+          intensity: order.details?.plan?.intensity,
+          screenNames: (order.details?.barterScreens || []).map((screen) => screen.name),
+          screenRows: (order.details?.barterScreens || []).map((screen) => ({
+            name: screen.name,
+            city: screen.city,
+            catalogId: screen.id,
+            owner: 'Piksel',
+            from: String(campaign.date_from || order.from || '').slice(0, 10),
+            to: String(campaign.date_to || order.to || '').slice(0, 10),
+            net: 0,
+          })),
+          total: price,
+        },
+      },
+      updated: record.updatedAt || new Date().toISOString(),
+    };
+  }
   const patch = orderPatchFromPlayCampaign(record);
   return {
     ...order,

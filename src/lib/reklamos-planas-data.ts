@@ -90,14 +90,22 @@ function formatExportDate(date = new Date()): string {
 
 const EXCEL_SHEET_NAME_MAX_LENGTH = 31;
 
-/** Ataskaita lapo pavadinimas: Ataskaita_orderNo_data_klientas */
+function excelSheetName(value: string): string {
+  const cleaned = value.replace(/[:\\/?*[\]]/g, '_').replace(/^'+|'+$/g, '');
+  const clipped = cleaned.slice(0, EXCEL_SHEET_NAME_MAX_LENGTH).replace(/_+$/g, '');
+  return clipped || 'Ataskaita';
+}
+
+/** Ataskaita lapo pavadinimas. Ilgas orderio numeris nebeišeina už 31 simbolio. */
 export function buildPostCampaignSheetName(order: CampaignOrderInput): string {
-  const orderNo = String(order.invoice_id);
+  const orderNo = String(order.invoice_id || 'order').replace(/[:\\/?*[\]]/g, '');
   const date = formatExportDate();
   const client = sanitizeFilenamePart(order.client).replace(/\s+/g, '_');
-  const prefix = `Ataskaita_${orderNo}_${date}_`;
-  const clientMax = Math.max(1, EXCEL_SHEET_NAME_MAX_LENGTH - prefix.length);
-  return `${prefix}${client.slice(0, clientMax)}`;
+  const labeled = `Ataskaita_${orderNo}_${date}`;
+  const head = labeled.length <= EXCEL_SHEET_NAME_MAX_LENGTH ? labeled : `${orderNo}_${date}`;
+  const room = EXCEL_SHEET_NAME_MAX_LENGTH - head.length - 1;
+  if (room >= 1 && client) return excelSheetName(`${head}_${client.slice(0, room)}`);
+  return excelSheetName(head);
 }
 
 export function buildReklamosPlanasFilename(
