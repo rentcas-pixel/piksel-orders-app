@@ -341,7 +341,7 @@ export function DeviceSchedulingView({
   };
 
   const monthCols = `14rem repeat(${daysInMonth}, minmax(1.75rem, 1fr))`;
-  const dayCols = `14rem repeat(${SCHEDULE_HOURS.length}, minmax(1.75rem, 1fr))`;
+  const dayCols = `14rem repeat(${SCHEDULE_HOURS.length}, max(1.75rem, calc((100% - 14rem) / ${daysInMonth})))`;
 
   return (
     <div className="space-y-3">
@@ -637,9 +637,9 @@ export function DeviceSchedulingView({
           </div>
 
           <div className="overflow-x-auto">
-            <div className="min-w-[48rem]">
+            <div className="w-full min-w-[48rem]">
               <div
-                className="sticky top-0 z-[5] grid border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/50"
+                className="sticky top-0 z-[5] grid w-full border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/50"
                 style={{ gridTemplateColumns: dayCols }}
               >
                 <div className="sticky left-0 z-[6] border-r border-gray-200 bg-gray-50 px-3 py-2 text-xs font-medium uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:bg-gray-900/50">
@@ -664,7 +664,7 @@ export function DeviceSchedulingView({
                   <div
                     key={campaign.id}
                     data-campaign-id={campaign.id}
-                    className={`grid border-b border-gray-100 hover:bg-gray-50 dark:border-gray-700/80 dark:hover:bg-gray-700/40 ${
+                    className={`grid w-full border-b border-gray-100 hover:bg-gray-50 dark:border-gray-700/80 dark:hover:bg-gray-700/40 ${
                       dragKey === campaign.id ? 'opacity-45' : ''
                     } ${
                       overId === campaign.id && dragKey && overId !== dragKey
@@ -749,7 +749,7 @@ export function DeviceSchedulingView({
 
               {dayCampaigns.length > 0 && (
                 <div
-                  className="grid border-t border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/50"
+                  className="grid w-full border-t border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/50"
                   style={{ gridTemplateColumns: dayCols }}
                 >
                   <div className="sticky left-0 z-[6] border-r border-gray-200 bg-gray-50 px-3 py-2 text-xs font-medium text-gray-500 dark:border-gray-700 dark:bg-gray-900/50">
