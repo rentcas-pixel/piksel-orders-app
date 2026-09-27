@@ -519,11 +519,9 @@ export async function embedLogoInXlsx(
 
   const relsPath = 'xl/worksheets/_rels/sheet1.xml.rels';
   const relsFile = zip.file(relsPath);
-  if (!relsFile) {
-    throw new Error('Excel lapo reliacijos nerastos');
-  }
-
-  let relsXml = await relsFile.async('string');
+  let relsXml = relsFile
+    ? await relsFile.async('string')
+    : '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>';
   const drawingRelId = nextRelationshipId(relsXml);
   relsXml = relsXml.replace(
     '</Relationships>',
