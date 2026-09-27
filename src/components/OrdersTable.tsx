@@ -973,6 +973,11 @@ export function OrdersTable({
                     <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">
                       <div className="flex items-center gap-2">
                         {order.client}
+                        {order.details?.barter === true && (
+                          <span className="inline-flex shrink-0 rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+                            Remimas
+                          </span>
+                        )}
                         {hasNonContinuousBilling(order) && <BillingGapsIndicator />}
                         {order.is_spec_order && <OrderSpecIndicator />}
                         {hasOrderCommentOrScreenshot(order.id) && (

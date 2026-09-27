@@ -1682,6 +1682,11 @@ export function EditOrderModal({
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
                 {formData.client || order.client}
               </h2>
+              {order.details?.barter === true && (
+                <span className="inline-flex shrink-0 rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+                  Remimas
+                </span>
+              )}
             </div>
             <p className="text-gray-600 dark:text-gray-400">{order.agency} | {order.invoice_id}</p>
             {formData.approved && !isAgency && (
