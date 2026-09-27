@@ -279,6 +279,24 @@ export function formatReportViews(value: number): string {
   return new Intl.NumberFormat('lt-LT').format(value);
 }
 
+/**
+ * VISO parodymai: suma tik tų ekranų, kuriems grotuvas grąžino skaičių.
+ * Ekranas be duomenų lieka null ir į sumą neįeina (nei 0, nei planas).
+ * Jei nė vieno skaičiaus nėra — null, ne 0.
+ */
+export function sumRecordedReportViews(
+  rows: Array<Pick<PostCampaignScreenReportRow, 'shownViews'>>
+): number | null {
+  let total = 0;
+  let any = false;
+  for (const row of rows) {
+    if (row.shownViews == null) continue;
+    any = true;
+    total += row.shownViews;
+  }
+  return any ? total : null;
+}
+
 /** screenId → realūs parodymai (XLS override). */
 export function liveShownViewsByScreenId(
   rows: PostCampaignScreenReportRow[]

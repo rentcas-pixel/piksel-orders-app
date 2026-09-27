@@ -368,7 +368,6 @@ export function EditOrderModal({
         }
       }
       if (cancelled) return;
-      if (latest !== order) onOrderUpdated?.(latest);
       const hasSpecPrice = specPrice != null && specPrice > 0;
       setIsSpecOrder(hasSpecPrice);
       setSpecOrderPanelOpen(hasSpecPrice);
