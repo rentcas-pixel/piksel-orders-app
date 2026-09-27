@@ -5,6 +5,7 @@ import {
   barterFitsHour,
   barterHourDecision,
   barterOrdersOnScreen,
+  barterRowsBesideCampaigns,
   earlierBartersOnHour,
   isPikselOwnedRegularScreen,
 } from '@/lib/barter-placement';
@@ -69,6 +70,17 @@ describe('barter under-6 rule', () => {
     expect(BARTER_HOURS).not.toContain(23);
     expect(barterDayFits((hour) => hour === 23)).toBe(false);
     expect(barterDayFits((hour) => hour === 22)).toBe(true);
+  });
+
+  it('does not draw a second barter row for an order already on the schedule', () => {
+    const rows = barterRowsBesideCampaigns(
+      [
+        { id: 'test-1790528875210', name: 'Remimas-Zalgiris' },
+        { id: 'test-other', name: 'Kitas' },
+      ],
+      new Set(['test-1790528875210'])
+    );
+    expect(rows.map((row) => row.id)).toEqual(['test-other']);
   });
 
   it('keeps partner screens and viaducts out of the picker', () => {

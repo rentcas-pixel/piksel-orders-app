@@ -77,6 +77,14 @@ export function barterOrdersOnScreen(
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 
+/** Tas pats orderis jau yra kampanijos eilutė — antros Barteris eilutės nepiešiam. */
+export function barterRowsBesideCampaigns<T extends { id: string }>(
+  orders: T[],
+  campaignIds: ReadonlySet<string>
+): T[] {
+  return orders.filter((order) => !campaignIds.has(order.id));
+}
+
 export function barterCoversDate(
   order: { from?: string; to?: string },
   dateIso: string

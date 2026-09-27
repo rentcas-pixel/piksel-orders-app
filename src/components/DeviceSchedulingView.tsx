@@ -51,6 +51,7 @@ import {
   barterDayFits,
   barterFitsHour,
   barterOrdersOnScreen,
+  barterRowsBesideCampaigns,
   earlierBartersOnHour,
   type BarterPlacementOrder,
 } from '@/lib/barter-placement';
@@ -282,20 +283,22 @@ export function DeviceSchedulingView({
   );
   const visibleBarterMonth = useMemo(() => {
     const q = search.trim().toLocaleLowerCase('lt-LT');
-    return barterOnThisScreen.filter((order) => {
+    const campaignIds = new Set(monthCampaigns.map((campaign) => campaign.id));
+    return barterRowsBesideCampaigns(barterOnThisScreen, campaignIds).filter((order) => {
       const title = barterTitle(order.id);
       if (q && !title.toLocaleLowerCase('lt-LT').includes(q)) return false;
       return campaignOverlapsMonth({ id: order.id, from: order.from, to: order.to }, year, month);
     });
-  }, [barterOnThisScreen, barterTitle, search, year, month]);
+  }, [barterOnThisScreen, barterTitle, search, year, month, monthCampaigns]);
   const visibleBarterDay = useMemo(() => {
     const q = search.trim().toLocaleLowerCase('lt-LT');
-    return barterOnThisScreen.filter((order) => {
+    const campaignIds = new Set(dayCampaigns.map((campaign) => campaign.id));
+    return barterRowsBesideCampaigns(barterOnThisScreen, campaignIds).filter((order) => {
       const title = barterTitle(order.id);
       if (q && !title.toLocaleLowerCase('lt-LT').includes(q)) return false;
       return campaignInDateRange({ id: order.id, from: order.from, to: order.to }, dayIso);
     });
-  }, [barterOnThisScreen, barterTitle, search, dayIso]);
+  }, [barterOnThisScreen, barterTitle, search, dayIso, dayCampaigns]);
   const dayHours = SCHEDULE_HOURS;
 
   const toggleDayCell = (campaign: PlayerCampaign, dateIso: string) => {
