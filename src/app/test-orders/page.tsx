@@ -11,18 +11,14 @@ import { useAppSession } from '@/hooks/useAppSession';
 import { useDebounce, useDebouncedSearchQuery } from '@/hooks/useDebounce';
 import { CANONICAL_AGENCY_OPTIONS, sortAgenciesByOrderFrequency } from '@/lib/agency-names';
 import type { OrdersListFilters } from '@/lib/orders-filters';
-import { isPikselOwnedRegularScreen } from '@/lib/barter-placement';
 import { modalBtnPrimary, modalBtnSecondary } from '@/lib/portal-ui';
-import { loadPikselScreenCatalog, type PikselCatalogScreen } from '@/lib/screen-catalog';
 import {
-  createBarterTestOrder,
   createTestOrderDraft,
   ensureDemoTestOrders,
   getTestOrder,
   getTestOrderActivityMap,
   listTestOrders,
   subscribeTestOrders,
-  syncBarterTestOrder,
   upsertTestOrder,
   type TestOrder,
 } from '@/lib/test-orders';
@@ -55,11 +51,6 @@ export default function TestOrdersPage() {
   const [creating, setCreating] = useState(false);
   const [draftName, setDraftName] = useState('');
   const [draftBarter, setDraftBarter] = useState(false);
-  const [barterFrom, setBarterFrom] = useState('');
-  const [barterTo, setBarterTo] = useState('');
-  const [barterPrice, setBarterPrice] = useState(0);
-  const [barterScreenIds, setBarterScreenIds] = useState<string[]>([]);
-  const [pikselScreens, setPikselScreens] = useState<PikselCatalogScreen[]>([]);
   const [buyerKind, setBuyerKind] = useState<'agency' | 'client'>('agency');
   const [buyerName, setBuyerName] = useState('');
   const [searchInput, setSearchInput] = useState('');
@@ -141,28 +132,9 @@ export default function TestOrdersPage() {
   const resetDraft = () => {
     setDraftName('');
     setDraftBarter(false);
-    setBarterFrom('');
-    setBarterTo('');
-    setBarterPrice(0);
-    setBarterScreenIds([]);
     setBuyerKind('agency');
     setBuyerName('');
   };
-
-  useEffect(() => {
-    if (!creating || !draftBarter || pikselScreens.length > 0) return;
-    let cancelled = false;
-    void loadPikselScreenCatalog()
-      .then((rows) => {
-        if (!cancelled) setPikselScreens(rows.filter(isPikselOwnedRegularScreen));
-      })
-      .catch(() => {
-        if (!cancelled) setPikselScreens([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [creating, draftBarter, pikselScreens.length]);
 
   if (sessionLoading) {
     return (
@@ -233,34 +205,11 @@ export default function TestOrdersPage() {
                 window.alert(buyerKind === 'agency' ? 'Pasirinkite agentūrą' : 'Įrašykite klientą');
                 return;
               }
-              if (draftBarter) {
-                if (!barterFrom || !barterTo) {
-                  window.alert('Nurodykite barterio datas.');
-                  return;
-                }
-                const selected = pikselScreens
-                  .filter((screen) => barterScreenIds.includes(screen.id))
-                  .map((screen) => ({ id: screen.id, name: screen.name, city: screen.city }));
-                if (!selected.length) {
-                  window.alert('Pasirinkite bent vieną Piksel ekraną.');
-                  return;
-                }
-                const agreed = Number(barterPrice);
-                const created = createBarterTestOrder({
-                  client: name,
-                  agency: buyer,
-                  from: barterFrom,
-                  to: barterTo,
-                  price: Number.isFinite(agreed) && agreed > 0 ? agreed : 0,
-                  screens: selected,
-                });
-                void syncBarterTestOrder(created).catch(() => {});
-                setCreating(false);
-                resetDraft();
-                reload();
-                return;
-              }
-              const created = createTestOrderDraft({ client: name, agency: buyer });
+              const created = createTestOrderDraft({
+                client: name,
+                agency: buyer,
+                barter: draftBarter,
+              });
               setCreating(false);
               resetDraft();
               router.push(`/skaiciuokle/index.html?testOrderId=${encodeURIComponent(created.id)}#calculator`);
@@ -271,95 +220,15 @@ export default function TestOrdersPage() {
               <input
                 type="checkbox"
                 checked={draftBarter}
-                onChange={(event) => {
-                  const next = event.target.checked;
-                  setDraftBarter(next);
-                  if (next && !barterFrom) {
-                    const start = new Date();
-                    const end = new Date(start);
-                    end.setDate(end.getDate() + 6);
-                    const iso = (date: Date) => {
-                      const month = String(date.getMonth() + 1).padStart(2, '0');
-                      const day = String(date.getDate()).padStart(2, '0');
-                      return `${date.getFullYear()}-${month}-${day}`;
-                    };
-                    setBarterFrom(iso(start));
-                    setBarterTo(iso(end));
-                  }
-                }}
+                onChange={(event) => setDraftBarter(event.target.checked)}
                 className="h-4 w-4"
               />
               Barteris
             </label>
-            {!draftBarter && (
             <p className="mt-1 text-sm text-gray-500">
               Įrašykite pavadinimą, pasirinkite agentūrą arba klientą, tada tęskite į skaičiuoklę.
             </p>
-            )}
             <div className="mt-4 space-y-3">
-              {draftBarter && (
-                <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/70 p-3 dark:border-amber-800 dark:bg-amber-950/20">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={barterFrom}
-                      onChange={(event) => setBarterFrom(event.target.value)}
-                      placeholder="yyyy-mm-dd"
-                      aria-label="Barterio data nuo"
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700"
-                    />
-                    <span className="text-gray-500">→</span>
-                    <input
-                      type="text"
-                      value={barterTo}
-                      onChange={(event) => setBarterTo(event.target.value)}
-                      placeholder="yyyy-mm-dd"
-                      aria-label="Barterio data iki"
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700"
-                    />
-                  </div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    Sutarta suma, €
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={barterPrice}
-                      onChange={(event) =>
-                        setBarterPrice(event.target.value === '' ? 0 : Number(event.target.value))
-                      }
-                      className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700"
-                    />
-                  </label>
-                  <p className="text-xs text-gray-600 dark:text-gray-300">
-                    Tik Piksel ekranai. Valandų išdėstymas nesiunčiamas.
-                  </p>
-                  <div className="max-h-40 space-y-1 overflow-y-auto">
-                    {pikselScreens.map((screen) => (
-                      <label
-                        key={screen.id}
-                        className="flex items-center gap-2 text-sm text-gray-800 dark:text-gray-200"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={barterScreenIds.includes(screen.id)}
-                          onChange={() =>
-                            setBarterScreenIds((prev) =>
-                              prev.includes(screen.id)
-                                ? prev.filter((id) => id !== screen.id)
-                                : [...prev, screen.id]
-                            )
-                          }
-                        />
-                        <span>
-                          {screen.name}
-                          {screen.city ? ` · ${screen.city}` : ''}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )}
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Pavadinimas
                 <input
@@ -435,7 +304,7 @@ export default function TestOrdersPage() {
                 Atšaukti
               </button>
               <button type="submit" className={modalBtnPrimary}>
-                {draftBarter ? 'Išsaugoti' : 'Išsaugoti ir tęsti'}
+                Išsaugoti ir tęsti
               </button>
             </div>
           </form>

@@ -604,6 +604,10 @@ function shareTokenFromOrder(order) {
 }
 
 function showShareLinkForOrder(order) {
+  if (barterLayoutBlocked || orderIsBarter(order)) {
+    syncGoShareLinkVisibility({ hide: true });
+    return "";
+  }
   const token = shareTokenFromOrder(order);
   if (!token) {
     syncGoShareLinkVisibility({ hide: isClientShareView() });
@@ -618,6 +622,7 @@ function showShareLinkForOrder(order) {
 }
 
 let barterLayoutBlocked = false;
+let barterGridLocked = false;
 
 function orderIsBarter(order) {
   return Boolean(order && (order.barter === true || (order.details && order.details.barter === true)));
@@ -1089,7 +1094,7 @@ function applyOrderSnapshotToCalculator(order) {
     }
   } else if (!isViaduct && (plan.intensity || order.intensity)) {
     state.preset = presetFromIntensity(plan.intensity || order.intensity);
-    if (state.preset !== "custom") applyPreset(state.preset);
+    if (state.preset !== "custom") applyPreset(state.preset, { force: barterLayoutBlocked });
   } else if (isViaduct) {
     state.viaductGrid = fullGrid();
     state.grid = cloneGrid(state.viaductGrid);
@@ -1414,6 +1419,46 @@ function upsertHubTestOrderFromPlan(plan, meta) {
       },
     },
   };
+  if (existingDetails.barter === true || barterLayoutBlocked) {
+    const barterScreens = screens
+      .filter((screen) => isPikselRegularCalculatorScreen(screen))
+      .map((screen) => ({
+        id: String(screen.catalogId || screen.id || ""),
+        name: screen.name,
+        city: screen.city,
+      }))
+      .filter((screen) => screen.id && screen.name);
+    const agreedRaw = Number(existingDetails.barterPrice);
+    const agreed = Number.isFinite(agreedRaw) && agreedRaw > 0 ? agreedRaw : 0;
+    delete order.grid;
+    order.viaduct = false;
+    order.final_price = agreed;
+    order.screens = barterScreens.map((screen) => screen.id);
+    order.details.barter = true;
+    order.details.barterPrice = agreed;
+    order.details.barterScreens = barterScreens;
+    order.details.total = agreed;
+    order.details.finalPrice = agreed;
+    order.details.screenPrices = {};
+    order.details.plan = {
+      clip_duration: clipDuration,
+      intensity: plan.intensity || existing.intensity || "Medi",
+      viaduct: false,
+      viaductFrequency: 1,
+      days: plan.days,
+      screenNames: barterScreens.map((screen) => screen.name),
+      screenRows: barterScreens.map((screen) => ({
+        name: screen.name,
+        city: screen.city,
+        catalogId: screen.id,
+        owner: "Piksel",
+        net: 0,
+        gross: 0,
+        impressions: 0,
+      })),
+      total: agreed,
+    };
+  }
   const others = readHubTestOrders().filter((item) => String(item.id) !== String(orderId));
   writeHubTestOrders([order, ...others]);
   notifyHubTestOrdersChanged(orderId);
@@ -1570,8 +1615,15 @@ function getClipDurationSeconds() {
   return Number($("#clipDuration")?.value) || 10;
 }
 
+function isPikselRegularCalculatorScreen(screen) {
+  const owner = String(screen?.owner || "").trim().toLocaleLowerCase("lt-LT");
+  return owner === "piksel" && screen?.viaduct !== true;
+}
+
 function modeScreens() {
-  return screens.filter((screen) => (isViaductMode() ? screen.viaduct : !screen.viaduct));
+  const pool = screens.filter((screen) => (isViaductMode() ? screen.viaduct : !screen.viaduct));
+  if (!barterLayoutBlocked) return pool;
+  return pool.filter(isPikselRegularCalculatorScreen);
 }
 
 function selectedModeScreens() {
@@ -1764,8 +1816,15 @@ function syncCalculatorModeUI() {
     const active = button.dataset.calcMode === state.mode;
     button.classList.toggle("active", active);
     button.setAttribute("aria-selected", active ? "true" : "false");
-    button.disabled = false;
-    button.removeAttribute("aria-disabled");
+    const hideViaduct = barterLayoutBlocked && button.dataset.calcMode === "viaducts";
+    button.hidden = hideViaduct;
+    button.disabled = hideViaduct;
+    if (hideViaduct) button.setAttribute("aria-disabled", "true");
+    else button.removeAttribute("aria-disabled");
+  });
+  document.querySelectorAll("[data-preset]").forEach((button) => {
+    button.disabled = barterLayoutBlocked;
+    if (barterLayoutBlocked) button.title = "Barterio tinklelis neredaguojamas";
   });
 
   const clipField = $("#clipDurationField");
@@ -1794,6 +1853,7 @@ function syncCalculatorModeUI() {
 
 function setCalculatorMode(mode) {
   if (mode !== "screens" && mode !== "viaducts") return;
+  if (barterLayoutBlocked) return;
   if (publicCampaignState.active) return;
   if (state.mode === mode) return;
 
@@ -1835,9 +1895,10 @@ function setViaductFrequency(frequency) {
   renderScreens();
 }
 
-function applyPreset(preset, { phase } = {}) {
+function applyPreset(preset, { phase, force } = {}) {
   if (publicCampaignState.locked) return;
   if (isViaductMode()) return;
+  if (barterLayoutBlocked && !force) return;
   const minGrid = [
     [0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1],
     [1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0],
@@ -1888,7 +1949,7 @@ function applyPreset(preset, { phase } = {}) {
 }
 
 function toggleIntensityPhase(preset) {
-  if (publicCampaignState.locked || isViaductMode()) return;
+  if (barterLayoutBlocked || publicCampaignState.locked || isViaductMode()) return;
   if (preset !== "medi" && preset !== "min") return;
   const key = preset === "medi" ? "mediPhase" : "minPhase";
   const next = Number(state[key]) === 1 ? 0 : 1;
@@ -1932,19 +1993,18 @@ function toggleHourRow(hourIndex) {
 }
 
 function renderGrid() {
-  if (barterLayoutBlocked) {
-    const blocked = $("#scheduleGrid");
-    if (blocked) {
-      blocked.hidden = true;
-      blocked.innerHTML = "";
-    }
+  const table = $("#scheduleGrid");
+  if (!table) return;
+  if (barterLayoutBlocked && !barterGridLocked) {
+    table.hidden = true;
+    table.innerHTML = "";
     const card = document.querySelector(".order-plan-grid-card");
     if (card) card.hidden = true;
     return;
   }
-  const locked = publicCampaignState.locked;
+  const locked = publicCampaignState.locked || barterGridLocked;
   const viewsPerHour = getViewsPerHour();
-  const table = $("#scheduleGrid");
+  table.hidden = false;
   table.classList.toggle("viaduct-grid", isViaductMode());
   table.innerHTML = `
     <thead><tr>
@@ -3735,9 +3795,8 @@ function beginTestOrderDraft({ client, agency, id }) {
 async function resumeHubTestOrder(order) {
   if (!order) return;
   if (orderIsBarter(order)) {
-    showBarterNoLayout(order);
-    showView("calculator");
-    return;
+    barterLayoutBlocked = true;
+    barterGridLocked = true;
   }
   testOrderDraft.active = true;
   testOrderDraft.client = order.client || "Test";
@@ -3746,7 +3805,19 @@ async function resumeHubTestOrder(order) {
     .replace(/^[A-Z]-/, "")
     .replace(/^T-/, "");
   applyOrderSnapshotToCalculator(order);
-  if (!showShareLinkForOrder(order)) ensureShareLinkForCurrentPlan();
+  if (barterLayoutBlocked) {
+    screens.forEach((screen) => {
+      if (!isPikselRegularCalculatorScreen(screen)) screen.selected = false;
+    });
+    if (state.mode !== "screens") state.mode = "screens";
+    syncGoShareLinkVisibility({ hide: true });
+    syncCalculatorModeUI();
+    renderCityFilters();
+    renderGrid();
+    renderScreens();
+  } else if (!showShareLinkForOrder(order)) {
+    ensureShareLinkForCurrentPlan();
+  }
   showView("calculator");
   $("#resetButton").hidden = true;
   $("#createOrderButton").hidden = false;
@@ -4875,6 +4946,7 @@ function renderScreens() {
   const rows = visibleScreens().map((screen) => {
     const stats = getStatsForScreen(screen);
     const calc = calculateScreen(screen, stats);
+    const showMoney = Boolean(calc) && !barterLayoutBlocked;
     const range = getScreenDateRange(screen);
     const periodHint = range.isCustom
       ? formatScreenPeriodHint(range.from, range.to)
@@ -4910,11 +4982,11 @@ function renderScreens() {
         </td>
         <td class="${calc ? "" : "muted-value"}">${calc ? formatNumber.format(calc.impressions) : "—"}</td>
         <td class="${calc ? "" : "muted-value"}">${calc ? formatNumber.format(calc.ots) : "—"}</td>
-        <td class="${calc ? "" : "muted-value"}">${calc ? calc.clipPrice.toFixed(3) : "—"}</td>
-        <td class="${calc ? "" : "muted-value"}">${calc ? calc.cpt.toFixed(2) : "—"}</td>
-        <td class="${calc ? "" : "muted-value"}">${calc ? formatMoney.format(calc.gross) : "—"}</td>
-        <td class="${calc ? "" : "muted-value"}">${calc ? `${Math.round(calc.screenDiscount * 100)}%` : "—"}</td>
-        <td class="${calc ? "" : "muted-value"}">${calc ? formatMoney.format(calc.net) : "—"}</td>
+        <td class="${showMoney ? "" : "muted-value"}">${showMoney ? calc.clipPrice.toFixed(3) : "—"}</td>
+        <td class="${showMoney ? "" : "muted-value"}">${showMoney ? calc.cpt.toFixed(2) : "—"}</td>
+        <td class="${showMoney ? "" : "muted-value"}">${showMoney ? formatMoney.format(calc.gross) : "—"}</td>
+        <td class="${showMoney ? "" : "muted-value"}">${showMoney ? `${Math.round(calc.screenDiscount * 100)}%` : "—"}</td>
+        <td class="${showMoney ? "" : "muted-value"}">${showMoney ? formatMoney.format(calc.net) : "—"}</td>
       </tr>`;
   }).join("");
 
@@ -4957,6 +5029,7 @@ function renderScreensTotals(campaignStats) {
   const avgDiscount =
     (calcs.reduce((sum, item) => sum + item.screenDiscount, 0) / n) * 100;
   const sumNet = calcs.reduce((sum, item) => sum + item.net, 0);
+  const moneyCell = (value) => (barterLayoutBlocked ? "—" : value);
 
   foot.hidden = false;
   foot.innerHTML = `
@@ -4964,11 +5037,11 @@ function renderScreensTotals(campaignStats) {
       <td><strong>Viso</strong></td>
       <td title="Suma">${formatNumber.format(sumImpressions)}</td>
       <td title="Suma">${formatNumber.format(sumOts)}</td>
-      <td title="Vidurkis">${avgClip.toFixed(3)}</td>
-      <td title="Vidurkis">${avgCpt.toFixed(2)}</td>
-      <td title="Suma">${formatMoney.format(sumGross)}</td>
-      <td title="Vidurkis">${Math.round(avgDiscount)}%</td>
-      <td title="Suma">${formatMoney.format(sumNet)}</td>
+      <td title="Vidurkis">${moneyCell(avgClip.toFixed(3))}</td>
+      <td title="Vidurkis">${moneyCell(avgCpt.toFixed(2))}</td>
+      <td title="Suma">${moneyCell(formatMoney.format(sumGross))}</td>
+      <td title="Vidurkis">${moneyCell(`${Math.round(avgDiscount)}%`)}</td>
+      <td title="Suma">${moneyCell(formatMoney.format(sumNet))}</td>
     </tr>`;
 }
 
@@ -5047,10 +5120,22 @@ function renderSummary(campaignStats) {
   const envelopeDays = campaignStats?.days ?? getCampaignStats().days;
   const priced = planNetTotal(selected, { days: envelopeDays });
   $("#footerScreens").textContent = formatScreenCount(selected.length);
-  $("#volumeDiscount").textContent = `${Math.round(priced.discounts.volume * 100)}%`;
-  $("#periodDiscount").textContent = `${Math.round(priced.discounts.period * 100)}%`;
-  $("#grandTotal").textContent = formatMoney.format(priced.total);
-  renderPackageUpsell(envelopeDays);
+  if (barterLayoutBlocked) {
+    $("#volumeDiscount").textContent = "—";
+    $("#periodDiscount").textContent = "—";
+    $("#grandTotal").textContent = "—";
+    const upsell = $("#packageUpsell");
+    if (upsell) {
+      upsell.hidden = true;
+      upsell.innerHTML = "";
+    }
+    document.body.classList.remove("has-package-upsell");
+  } else {
+    $("#volumeDiscount").textContent = `${Math.round(priced.discounts.volume * 100)}%`;
+    $("#periodDiscount").textContent = `${Math.round(priced.discounts.period * 100)}%`;
+    $("#grandTotal").textContent = formatMoney.format(priced.total);
+    renderPackageUpsell(envelopeDays);
+  }
   const activeHours = $("#activeHoursValue");
   if (activeHours) {
     activeHours.textContent = campaignStats?.activeSlots ?? getCampaignStats().activeSlots;
@@ -6041,7 +6126,7 @@ function bindEvents() {
   let presetClickTimer = null;
   $("#presetButtons").addEventListener("click", (event) => {
     const button = event.target.closest("[data-preset]");
-    if (!button || publicCampaignState.locked) return;
+    if (!button || publicCampaignState.locked || barterLayoutBlocked) return;
     const preset = button.dataset.preset;
     if (preset === "medi" || preset === "min") {
       if (presetClickTimer) window.clearTimeout(presetClickTimer);
@@ -6061,7 +6146,7 @@ function bindEvents() {
   });
   $("#presetButtons").addEventListener("dblclick", (event) => {
     const button = event.target.closest('[data-preset="medi"], [data-preset="min"]');
-    if (!button || publicCampaignState.locked) return;
+    if (!button || publicCampaignState.locked || barterLayoutBlocked) return;
     event.preventDefault();
     if (presetClickTimer) {
       window.clearTimeout(presetClickTimer);
@@ -6071,7 +6156,7 @@ function bindEvents() {
   });
 
   $("#scheduleGrid").addEventListener("click", (event) => {
-    if (publicCampaignState.locked) return;
+    if (publicCampaignState.locked || barterLayoutBlocked) return;
 
     const dayAxis = event.target.closest("[data-toggle-day]");
     if (dayAxis) {
@@ -6228,6 +6313,7 @@ async function initializeApplication() {
   setDefaultDates();
   if (orderIsBarter(earlyTestOrder)) {
     barterLayoutBlocked = true;
+    barterGridLocked = true;
   } else if (earlyTestOrder) {
     applyOrderSnapshotToCalculator(earlyTestOrder);
   }
@@ -6236,11 +6322,9 @@ async function initializeApplication() {
   syncCalculatorModeUI();
   renderCityFilters();
   bindEvents();
-  if (orderIsBarter(earlyTestOrder)) {
-    showBarterNoLayout(earlyTestOrder);
-  } else if (earlyTestOrder) {
+  if (earlyTestOrder && !orderIsBarter(earlyTestOrder)) {
     if (!showShareLinkForOrder(earlyTestOrder)) ensureShareLinkForCurrentPlan();
-  } else if (!publicTokenAtBoot && !getLiveOrderIdFromUrl()) {
+  } else if (!earlyTestOrder && !publicTokenAtBoot && !getLiveOrderIdFromUrl()) {
     applyPreset("medi");
     state.viaductGrid = fullGrid();
     ensureAllViaductsSelected();

@@ -423,6 +423,7 @@ export function createBarterTestOrder(input: {
 export function createTestOrderDraft(input: {
   client: string;
   agency: string;
+  barter?: boolean;
 }): TestOrder {
   const id = `test-${Date.now()}`;
   const today = new Date();
@@ -430,6 +431,7 @@ export function createTestOrderDraft(input: {
   const toDate = new Date(today);
   toDate.setDate(toDate.getDate() + 6);
   const to = toDate.toISOString().slice(0, 10);
+  const barter = input.barter === true;
   // Medi checkerboard — same rule as skaičiuoklė applyPreset("medi") phase 0
   const grid = Array.from({ length: 7 }, (_, day) =>
     Array.from({ length: 17 }, (_, hourIndex) => (day + hourIndex) % 2 === 0),
@@ -451,7 +453,7 @@ export function createTestOrderDraft(input: {
     updated: new Date().toISOString(),
     intensity: 'Medi',
     screens: [],
-    grid,
+    ...(barter ? {} : { grid }),
     clip_duration: 10,
     viaduct_frequency: 1,
     on_sale_screens: [],
@@ -459,13 +461,14 @@ export function createTestOrderDraft(input: {
     hidden_screens: [],
     details: {
       isTest: true,
+      ...(barter ? { barter: true, barterPrice: 0, barterScreens: [] } : {}),
       discount: 80,
       total: 0,
       finalPrice: 0,
       plan: {
         clip_duration: 10,
         intensity: 'Medi',
-        grid,
+        ...(barter ? {} : { grid }),
         viaductFrequency: 1,
         total: 0,
       },
