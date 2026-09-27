@@ -130,10 +130,134 @@ export function orderPatchFromPlayCampaign(
   };
 }
 
+function timestampMs(value: unknown): number {
+  const parsed = Date.parse(String(value || ''));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * Test-order plan time. planChangedAt is the plan save; updated is the fallback.
+ * Non-test orders never win here, so the paid campaign path stays server-first.
+ */
+export function localTestPlanIsNewer(
+  order: Pick<Order, 'id' | 'updated' | 'details'>,
+  record: Pick<PlayPublicCampaignRecord, 'updatedAt'>
+): boolean {
+  const test =
+    order.details?.isTest === true || isPlayTestOrderId(String(order.id || ''));
+  if (!test) return false;
+  const planChanged = timestampMs(order.details?.planChangedAt);
+  const local = planChanged || timestampMs(order.updated);
+  const server = timestampMs(record.updatedAt);
+  return local > server;
+}
+
+type PlanScreenRow = NonNullable<
+  NonNullable<Order['details']>['plan']
+>['screenRows'] extends Array<infer Row> | undefined
+  ? Row
+  : never;
+
+/** Campaign snapshot fields a test-order date/price save must write to Supabase. */
+export function playCampaignSnapshotFromTestOrder(
+  order: Pick<
+    Order,
+    | 'client'
+    | 'agency'
+    | 'from'
+    | 'to'
+    | 'final_price'
+    | 'intensity'
+    | 'viaduct'
+    | 'grid'
+    | 'clip_duration'
+    | 'viaduct_frequency'
+    | 'details'
+  >,
+  existing?: Pick<PlayPublicCampaignRecord, 'campaign' | 'screens'> | null
+): { campaign: Record<string, unknown>; screens: Array<Record<string, unknown>> } {
+  const rows = (order.details?.plan?.screenRows || []) as PlanScreenRow[];
+  const previousScreens = Array.isArray(existing?.screens)
+    ? existing.screens.map(asRecord)
+    : [];
+  const screens = rows.length
+    ? rows.map((row) => {
+        const catalogId = String(row.catalogId || '').trim();
+        const previous = previousScreens.find((screen) => {
+          const id = String(screen.screen_id || screen.catalogId || '').trim();
+          return Boolean(catalogId) && id === catalogId;
+        });
+        const snapshot = asRecord(previous?.calculation_snapshot);
+        return {
+          ...(previous || {}),
+          screen_id: catalogId || previous?.screen_id,
+          from: row.from || order.from,
+          to: row.to || order.to,
+          name: row.name,
+          city: row.city,
+          impressions: row.impressions ?? previous?.impressions,
+          ots_total: row.ots ?? previous?.ots_total,
+          clip_price: row.clipPrice ?? previous?.clip_price,
+          cpt: row.cpt ?? previous?.cpt,
+          gross_price: row.gross ?? previous?.gross_price,
+          net_price: row.net ?? previous?.net_price,
+          calculation_snapshot: {
+            ...snapshot,
+            name: row.name || snapshot.name,
+            city: row.city || snapshot.city,
+            type: row.type || snapshot.type,
+            resolution: row.resolution || snapshot.resolution,
+          },
+        };
+      })
+    : previousScreens;
+
+  const previousCampaign = asRecord(existing?.campaign);
+  return {
+    campaign: {
+      ...previousCampaign,
+      name: order.client || previousCampaign.name,
+      client_name: order.client || previousCampaign.client_name,
+      agency_name: order.agency || previousCampaign.agency_name,
+      date_from: order.from,
+      date_to: order.to,
+      final_price: order.final_price,
+      intensity: order.intensity || order.details?.plan?.intensity || previousCampaign.intensity,
+      grid: order.details?.plan?.grid || order.grid || previousCampaign.grid,
+      clip_duration_seconds:
+        order.details?.plan?.clip_duration ??
+        order.clip_duration ??
+        previousCampaign.clip_duration_seconds,
+      volume_discount: order.details?.amountDiscount ?? previousCampaign.volume_discount,
+      period_discount: order.details?.periodDiscount ?? previousCampaign.period_discount,
+      viaduct: order.viaduct,
+      viaduct_frequency:
+        order.viaduct_frequency ??
+        order.details?.plan?.viaductFrequency ??
+        previousCampaign.viaduct_frequency,
+      planChangedAt: order.details?.planChangedAt || previousCampaign.planChangedAt,
+    },
+    screens,
+  };
+}
+
 export function mergeOrderWithPlayCampaign(
   order: Order,
   record: PlayPublicCampaignRecord
 ): Order {
+  if (localTestPlanIsNewer(order, record)) {
+    return {
+      ...order,
+      details: {
+        ...(order.details || {}),
+        isTest: order.details?.isTest === true || record.kind === 'test',
+        publicToken: record.token || order.details?.publicToken,
+        live: order.details?.live,
+        clockOverlay: order.details?.clockOverlay,
+        mediaCoverage: order.details?.mediaCoverage,
+      },
+    };
+  }
   const patch = orderPatchFromPlayCampaign(record);
   return {
     ...order,

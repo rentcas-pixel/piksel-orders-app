@@ -1,6 +1,8 @@
 import type { Order } from '@/types';
 import {
   mergeOrderWithPlayCampaign,
+  localTestPlanIsNewer,
+  playCampaignSnapshotFromTestOrder,
   type PlayPublicCampaignRecord,
 } from '@/lib/play-public-campaigns';
 
@@ -612,6 +614,7 @@ export async function hydrateTestOrderFromPlayCampaign(
   try {
     const record = await fetchPlayCampaignByOrderId(orderId);
     if (!record) return current;
+    if (localTestPlanIsNewer(current, record)) return current;
     const merged = normalizeTestOrder(
       mergeOrderWithPlayCampaign(current, record) as TestOrder
     );
@@ -622,6 +625,43 @@ export async function hydrateTestOrderFromPlayCampaign(
   } catch {
     return current;
   }
+}
+
+/** Writes the test-order dates, screen rows, and price into the Supabase campaign snapshot. */
+export async function syncTestOrderPlayCampaign(order: TestOrder): Promise<void> {
+  if (!isTestOrder(order)) return;
+  const orderId = String(order.id || '').trim();
+  if (!orderId) return;
+  const existing = await fetchPlayCampaignByOrderId(orderId);
+  const snapshot = playCampaignSnapshotFromTestOrder(order, existing);
+  const response = await fetch('/api/play-campaigns', {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      token: existing?.token || order.details?.publicToken || undefined,
+      orderId,
+      kind: 'test',
+      campaign: snapshot.campaign,
+      screens: snapshot.screens,
+      status: existing?.status || 'awaiting_approval',
+    }),
+  });
+  if (!response.ok) return;
+  const saved = (await response.json().catch(() => null)) as { token?: string } | null;
+  const token = String(saved?.token || '').trim();
+  if (!token || token === order.details?.publicToken) return;
+  const current = getTestOrder(orderId) || order;
+  upsertTestOrder(
+    {
+      ...current,
+      details: {
+        ...(current.details || { isTest: true }),
+        isTest: true,
+        publicToken: token,
+      },
+    },
+    { keepUpdated: true }
+  );
 }
 
 export async function hydrateTestOrdersFromPlayCampaigns(): Promise<number> {

@@ -65,6 +65,7 @@ import {
   getTestOrder,
   hydrateTestOrderFromPlayCampaign,
   isTestOrder,
+  syncTestOrderPlayCampaign,
   upsertTestOrder,
   type TestOrder,
 } from '@/lib/test-orders';
@@ -1005,7 +1006,12 @@ export function EditOrderModal({
             },
           },
         });
-        onOrderUpdated?.(saved);
+        try {
+          await syncTestOrderPlayCampaign(saved);
+        } catch {
+          /* Local plan stays newer than the old server snapshot. */
+        }
+        onOrderUpdated?.(getTestOrder(saved.id) || saved);
         onClose();
         return;
       }
