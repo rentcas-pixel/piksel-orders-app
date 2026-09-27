@@ -19,7 +19,6 @@ import {
 } from '@/lib/player-devices';
 import {
   SCHEDULE_HOURS,
-  avgCampaignsPerHour,
   campaignInDateRange,
   campaignsForScreenInMonth,
   campaignsForScreenOnDay,
@@ -28,7 +27,6 @@ import {
   effectiveCampaignDay,
   effectiveCampaignHour,
   expandCampaignPlayOrder,
-  formatAvgClips,
   formatDayTitle,
   formatMonthTitle,
   campaignMediaIds,
@@ -557,32 +555,6 @@ export function DeviceSchedulingView({
                     })}
                   </div>
                 ))
-              )}
-
-              {monthCampaigns.length > 0 && (
-                <div
-                  className="grid border-t border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/50"
-                  style={{ gridTemplateColumns: monthCols }}
-                >
-                  <div className="sticky left-0 z-[6] border-r border-gray-200 bg-gray-50 px-3 py-2 text-xs font-medium text-gray-500 dark:border-gray-700 dark:bg-gray-900/50">
-                    Vid. kampanijų / val.
-                  </div>
-                  {days.map((d) => {
-                    const iso = dateIsoLocal(d);
-                    const avg = avgCampaignsPerHour(monthCampaigns, iso, overrides);
-                    return (
-                      <div
-                        key={iso}
-                        className={`border-r border-gray-100 py-2 text-center text-xs font-semibold ${
-                          avg <= 0 ? 'font-medium text-gray-300' : 'text-gray-700'
-                        }`}
-                        title={`${iso} — vid. ${formatAvgClips(avg)} kampanijos / val.`}
-                      >
-                        {formatAvgClips(avg)}
-                      </div>
-                    );
-                  })}
-                </div>
               )}
             </div>
           </div>
