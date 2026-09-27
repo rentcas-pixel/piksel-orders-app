@@ -51,7 +51,9 @@ async function writeLocalJson(name: string, value: unknown) {
 }
 
 function tableClient(): SupabaseClient {
-  return createClient(config.supabase.url, config.supabase.anonKey, {
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  const key = serviceKey || config.supabase.anonKey;
+  return createClient(config.supabase.url, key, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 }

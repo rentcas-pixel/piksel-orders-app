@@ -6,6 +6,32 @@ import {
   isAgencyPublicHost,
   isAgencyPublicLoginPath,
 } from '@/lib/agency-portal-paths';
+import { isHubProductionHost } from '@/lib/play-sandbox-paths';
+
+const PUBLIC_PLAN_RESERVED = new Set([
+  'api',
+  'login',
+  'piksel',
+  'test-orders',
+  'test-pocketbase',
+  'skaiciuokle',
+  'agency',
+  'campaign',
+  'calculator',
+  'devices',
+  'media',
+  'monitoring',
+  'inbox',
+  'favicon.ico',
+]);
+
+function publicPlanTokenFromPath(pathname: string): string {
+  const match = pathname.match(/^\/([A-Za-z0-9_-]{8,64})\/?$/);
+  if (!match) return '';
+  const token = match[1];
+  if (PUBLIC_PLAN_RESERVED.has(token.toLowerCase())) return '';
+  return token;
+}
 
 function isAdminFinanceApiPath(pathname: string): boolean {
   return (
@@ -18,6 +44,16 @@ function isAdminFinanceApiPath(pathname: string): boolean {
 export async function middleware(request: NextRequest) {
   const host = request.headers.get('host') ?? '';
   const { pathname } = request.nextUrl;
+
+  if (
+    publicPlanTokenFromPath(pathname) &&
+    !isHubProductionHost(host) &&
+    !isAgencyPublicHost(host)
+  ) {
+    const rewriteUrl = request.nextUrl.clone();
+    rewriteUrl.pathname = '/skaiciuokle/index.html';
+    return NextResponse.rewrite(rewriteUrl);
+  }
 
   if (isAdminFinanceApiPath(pathname) && !isAgencyPublicHost(host)) {
     const denied = await guardAdminFinanceApi(request);
@@ -79,6 +115,7 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     '/',
+    '/:token',
     '/login',
     '/agency',
     '/agency/:path*',

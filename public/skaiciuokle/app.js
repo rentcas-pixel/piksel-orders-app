@@ -821,15 +821,6 @@ async function createGoMockFromCalculator({ openPreview = false, copy = true } =
   setGoMockTokenForMode(modeKey, token);
   persistShareTokenOnCurrentOrder(token);
 
-  const goUrl = buildPublicCampaignUrl(token);
-  setGoShareLinkField(goUrl, { flash: copy });
-  if (copy) {
-    const copied = await copyTextNow(goUrl);
-    if (copied) {
-      showToast(isViaductMode() ? "Viadukų plano nuoroda nukopijuota" : "Ekranų plano nuoroda nukopijuota");
-    }
-  }
-
   const orderId = currentShareOrderId() || `share-${token}`;
   try {
     const saved = await playCampaignRequest("/api/play-campaigns", {
@@ -842,21 +833,28 @@ async function createGoMockFromCalculator({ openPreview = false, copy = true } =
         status: payload.campaign?.status || "awaiting_approval",
       }),
     });
-    if (saved?.token) {
-      token = saved.token;
-      setGoMockTokenForMode(modeKey, token);
-      saveGoMockCampaign(token, payload);
-      persistShareTokenOnCurrentOrder(token);
-      publicCampaignState.token = token;
-      publicCampaignState.orderId = saved.orderId || orderId;
-      setGoShareLinkField(buildPublicCampaignUrl(token));
-    }
+    if (!saved?.token) throw new Error("Nepavyko įrašyti nuorodos");
+    token = saved.token;
+    setGoMockTokenForMode(modeKey, token);
+    saveGoMockCampaign(token, payload);
+    persistShareTokenOnCurrentOrder(token);
+    publicCampaignState.token = token;
+    publicCampaignState.orderId = saved.orderId || orderId;
   } catch (error) {
     showToast(error instanceof Error ? error.message : "Nepavyko įrašyti nuorodos");
-    return { token, goUrl, mode: modeKey };
+    return null;
+  }
+
+  const goUrl = buildPublicCampaignUrl(token);
+  setGoShareLinkField(goUrl, { flash: copy });
+  if (copy) {
+    const copied = await copyTextNow(goUrl);
+    if (copied) {
+      showToast(isViaductMode() ? "Viadukų plano nuoroda nukopijuota" : "Ekranų plano nuoroda nukopijuota");
+    }
   }
   if (openPreview) window.open(localPreviewUrlForToken(token), "_blank", "noopener");
-  return { token, goUrl: buildPublicCampaignUrl(token), mode: modeKey };
+  return { token, goUrl, mode: modeKey };
 }
 const ordersFilterState = {
   status: "Visi",
@@ -984,6 +982,13 @@ function isEmbedPreview() {
 function applyScreenCustomPeriodsFromPlan(plan) {
   const rows = Array.isArray(plan?.screenRows) ? plan.screenRows : [];
   clearAllScreenCustomDates();
+  const dated = rows.filter((row) => String(row?.from || "").trim() && String(row?.to || "").trim());
+  const signatures = new Set(dated.map((row) => `${String(row.from).trim()}|${String(row.to).trim()}`));
+  const sharedCopy = signatures.size <= 1 && dated.every((row) => row.customPeriod !== true);
+  if (sharedCopy) {
+    state.perScreenDatesMode = false;
+    return;
+  }
   let hasCustom = false;
   rows.forEach((row) => {
     const from = String(row?.from || "").trim();
@@ -1277,8 +1282,9 @@ function hubPlanChangedAt(existing, plan, nowIso) {
         screenRows: screens.map((screen) => ({
           name: screen.name,
           catalogId: screen.catalogId || "",
-          from: screen.from || undefined,
-          to: screen.to || undefined,
+          ...(screen.customPeriod
+            ? { from: screen.from || undefined, to: screen.to || undefined, customPeriod: true }
+            : {}),
         })),
       },
     },
@@ -1364,8 +1370,9 @@ function upsertHubTestOrderFromPlan(plan, meta) {
           gross: s.gross,
           screenDiscount: s.screenDiscount,
           net: s.net,
-          from: s.from || undefined,
-          to: s.to || undefined,
+          ...(s.customPeriod
+            ? { from: s.from || undefined, to: s.to || undefined, customPeriod: true }
+            : {}),
           days: typeof s.days === "number" ? s.days : undefined,
         })),
         volumeDiscount: plan.volumeDiscount,

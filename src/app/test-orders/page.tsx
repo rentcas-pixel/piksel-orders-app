@@ -150,7 +150,7 @@ export default function TestOrdersPage() {
   return (
     <>
       <div className="play-vertical-grid min-h-screen bg-gray-50 dark:bg-gray-900">
-        <AppShell onAddOrder={() => {}} userEmail={session.email}>
+        <AppShell onAddOrder={() => setCreating(true)} userEmail={session.email}>
           <main className="container mx-auto px-4 py-6">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>

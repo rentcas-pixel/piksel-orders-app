@@ -1100,7 +1100,8 @@ function writeTotals(
 
 function writePostCampaignTotals(
   sheet: XLSX.WorkSheet,
-  screenPairCount: number
+  screenPairCount: number,
+  actualsComplete: boolean
 ) {
   const firstData = DATA_START_ROW;
   const lastData = firstData + screenPairCount * 2 - 1;
@@ -1122,18 +1123,23 @@ function writePostCampaignTotals(
     f: sum(COL.U),
     z: '### ##0',
   });
-  writeCell(sheet, totalsRow, COL.V, {
-    t: 'n',
-    s: clone(footerStyle),
-    f: sum(COL.V),
-    z: '### ##0',
-  });
-  writeCell(sheet, totalsRow, COL.W, {
-    t: 'n',
-    s: clone(footerStyle),
-    z: '### ##0',
-    f: `${vAddr}-${uAddr}`,
-  });
+  if (actualsComplete) {
+    writeCell(sheet, totalsRow, COL.V, {
+      t: 'n',
+      s: clone(footerStyle),
+      f: sum(COL.V),
+      z: '### ##0',
+    });
+    writeCell(sheet, totalsRow, COL.W, {
+      t: 'n',
+      s: clone(footerStyle),
+      z: '### ##0',
+      f: `${vAddr}-${uAddr}`,
+    });
+  } else {
+    writeCell(sheet, totalsRow, COL.V, blankCell(footerStyle));
+    writeCell(sheet, totalsRow, COL.W, blankCell(footerStyle));
+  }
 
   const mergeCols = [COL.J, COL.U, COL.V, COL.W];
   for (const col of mergeCols) {
@@ -1215,7 +1221,14 @@ function buildWorksheet(
   }
 
   if (mode === 'post-campaign') {
-    writePostCampaignTotals(sheet, exportScreens.length);
+    const activeScreens = exportScreens.filter((screen) => !calc.isInactive(screen));
+    const actualsComplete =
+      activeScreens.length > 0 &&
+      activeScreens.every((screen) => {
+        const shown = shownViewsByScreenId?.[screen.id];
+        return typeof shown === 'number' && Number.isFinite(shown);
+      });
+    writePostCampaignTotals(sheet, exportScreens.length, actualsComplete);
   } else {
     writeTotals(sheet, order, calc, exportScreens.length);
   }

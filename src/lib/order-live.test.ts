@@ -415,10 +415,7 @@ describe('describeLiveUpdateNotice', () => {
     });
     const published = snapshotFromLiveState(
       {
-        status: 'live',
         screenNames: ['Mada', 'Panorama'],
-        publishedAt: '2026-09-18T12:31:46.242Z',
-        clipCount: 2,
       },
       order
     );

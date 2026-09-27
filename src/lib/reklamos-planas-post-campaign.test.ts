@@ -5,6 +5,7 @@ import {
   getMonthBoostRange,
   postCampaignShownMultiplier,
 } from '@/lib/reklamos-planas-post-campaign';
+import { buildPostCampaignSheetName } from '@/lib/reklamos-planas-data';
 
 describe('getMonthBoostRange', () => {
   it('returns january boost range', () => {
@@ -59,5 +60,21 @@ describe('computePostCampaignDifference', () => {
   it('returns shown minus planned', () => {
     expect(computePostCampaignDifference(1000, 1150)).toBe(150);
     expect(computePostCampaignDifference(1000, 1000)).toBe(0);
+  });
+});
+
+describe('buildPostCampaignSheetName', () => {
+  it('stays a legal Excel name when the order number is 13 digits', () => {
+    const name = buildPostCampaignSheetName({
+      invoice_id: '1790481431166',
+      client: 'QA Codex 2026-09-27 patikra',
+      from: '2026-09-27',
+      to: '2026-10-03',
+    } as never);
+    expect(name.length).toBeLessThanOrEqual(31);
+    expect(name).not.toMatch(/[:\\/?*[\]]/);
+    expect(name.startsWith("'") || name.endsWith("'")).toBe(false);
+    expect(name).toContain('1790481431166');
+    expect(name).toContain('2026-');
   });
 });

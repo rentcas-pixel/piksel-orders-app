@@ -21,10 +21,6 @@ import {
   downloadReklamosPlanasCombined,
 } from '@/lib/export-reklamos-planas';
 import { OrderAtaskaitaModal } from '@/components/OrderAtaskaitaModal';
-import {
-  toCampaignOrderInput,
-  toCampaignScreen,
-} from '@/lib/reklamos-planas-data';
 import Image from 'next/image';
 import { Order, Comment, Reminder, FileAttachment } from '@/types';
 import { usePlaySandboxEnabled } from '@/hooks/usePlaySandboxEnabled';
@@ -61,6 +57,7 @@ import {
 import { StatusIconButton } from '@/components/StatusIconButton';
 import { OrderClipsPanel } from '@/components/OrderClipsPanel';
 import { useOrderScreenAlerts } from '@/hooks/useOrderScreenAlerts';
+import { inheritSharedScreenPeriod } from '@/lib/campaign-shared-period';
 import {
   deleteTestOrder,
   getTestOrder,
@@ -558,7 +555,7 @@ export function EditOrderModal({
     const loadOts = async () => {
       setOtsLoading(true);
       try {
-        const { campaignOrder, screens, bundles } = await loadCampaignExportData(order.id);
+        const { campaignOrder, screens, bundles } = await loadCampaignExportData(order.id, order);
         if (!cancelled) setCityOtsRows(computeCityOtsBreakdown(campaignOrder, screens, bundles));
       } catch {
         if (!cancelled) setCityOtsRows([]);
@@ -925,8 +922,20 @@ export function EditOrderModal({
         if (!nextApproved && (fresh.details?.live?.status === 'live' || liveState.status === 'live')) {
           await unpublishOrderFromPlayer(order.id);
         }
+        const previousFrom = String(fresh.from || '');
+        const previousTo = String(fresh.to || '');
         const nextFrom = String(formData.from ?? fresh.from);
         const nextTo = String(formData.to ?? fresh.to);
+        const previousPlan = fresh.details?.plan;
+        const nextScreenRows = Array.isArray(previousPlan?.screenRows)
+          ? inheritSharedScreenPeriod(
+              previousPlan.screenRows,
+              previousFrom,
+              previousTo,
+              nextFrom,
+              nextTo
+            )
+          : previousPlan?.screenRows;
         const nextIntensity = formData.intensity ?? fresh.intensity;
         const planChangedAt = resolvePlanChangedAt(
           fresh,
@@ -965,6 +974,9 @@ export function EditOrderModal({
             live: nextLive,
             clockOverlay:
               formData.details?.clockOverlay ?? fresh.details?.clockOverlay,
+            ...(previousPlan
+              ? { plan: { ...previousPlan, screenRows: nextScreenRows } }
+              : {}),
           },
         });
         onOrderUpdated?.(saved);
@@ -1382,28 +1394,14 @@ export function EditOrderModal({
     }
   };
 
-  const loadCampaignExportData = async (orderId: string) => {
-    const fullOrder = await PocketBaseService.getOrder(orderId);
-    const [screenRecords, bundles] = await Promise.all([
-      PocketBaseService.getCampaignScreens(!!fullOrder.viaduct),
-      PocketBaseService.getBundles(),
-    ]);
-    const campaignOrder = toCampaignOrderInput(
-      fullOrder as unknown as Record<string, unknown>
-    );
-    const screens = screenRecords.map((r) =>
-      toCampaignScreen(r as Record<string, unknown>)
-    );
-    return { campaignOrder, screens, bundles };
-  };
-
   const handlePartnerPlanExcelExport = async (partner: OrderExportPartner) => {
     if (!order) return;
     setExportError(null);
     setExportingPartnerId(partner.id);
     try {
       const { campaignOrder, screens, bundles } = await loadCampaignExportData(
-        order.id
+        order.id,
+        order
       );
 
       await downloadReklamosPlanas({
@@ -1428,7 +1426,8 @@ export function EditOrderModal({
     setExportingCombined(true);
     try {
       const { campaignOrder, screens, bundles } = await loadCampaignExportData(
-        order.id
+        order.id,
+        order
       );
       await downloadReklamosPlanasCombined({
         order: campaignOrder,
