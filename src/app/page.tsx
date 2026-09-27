@@ -159,9 +159,9 @@ function Home() {
 
   const handleEditOrder = (order: Order) => setEditingOrder(order);
 
-  const handleOrderUpdated = () => {
+  const handleOrderUpdated = (order: Order) => {
     setRefreshKey((prev) => prev + 1);
-    setEditingOrder(null);
+    setEditingOrder((current) => (current ? order : null));
   };
 
   const handleGenerateInvoice = async (order: Order) => {

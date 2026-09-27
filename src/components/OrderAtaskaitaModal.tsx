@@ -13,6 +13,7 @@ import {
   buildPikselPostCampaignReportRows,
   formatReportViews,
   liveShownViewsByScreenId,
+  sumRecordedReportViews,
   type PostCampaignScreenReportRow,
 } from '@/lib/post-campaign-report';
 import { POST_CAMPAIGN_EXPORT_LABEL } from '@/lib/reklamos-planas-post-campaign';
@@ -136,16 +137,15 @@ export function OrderAtaskaitaModal({
   }, [isOpen, order]);
 
   const totals = useMemo(() => {
-    const shownRows = rows.filter((row) => row.shownViews != null);
-    const complete = rows.length > 0 && shownRows.length === rows.length;
+    const shown = sumRecordedReportViews(rows);
+    const recorded = rows.filter((row) => row.difference != null);
     return {
       planned: rows.reduce((sum, row) => sum + row.plannedViews, 0),
-      shown: complete
-        ? shownRows.reduce((sum, row) => sum + (row.shownViews || 0), 0)
-        : null,
-      diff: complete
-        ? shownRows.reduce((sum, row) => sum + (row.difference || 0), 0)
-        : null,
+      shown,
+      diff:
+        shown == null
+          ? null
+          : recorded.reduce((sum, row) => sum + (row.difference || 0), 0),
     };
   }, [rows]);
 

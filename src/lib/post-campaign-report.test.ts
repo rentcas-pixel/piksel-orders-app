@@ -6,6 +6,7 @@ import {
   isPikselCampaignScreen,
   orderClipMediaId,
   resolveCampaignScreenIds,
+  sumRecordedReportViews,
 } from '@/lib/post-campaign-report';
 import { flattenCampaignGrid } from '@/lib/reklamos-planas-grid';
 import { toCampaignOrderInput } from '@/lib/reklamos-planas-data';
@@ -242,5 +243,20 @@ describe('buildPikselPostCampaignReportRows', () => {
     expect(rows.map((row) => row.shownViews)).toEqual([null, null, null]);
     expect(rows.every((row) => row.source === 'missing')).toBe(true);
     expect(rows.some((row) => row.shownViews === 4653 || row.shownViews === 4320 || row.shownViews === 4470)).toBe(false);
+    expect(sumRecordedReportViews(rows)).toBeNull();
+  });
+
+  it('adds a recorded play count into the total and leaves missing screens out', () => {
+    const rows = [
+      { shownViews: 332 },
+      { shownViews: null },
+      { shownViews: null },
+    ];
+    expect(sumRecordedReportViews(rows)).toBe(332);
+    expect(rows[1].shownViews).toBeNull();
+    expect(rows[2].shownViews).toBeNull();
+    expect(sumRecordedReportViews(rows.map(() => ({ shownViews: null })))).toBeNull();
+    expect(sumRecordedReportViews([{ shownViews: 332 }, { shownViews: 10 }])).toBe(342);
+    expect(sumRecordedReportViews([{ shownViews: 0 }, { shownViews: null }])).toBe(0);
   });
 });
