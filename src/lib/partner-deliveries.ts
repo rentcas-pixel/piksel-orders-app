@@ -34,8 +34,26 @@ export type PartnerDeliveryStatus = {
   toEmail: string | null;
 };
 
+const TOKEN_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+const TOKEN_LENGTH = 16;
+/** 62 * 4. Baitai nuo šios ribos atmetami, kad simbolių tikimybės būtų lygios. */
+const TOKEN_BYTE_LIMIT = 248;
+
+/**
+ * Tik raidės ir skaičiai. base64url gale palieka „-“ arba „_“,
+ * o Owexx paštas tokį simbolį nukerta nuo paprasto teksto nuorodos.
+ */
 export function createPartnerDeliveryToken(): string {
-  return randomBytes(12).toString('base64url');
+  let token = '';
+  while (token.length < TOKEN_LENGTH) {
+    const bytes = randomBytes(TOKEN_LENGTH);
+    for (const byte of bytes) {
+      if (byte >= TOKEN_BYTE_LIMIT) continue;
+      token += TOKEN_ALPHABET[byte % TOKEN_ALPHABET.length];
+      if (token.length === TOKEN_LENGTH) break;
+    }
+  }
+  return token;
 }
 
 export async function savePartnerDelivery(input: {
