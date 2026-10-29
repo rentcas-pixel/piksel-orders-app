@@ -8,7 +8,7 @@ export type PartnerContact = {
 
 const DEFAULT_CONTACTS: Record<string, PartnerContact> = {
   piksel: { emails: [], skipSend: true },
-  owexx: { emails: ['elena@owexx.com'] },
+  owexx: { emails: ['elena@owexx.com', 'transliacijos@owexx.com'] },
   biciulis: { emails: ['asta@pbiciulis.lt'] },
   gijota: { emails: ['egle@gijota.lt'] },
   marijampole: { emails: ['ledboxekranai@gmail.com'] },
