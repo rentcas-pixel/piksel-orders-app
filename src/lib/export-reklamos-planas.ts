@@ -124,8 +124,13 @@ const POST_CAMPAIGN_LOGO_SIZE_INCHES = {
 } as const;
 const PIKSEL_ROW_HEIGHT = 42;
 const TOP_WHITE_LAST_ROW = 8;
+/**
+ * 48 ekranų katalogas baigiasi 105 eilutėje (10 + 48×2 − 1).
+ * Balta zona nuo 106 uždažo Viso ir apačią. Jei ekranų daugiau,
+ * balta zona prasideda tik po paskutinės duomenų eilutės — kitaip
+ * nauji ekranai netenka rėmelių ir atrodo nušokę po lentele.
+ */
 const FOOTER_WHITE_FIRST_ROW = 106;
-const FOOTER_WHITE_LAST_ROW = 206;
 const MID_WHITE_FIRST_ROW = 34;
 const MID_WHITE_LAST_ROW = 113;
 
@@ -1219,15 +1224,21 @@ function buildWorksheet(
     mode === 'post-campaign'
       ? DATA_START_ROW + exportScreens.length * 2 + 2
       : DATA_START_ROW + exportScreens.length * 2 + 8;
-  const lastRow = Math.max(contentLastRow, FOOTER_WHITE_LAST_ROW);
-  applyWhiteColumns(sheet, lastRow, mode);
+  applyWhiteColumns(sheet, contentLastRow, mode);
   applyWhiteRows(sheet, 1, TOP_WHITE_LAST_ROW);
   if (mode !== 'post-campaign') {
     applyWhiteRange(sheet, HEADER_ROW, GRID_TITLE_ROW, COL.K, COL.T);
-    applyWhiteRange(sheet, MID_WHITE_FIRST_ROW, MID_WHITE_LAST_ROW, COL.K, COL.T);
+    applyWhiteRange(
+      sheet,
+      MID_WHITE_FIRST_ROW,
+      Math.max(MID_WHITE_LAST_ROW, lastDataRow),
+      COL.K,
+      COL.T
+    );
     ensureRangeBorders(sheet, GRID_TITLE_ROW, GRID_TITLE_ROW, COL.M, COL.S);
   }
-  applyWhiteRows(sheet, FOOTER_WHITE_FIRST_ROW, FOOTER_WHITE_LAST_ROW);
+  const footerWhiteFirstRow = Math.max(FOOTER_WHITE_FIRST_ROW, lastDataRow + 1);
+  applyWhiteRows(sheet, footerWhiteFirstRow, contentLastRow);
 
   const totalsRow = lastDataRow + 1;
   const totalsSpacerRow = totalsRow + 1;
@@ -1262,7 +1273,7 @@ function buildWorksheet(
     customHeight: true,
   } as XLSX.RowInfo;
 
-  sheet['!ref'] = `A1:${colLetter(PADDING_LAST_COL)}${lastRow}`;
+  sheet['!ref'] = `A1:${colLetter(PADDING_LAST_COL)}${contentLastRow}`;
   const colWidths = buildExportColWidths(mode);
   sheet['!cols'] = [
     ...colWidths,
