@@ -578,7 +578,7 @@ export async function applyFreezePanesInXlsx(
   }
 
   const topLeftCell = `A${freezeThroughRow + 1}`;
-  const sheetViews = `<sheetViews><sheetView workbookViewId="0"><pane ySplit="${freezeThroughRow}" topLeftCell="${topLeftCell}" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="${topLeftCell}" sqref="${topLeftCell}"/></sheetView></sheetViews>`;
+  const sheetViews = `<sheetViews><sheetView showGridLines="0" workbookViewId="0"><pane ySplit="${freezeThroughRow}" topLeftCell="${topLeftCell}" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="${topLeftCell}" sqref="${topLeftCell}"/></sheetView></sheetViews>`;
 
   let sheetXml = await sheetFile.async('string');
   if (sheetXml.includes('<sheetViews>')) {

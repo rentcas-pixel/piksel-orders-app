@@ -131,6 +131,14 @@ const TOP_WHITE_LAST_ROW = 8;
  * nauji ekranai netenka rėmelių ir atrodo tušti po lentele.
  */
 const FOOTER_WHITE_FIRST_ROW = 106;
+/**
+ * Po 52 ekranų suvestinė baigiasi 115 eilutėje.
+ * Nuo 116 žemyn ir nuo X stulpelio į dešinę — baltas fonas,
+ * kad už lentelės nesimatytų Excel tinklelio.
+ * Jei ekranų daugiau, balta zona prasideda po paskutinės duomenų eilutės.
+ */
+const SHEET_WHITE_FROM_ROW = 116;
+const SHEET_WHITE_LAST_ROW = 206;
 const MID_WHITE_FIRST_ROW = 34;
 const MID_WHITE_LAST_ROW = 113;
 
@@ -283,16 +291,18 @@ gridCellStyle.border = gridBorderStyle();
 const gridHeaderStyle = clone(tableHeaderStyle);
 gridHeaderStyle.border = gridBorderStyle();
 
+const whiteFill = { patternType: 'solid', fgColor: { rgb: SHEET_FILL } };
+
 const whiteColumnStyle = {
   font: { name: 'Open Sans', sz: 12, bold: false },
-  fill: { fgColor: { rgb: SHEET_FILL } },
+  fill: whiteFill,
   alignment: { horizontal: 'center', vertical: 'center' },
   border: {},
 };
 
 function applyWhiteColumnStyle(cell: Cell, col: number): Cell {
   const style = clone(cell.s || whiteColumnStyle);
-  style.fill = { fgColor: { rgb: SHEET_FILL } };
+  style.fill = { ...whiteFill };
   style.border = {};
   if (col === COL.K) {
     style.alignment = { ...(style.alignment || {}), horizontal: 'right', vertical: 'center' };
@@ -345,7 +355,7 @@ function applyWhiteColumns(
 
 function applyWhiteRowStyle(cell: Cell): Cell {
   const style = clone(cell.s || whiteColumnStyle);
-  style.fill = { fgColor: { rgb: SHEET_FILL } };
+  style.fill = { ...whiteFill };
   style.border = {};
   return { ...cell, s: style };
 }
@@ -1224,15 +1234,25 @@ function buildWorksheet(
     mode === 'post-campaign'
       ? DATA_START_ROW + exportScreens.length * 2 + 2
       : DATA_START_ROW + exportScreens.length * 2 + 8;
-  const footerWhiteFirstRow = Math.max(FOOTER_WHITE_FIRST_ROW, lastDataRow + 1);
-  applyWhiteColumns(sheet, contentLastRow, mode);
+  const sheetLastRow =
+    mode === 'post-campaign'
+      ? Math.max(contentLastRow, SHEET_WHITE_LAST_ROW)
+      : contentLastRow;
+  const footerWhiteFirstRow =
+    mode === 'post-campaign'
+      ? Math.max(SHEET_WHITE_FROM_ROW, lastDataRow + 3)
+      : Math.max(FOOTER_WHITE_FIRST_ROW, lastDataRow + 1);
+  applyWhiteColumns(sheet, sheetLastRow, mode);
   applyWhiteRows(sheet, 1, TOP_WHITE_LAST_ROW);
   if (mode !== 'post-campaign') {
     applyWhiteRange(sheet, HEADER_ROW, GRID_TITLE_ROW, COL.K, COL.T);
     applyWhiteRange(sheet, MID_WHITE_FIRST_ROW, MID_WHITE_LAST_ROW, COL.K, COL.T);
     ensureRangeBorders(sheet, GRID_TITLE_ROW, GRID_TITLE_ROW, COL.M, COL.S);
   }
-  applyWhiteRows(sheet, footerWhiteFirstRow, contentLastRow);
+  applyWhiteRows(sheet, footerWhiteFirstRow, sheetLastRow);
+  if (mode === 'post-campaign') {
+    applyWhiteRange(sheet, 1, sheetLastRow, COL.X, PADDING_LAST_COL);
+  }
 
   const totalsRow = lastDataRow + 1;
   const totalsSpacerRow = totalsRow + 1;
@@ -1267,7 +1287,7 @@ function buildWorksheet(
     customHeight: true,
   } as XLSX.RowInfo;
 
-  sheet['!ref'] = `A1:${colLetter(PADDING_LAST_COL)}${contentLastRow}`;
+  sheet['!ref'] = `A1:${colLetter(PADDING_LAST_COL)}${sheetLastRow}`;
   const colWidths = buildExportColWidths(mode);
   sheet['!cols'] = [
     ...colWidths,

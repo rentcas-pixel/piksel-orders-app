@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import JSZip from 'jszip';
 import XLSX from 'xlsx-js-style';
 import type { CampaignOrderInput, CampaignScreen } from '@/lib/campaign-calculator';
 import { buildReklamosPlanasXlsxBuffer } from '@/lib/export-reklamos-planas';
@@ -57,6 +58,16 @@ describe('reklamos planas rows past 48 screens', () => {
     expect(sheet['C112']?.v).toBe('Ekranas 51');
     expect(sheet['U112']?.v).toBeGreaterThan(0);
     expect(sheet['W112']?.v).toEqual(sheet['V112']?.v - sheet['U112']?.v);
+    expect(sheet['J114']?.v).toBe('Viso:');
+
+    const zip = await JSZip.loadAsync(buffer);
+    const sheetXml = await zip.file('xl/worksheets/sheet1.xml')!.async('string');
+    expect(sheetXml).toContain('showGridLines="0"');
+    expect(sheet['!ref']).toContain('206');
+    expect(sheet['A200']).toBeTruthy();
+    expect(sheet['X10']).toBeTruthy();
+    expect(sheet['X200']).toBeTruthy();
+    expect(sheet['C106']?.v).toBe('Ekranas 48');
   });
 });
 
