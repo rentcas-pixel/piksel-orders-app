@@ -1,4 +1,4 @@
-import { differenceInCalendarDays, getISODay, parseISO, startOfDay } from 'date-fns';
+import { addDays, differenceInCalendarDays, getISODay, parseISO, startOfDay } from 'date-fns';
 
 /** PocketBase ekranas su kainų lentele (kaip skaičiuoklėje) */
 export interface CampaignScreen {
@@ -135,11 +135,14 @@ export function createCampaignCalculator(
     let sum = 0;
     let dayCount = 0;
     let cursor = range.from;
-    while (cursor <= range.to) {
+    // addDays, ne +86400000: LT spalio pabaigos DST (2026-10-25) kitaip
+    // startOfDay grąžina tą pačią dieną ir ciklas niekada nesibaigia — puslapis užstringa.
+    const maxDays = 4000;
+    while (cursor <= range.to && dayCount < maxDays) {
       const weekdayIndex = getISODay(cursor) - 1;
       sum += perDay[weekdayIndex] || 0;
       dayCount++;
-      cursor = startOfDay(new Date(cursor.getTime() + 86400000));
+      cursor = addDays(cursor, 1);
     }
     return dayCount <= 0 ? 0 : sum / dayCount;
   };

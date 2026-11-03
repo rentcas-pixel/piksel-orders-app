@@ -17,7 +17,11 @@ import {
   PERIOD_TAB_ORDER_FIELDS,
   type OrderListPeriodTab,
 } from '@/lib/order-period-tabs';
-import { toCampaignOrderInput, toCampaignScreen } from '@/lib/reklamos-planas-data';
+import {
+  mergePlanScreenIds,
+  toCampaignOrderInput,
+  toCampaignScreen,
+} from '@/lib/reklamos-planas-data';
 import { agencyMatchesFilter, getCanonicalAgencyLabel } from '@/lib/agency-names';
 import { SupabaseService } from '@/lib/supabase-service';
 import type { Order } from '@/types';
@@ -336,6 +340,11 @@ export async function loadCampaignExportData(orderId: string) {
   );
   const screens = screenRecords.map((r) =>
     toCampaignScreen(r as Record<string, unknown>)
+  );
+  campaignOrder.screens = mergePlanScreenIds(
+    campaignOrder.screens,
+    fullOrder as { details?: { plan?: { screenNames?: string[]; screenRows?: Array<{ catalogId?: string; name?: string; city?: string }> } } },
+    screens
   );
   return { campaignOrder, screens, bundles, fullOrder };
 }

@@ -77,6 +77,71 @@ export function toCampaignScreen(
   };
 }
 
+type PlanScreenHint = {
+  catalogId?: string | null;
+  name?: string | null;
+  city?: string | null;
+};
+
+function planScreenKey(name?: string | null, city?: string | null): string {
+  return `${String(city || '').trim().toLocaleLowerCase('lt-LT')}|${String(name || '').trim().toLocaleLowerCase('lt-LT')}`;
+}
+
+/**
+ * Plano ekranai, kurių dar nėra orders.screens (pvz. 4 nauji katalogo ekranai),
+ * ataskaitoje turi gauti datas ir parodymus, ne tuščią eilutę.
+ */
+export function mergePlanScreenIds(
+  selected: string[] | null | undefined,
+  raw: {
+    details?: {
+      plan?: {
+        screenNames?: string[] | null;
+        screenRows?: PlanScreenHint[] | null;
+      } | null;
+    } | null;
+  },
+  catalog: CampaignScreen[]
+): string[] {
+  const ids = new Set(
+    (selected || []).map((id) => String(id || '').trim()).filter(Boolean)
+  );
+  const byId = new Set(catalog.map((screen) => screen.id));
+  const byNameCity = new Map<string, string>();
+  const byName = new Map<string, string[]>();
+  for (const screen of catalog) {
+    const name = screen.name.trim().toLocaleLowerCase('lt-LT');
+    if (!name) continue;
+    const city = (screen.city_display || screen.city || '').trim().toLocaleLowerCase('lt-LT');
+    byNameCity.set(planScreenKey(name, city), screen.id);
+    const list = byName.get(name) || [];
+    list.push(screen.id);
+    byName.set(name, list);
+  }
+
+  const addName = (name?: string | null, city?: string | null) => {
+    const cleaned = String(name || '').trim().toLocaleLowerCase('lt-LT');
+    if (!cleaned) return;
+    const cityKey = String(city || '').trim().toLocaleLowerCase('lt-LT');
+    const exact = cityKey ? byNameCity.get(planScreenKey(cleaned, cityKey)) : undefined;
+    if (exact) {
+      ids.add(exact);
+      return;
+    }
+    const matches = byName.get(cleaned) || [];
+    if (matches.length === 1) ids.add(matches[0]);
+  };
+
+  const plan = raw.details?.plan;
+  for (const row of plan?.screenRows || []) {
+    const id = String(row?.catalogId || '').trim();
+    if (id && byId.has(id)) ids.add(id);
+    else addName(row?.name, row?.city);
+  }
+  for (const name of plan?.screenNames || []) addName(name);
+  return [...ids];
+}
+
 function sanitizeFilenamePart(value: string, maxLength = 80): string {
   return value.replace(/[/\\?*[\]:]/g, '_').slice(0, maxLength);
 }
