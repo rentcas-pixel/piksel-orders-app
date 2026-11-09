@@ -11,6 +11,7 @@ import {
   formatVilniusDateLabel,
   getVilniusDateKey,
 } from '@/lib/vilnius-date';
+import { isViaductOrder } from '@/lib/viaduct-order';
 import {
   portalCardClass,
   portalExportBtnClass,
@@ -228,10 +229,19 @@ function RecentOrdersTable({
                       {formatUpdated(row.sortAt)}
                     </td>
                     <td
-                      className={`${recentOrdersTdClass} font-medium text-gray-900 dark:text-white truncate`}
+                      className={`${recentOrdersTdClass} font-medium text-gray-900 dark:text-white`}
                       title={row.order?.client || row.snapshotClient || undefined}
                     >
-                      {row.order?.client || row.snapshotClient || `ID: ${row.orderId.slice(0, 8)}`}
+                      <div className="min-w-0">
+                        {row.order && isViaductOrder(row.order) && (
+                          <div className="mb-0.5 truncate text-xs font-medium text-blue-600 dark:text-blue-400">
+                            Viadukai
+                          </div>
+                        )}
+                        <div className="truncate">
+                          {row.order?.client || row.snapshotClient || `ID: ${row.orderId.slice(0, 8)}`}
+                        </div>
+                      </div>
                     </td>
                     <td
                       className={`${recentOrdersTdClass} text-gray-600 dark:text-gray-300 truncate`}
