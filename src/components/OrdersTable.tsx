@@ -37,6 +37,7 @@ import {
   daysUntilBroadcastStart,
   isPartnerConfirmAlertWindow,
 } from '@/lib/partner-confirm-alert';
+import { isViaductOrder } from '@/lib/viaduct-order';
 
 interface OrdersTableProps {
   searchQuery: string;
@@ -934,6 +935,12 @@ export function OrdersTable({
                     className="hover:bg-blue-50 dark:hover:bg-blue-950/30 cursor-pointer transition-colors"
                   >
                     <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">
+                      <div className="min-w-0">
+                        {isViaductOrder(order) && (
+                          <div className="mb-0.5 truncate text-xs font-medium text-blue-600 dark:text-blue-400">
+                            Viadukai
+                          </div>
+                        )}
                       <div className="flex items-center gap-2">
                         {order.client}
                         {partnerConfirmAlerts[order.id]?.length > 0 && (
@@ -954,6 +961,7 @@ export function OrdersTable({
                             <ChatBubbleLeftEllipsisIcon className="w-4 h-4" />
                           </span>
                         )}
+                      </div>
                       </div>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{order.agency || '—'}</td>
@@ -1157,8 +1165,10 @@ export function OrdersTable({
               >
                 <td className={`w-[14rem] max-w-[14rem] ${t.clientCellPad}`}>
                   <div className="min-w-0" title={order.client}>
-                    {order.viaduct && (
-                      <div className="text-xs text-gray-500 dark:text-gray-400 mb-0.5 truncate">Viadukai</div>
+                    {isViaductOrder(order) && (
+                      <div className="mb-0.5 truncate text-xs font-medium text-blue-600 dark:text-blue-400">
+                        Viadukai
+                      </div>
                     )}
                     <div className="flex items-center min-w-0 gap-1">
                       <span className={`truncate min-w-0 flex-1 ${t.clientFont} text-gray-900 dark:text-white`}>
